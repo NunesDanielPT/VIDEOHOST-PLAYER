@@ -1,190 +1,85 @@
 #pragma once
-// Modelo do projecto VTHOST (.vthost, JSON).
+// Modelo do projecto VTHOST (.vthost, JSON) — player de playlist (estilo Mitti).
 //
-// Ideia base (inspirada em media servers de espetáculo):
-//   - Media: ficheiros de vídeo/imagem na biblioteca.
-//   - Layers: camadas compostas de baixo para cima no canvas.
-//   - Colunas (cues): cada coluna define que media toca em cada layer. "GO" numa
-//     coluna dispara essas media com um fade.
-//   - Outputs: ecrãs/projectores onde o canvas é mostrado.
+//   - Cues: a playlist. Cada cue é um ficheiro (vídeo, imagem ou só áudio) com
+//     pontos In/Out, velocidade, número de repetições, pausas no início/fim,
+//     fades, crossfade, "ir para", volume e geometria.
+//   - Outputs: ecrãs/projectores (ecrã inteiro), janelas e NDI onde a imagem aparece.
 //
 // O parser é tolerante: valores fora do intervalo são corrigidos (clamp) e
-// referências inválidas são descartadas com aviso, em vez de falhar o projecto
-// inteiro. Um projecto ligeiramente danificado deve abrir na mesma.
+// referências inválidas são descartadas com aviso. Um projecto ligeiramente
+// danificado deve abrir na mesma.
 
-#include "vthost/core/mapping.h"
+#include "vthost/core/layer_props.h"
 
-#include <map>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace vthost {
 
-inline constexpr int kProjectFormatVersion = 1;
+inline constexpr int kProjectFormatVersion = 2;
 inline constexpr int kMaxCanvasSize = 16384;
+inline constexpr double kMaxMediaSeconds = 24.0 * 3600.0;
 
-enum class BlendMode { Normal, Add, Multiply, Screen };
+// Cores das cues (etiquetas, como no Mitti).
+inline constexpr const char* kCueColors[] = {"red", "yellow", "green", "purple", "pink"};
+bool isValidCueColor(const std::string& c); // "" também é válida (sem cor)
 
-const char* toString(BlendMode m);
-BlendMode blendModeFromString(const std::string& s);
+struct Cue {
+    std::string id;     // estável, interno ("Q1", "Q2"...)
+    std::string label;  // ID visível (ex. "INTRO"); "" = mostra o número
+    std::string name;   // "" = nome do ficheiro
+    std::string path;   // caminho absoluto (UTF-8)
+    std::string color;  // "" ou uma de kCueColors
+    std::string notes;
 
-// O que acontece quando uma media chega ao fim (como no Millumin).
-enum class LoopMode {
-    Infinite,   // repete sem parar
-    OnceFreeze, // toca uma vez e fica no último frame
-    OnceStop,   // toca uma vez e desaparece
-    AutoFollow, // toca uma vez e dispara a coluna seguinte
-};
-const char* toString(LoopMode m);
-LoopMode loopModeFromString(const std::string& s);
+    // Trim e reprodução.
+    double inPoint = 0.0;  // segundos dentro do ficheiro
+    double outPoint = 0.0; // 0 = até ao fim
+    double speed = 1.0;    // 0.25..4
+    int playCount = 1;     // 1 = uma vez; 0 = loop infinito; N = N vezes
 
-struct MediaItem {
-    std::string id;
-    std::string path;     // caminho absoluto (UTF-8)
-    LoopMode loopMode = LoopMode::Infinite;
-    bool loops() const { return loopMode == LoopMode::Infinite; }
-};
+    // Comportamento (ícones da playlist).
+    bool pauseAtStart = false; // ao chegar a esta cue, fica pronta no 1.º frame à espera de play
+    bool pauseAtEnd = false;   // no fim fica no último frame (não avança)
+    bool clearAtEnd = false;   // no fim apaga para preto e pára
+    double fadeIn = 0.0;       // segundos (a partir de preto)
+    double fadeOut = 0.0;      // segundos (para preto)
+    double crossfade = 0.0;    // dissolve a partir da cue anterior (0 = corte)
+    std::string gotoCue;       // id da cue seguinte ("" = a próxima da lista)
 
-// Como a media se ajusta ao canvas (as "constraints" do Millumin).
-enum class FitMode {
-    Fit,     // cabe inteira no canvas, sem cortar (omissão)
-    Fill,    // enche o canvas, corta o que sobra
-    Stretch, // estica para o tamanho do canvas
-    Native,  // tamanho real em píxeis
-};
-const char* toString(FitMode m);
-FitMode fitModeFromString(const std::string& s);
+    // Áudio.
+    bool muted = false;
+    double volumeDb = 0.0;          // -60..+12
+    bool normalize = true;          // aplica o ganho de normalização (se medido)
+    std::optional<double> loudness; // LUFS integrados medidos (análise no Studio)
+    std::optional<double> peakDb;   // pico em dBFS
 
-// Propriedades de uma layer que podem mudar ao vivo (Properties no Studio).
-struct LayerProps {
-    double opacity = 1.0;  // 0..1
-    BlendMode blend = BlendMode::Normal;
-    double posX = 0.0;     // deslocamento em píxeis do canvas (0,0 = centrado)
-    double posY = 0.0;
-    double scale = 1.0;    // 1 = tamanho dado pelo ajuste (fit); 0.01..10
-    double rotation = 0.0; // graus, -3600..3600
+    // Geometria.
     FitMode fit = FitMode::Fit;
-    bool flipH = false;
-    bool flipV = false;
+    double scale = 1.0; // 0.01..10
+    double posX = 0.0;  // píxeis do canvas
+    double posY = 0.0;
 
-    // Mapping da layer (corner pin): deslocamento de cada canto em píxeis do
-    // canvas, por ordem sup-esq, sup-dir, inf-dir, inf-esq.
-    std::array<WarpPoint, 4> cornerPin{};
-
-    // Efeitos de cor.
-    double brightness = 0.0; // -1..1
-    double contrast = 1.0;   // 0..3
-    double saturation = 1.0; // 0..3
-    double gamma = 1.0;      // 0.2..5
-    double hue = 0.0;        // graus, -180..180
-    bool invert = false;
-
-    // Máscara: recorte de cada lado (fração da media, 0..1) com contorno suave.
-    double cropLeft = 0.0, cropRight = 0.0, cropTop = 0.0, cropBottom = 0.0;
-    double feather = 0.0; // 0..0.5
-
-    friend bool operator==(const LayerProps&, const LayerProps&) = default;
+    std::string displayName() const; // nome ou nome do ficheiro (sem pasta)
+    // Fim efetivo dentro do ficheiro (outPoint ou duração do ficheiro).
+    double effectiveOut(double fileDuration) const;
+    // Duração de uma passagem em tempo real (segundos, já com a velocidade).
+    double passSeconds(double fileDuration) const;
+    // Duração total em tempo real (todas as passagens); 0 se infinita ou desconhecida.
+    double totalSeconds(double fileDuration) const;
+    // Ganho total de áudio em dB (volume + normalização), sem contar mute/fades.
+    double gainDb(double normalizeTargetLufs) const;
     void clamp();
 };
 
-// Desenho de uma layer no canvas: centro e meia-largura/altura em píxeis do canvas
-// e rotação. A media encaixa no canvas (fit) e depois aplica-se escala/posição.
-struct LayerQuad {
-    double cx, cy, halfW, halfH, rotationRad;
-};
-LayerQuad computeLayerQuad(const LayerProps& p, int mediaW, int mediaH, int canvasW, int canvasH);
+// Ganho de normalização: leva `loudness` ao alvo, limitado a ±20 dB e de forma a
+// que o pico não passe de -1 dBFS.
+double normalizationGainDb(double loudnessLufs, std::optional<double> peakDb, double targetLufs);
 
-// Os 4 cantos finais da layer em píxeis do canvas (sup-esq, sup-dir, inf-dir,
-// inf-esq): ajuste + escala + posição + rotação + corner pin.
-std::array<WarpPoint, 4> computeLayerCorners(const LayerProps& p, int mediaW, int mediaH, int canvasW, int canvasH);
-
-// Canvas: superfície de composição com resolução própria. Cada layer pertence a
-// um canvas; cada saída mostra uma região de um canvas.
-struct Canvas {
-    std::string id;
-    std::string name;
-    int width = 1920;
-    int height = 1080;
-};
-
-struct Layer {
-    std::string id;
-    std::string name;
-    std::string canvasId; // "" = primeiro canvas
-    LayerProps props;
-    bool visible = true;
-    bool locked = false; // bloqueada: não se move, escala nem roda
-};
-
-// Transição entre cues (colunas).
-enum class TransitionType {
-    Crossfade,        // dissolve: a anterior desaparece enquanto a nova aparece
-    FadeThroughBlack, // a anterior vai a preto, depois a nova aparece
-    Cut,              // corte seco
-};
-const char* toString(TransitionType t);
-TransitionType transitionFromString(const std::string& s);
-
-// Avanço automático para a cue seguinte.
-enum class FollowMode {
-    None,     // só manualmente (GO / Espaço)
-    MediaEnd, // quando os vídeos da cue acabam
-    Timer,    // ao fim de followSeconds desde o disparo
-};
-const char* toString(FollowMode m);
-FollowMode followModeFromString(const std::string& s);
-
-struct Column {
-    std::string id;                           // estável (ex. "K3"); usado por jumpTo
-    std::string name;
-    double fadeSeconds = 1.0;                 // 0..60 (duração da transição)
-    TransitionType transition = TransitionType::Crossfade;
-    FollowMode follow = FollowMode::None;
-    double followSeconds = 10.0;              // 0.1..86400 (modo Timer)
-    std::string jumpTo;                       // id da cue seguinte ("" = a próxima na lista)
-    std::map<std::string, std::string> cells; // layerId -> mediaId
-};
-
-// Timeline: clips colocados no tempo, por layer.
-struct Clip {
-    std::string id;
-    std::string layerId;
-    std::string mediaId;
-    double start = 0.0;    // segundos na timeline
-    double duration = 5.0; // segundos (> 0)
-    double inPoint = 0.0;  // início dentro da media
-    double fadeIn = 0.0;   // segundos de fade-in no início do clip
-    double fadeOut = 0.0;  // segundos de fade-out no fim do clip
-    double end() const { return start + duration; }
-    // Opacidade do clip no instante t da timeline (fades), 0..1.
-    double opacityAt(double t) const;
-};
-
-// Segmento: zona da timeline; com loop, a cabeça de leitura volta ao início ao chegar ao fim.
-struct Segment {
-    std::string name;
-    double start = 0.0;
-    double end = 10.0;
-    bool loop = false;
-};
-
-struct Timeline {
-    std::string id;
-    std::string name;
-    std::vector<Clip> clips;
-    std::vector<Segment> segments;
-
-    double duration() const; // fim do último clip/segmento (mínimo 60 s)
-    const Clip* clipAt(const std::string& layerId, double time) const;
-    const Clip* findClip(const std::string& clipId) const;
-};
-
-inline constexpr double kMaxTimelineSeconds = 24.0 * 3600.0;
-
-// Tipos de saída (como no painel Outputs do Millumin).
 enum class OutputType {
-    Display,  // ecrã/projetor/LED ligado à placa gráfica, em ecrã inteiro
+    Display,  // ecrã/projetor ligado à placa gráfica, em ecrã inteiro
     Window,   // janela normal (testes, pré-visualização)
     Ndi,      // envio por rede NDI
     DeckLink, // placa Blackmagic (SDI/HDMI) - em desenvolvimento
@@ -195,8 +90,6 @@ OutputType outputTypeFromString(const std::string& s);
 struct Output {
     std::string id;
     std::string name;
-    std::string canvasId; // "" = primeiro canvas
-    OutputMapping mapping; // região do canvas, warp, soft-edge, brilho
     OutputType type = OutputType::Display;
     bool enabled = true;
     std::string displayId;    // ecrã (ex. "\\.\DISPLAY2"); identifica o ecrã mesmo que a ordem mude
@@ -211,29 +104,23 @@ struct Output {
 struct Project {
     int version = kProjectFormatVersion;
     std::string name = "Untitled";
-    std::vector<Canvas> canvases; // nunca vazio depois de parse/makeDefault
-    std::vector<MediaItem> media;
-    std::vector<Layer> layers;
-    std::vector<Column> columns;
+    int width = 1920;  // resolução de trabalho (canvas)
+    int height = 1080;
+    bool loopPlaylist = false;         // no fim da última cue volta à primeira
+    double normalizeTargetLufs = -16.0; // alvo da normalização (-40..-5)
+    double masterVolumeDb = 0.0;        // -60..+12
+    std::vector<Cue> cues;
     std::vector<Output> outputs;
-    std::vector<Timeline> timelines;
 
-    const Timeline* findTimeline(const std::string& id) const;
-    const Canvas* findCanvas(const std::string& id) const;
-    // Canvas de uma layer/saída: o indicado ou, se não existir, o primeiro.
-    const Canvas& canvasOf(const std::string& canvasId) const;
-    // Id efetivo (resolve "" e ids inexistentes para o primeiro canvas).
-    std::string resolveCanvasId(const std::string& canvasId) const;
-    const MediaItem* findMedia(const std::string& id) const;
-    const Layer* findLayer(const std::string& id) const;
-    int columnIndex(const std::string& columnId) const; // -1 se não existir
-    // Cue que se segue a `current` (respeita jumpTo). -1 se não houver
-    // (última cue sem jumpTo e sem loopBoard). current < 0 -> primeira cue.
-    int nextColumn(int current, bool loopBoard) const;
-    // Id de coluna novo e único ("K1", "K2", ...).
-    std::string newColumnId() const;
+    const Cue* findCue(const std::string& id) const;
+    int cueIndex(const std::string& id) const; // -1 se não existir
+    // Cue que se segue a `current` (respeita gotoCue e loopPlaylist).
+    // -1 se não houver. current < 0 -> primeira cue.
+    int nextCue(int current) const;
+    std::string newCueId() const;
+    std::string newOutputId() const;
 
-    // Projecto novo com 2 layers, 4 colunas, 1 output e 1 timeline vazia.
+    // Projecto novo: playlist vazia e uma saída de ecrã inteiro no 2.º ecrã.
     static Project makeDefault();
 };
 

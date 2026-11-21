@@ -1,5 +1,6 @@
 #include "video_decoder.h"
 
+#include "reaper.h"
 #include "vthost/core/log.h"
 
 #include <algorithm>
@@ -54,8 +55,8 @@ struct Sws {
 
 } // namespace
 
-VideoDecoder::VideoDecoder(std::string utf8Path, bool loop, double startSeconds)
-    : path_(std::move(utf8Path)), loop_(loop), startSeconds_(std::max(0.0, startSeconds)) {
+VideoDecoder::VideoDecoder(std::string utf8Path, DecodeRange range, double startTime)
+    : path_(std::move(utf8Path)), range_(range), startTime_(std::isfinite(startTime) ? std::max(0.0, startTime) : 0.0) {
     thread_ = std::thread([this] { run(); });
 }
 
@@ -63,6 +64,12 @@ VideoDecoder::~VideoDecoder() {
     stop_ = true;
     cv_.notify_all();
     if (thread_.joinable()) thread_.join();
+}
+
+bool VideoDecoder::drained() const {
+    if (state_.load() != State::Ended) return false;
+    std::lock_guard lock(mutex_);
+    return queue_.empty();
 }
 
 std::string VideoDecoder::error() const {
@@ -105,58 +112,11 @@ std::shared_ptr<VideoFrame> VideoDecoder::takeOldest() {
     return f;
 }
 
-namespace {
-// Thread única que destrói descodificadores retirados.
-class Reaper {
-public:
-    static Reaper& instance() {
-        static Reaper r;
-        return r;
-    }
-    void add(std::unique_ptr<VideoDecoder> d) {
-        {
-            std::lock_guard lock(m_);
-            items_.push_back(std::move(d));
-        }
-        cv_.notify_one();
-    }
-    ~Reaper() {
-        {
-            std::lock_guard lock(m_);
-            quit_ = true;
-        }
-        cv_.notify_one();
-        if (t_.joinable()) t_.join();
-    }
-
-private:
-    Reaper() : t_([this] { loop(); }) {}
-    void loop() {
-        for (;;) {
-            std::unique_ptr<VideoDecoder> d;
-            {
-                std::unique_lock lock(m_);
-                cv_.wait(lock, [&] { return quit_ || !items_.empty(); });
-                if (items_.empty()) return;
-                d = std::move(items_.front());
-                items_.pop_front();
-            }
-            d.reset(); // join da thread do descodificador, fora do render loop
-        }
-    }
-    std::mutex m_;
-    std::condition_variable cv_;
-    std::deque<std::unique_ptr<VideoDecoder>> items_;
-    bool quit_ = false;
-    std::thread t_;
-};
-} // namespace
-
 void VideoDecoder::retireAsync(std::unique_ptr<VideoDecoder> decoder) {
     if (!decoder) return;
     decoder->stop_ = true; // começa já a parar
     decoder->cv_.notify_all();
-    Reaper::instance().add(std::move(decoder));
+    retireLater(std::shared_ptr<VideoDecoder>(std::move(decoder)));
 }
 
 void VideoDecoder::recycle(std::shared_ptr<VideoFrame> frame) {
@@ -184,13 +144,29 @@ void VideoDecoder::run() {
         fmt.p->interrupt_callback.opaque = &stop_;
 
         int rc = avformat_open_input(&fmt.p, path_.c_str(), nullptr, nullptr);
-        if (rc < 0) return fail("não foi possível abrir: " + avErr(rc));
+        if (rc < 0) {
+            opened_ = true;
+            return fail("não foi possível abrir: " + avErr(rc));
+        }
         rc = avformat_find_stream_info(fmt.p, nullptr);
-        if (rc < 0) return fail("ficheiro ilegível: " + avErr(rc));
+        if (rc < 0) {
+            opened_ = true;
+            return fail("ficheiro ilegível: " + avErr(rc));
+        }
+        if (fmt.p->duration != AV_NOPTS_VALUE && fmt.p->duration > 0)
+            duration_ = static_cast<double>(fmt.p->duration) / AV_TIME_BASE;
 
         const AVCodec* codec = nullptr;
         const int streamIndex = av_find_best_stream(fmt.p, AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
-        if (streamIndex < 0 || !codec) return fail("sem stream de vídeo suportada");
+        // Capas de álbum (mp3 com imagem) contam como "sem vídeo".
+        if (streamIndex < 0 || !codec || (fmt.p->streams[streamIndex]->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
+            opened_ = true;
+            if (av_find_best_stream(fmt.p, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0) >= 0) {
+                state_ = State::NoVideo;
+                return;
+            }
+            return fail("sem stream de vídeo nem de áudio suportada");
+        }
         AVStream* stream = fmt.p->streams[streamIndex];
 
         CodecCtx cc;
@@ -203,29 +179,38 @@ void VideoDecoder::run() {
             return fail("codec não suportado: " + avErr(rc));
 
         const double tb = av_q2d(stream->time_base);
-        if (fmt.p->duration != AV_NOPTS_VALUE && fmt.p->duration > 0)
-            duration_ = static_cast<double>(fmt.p->duration) / AV_TIME_BASE;
+        opened_ = true;
         const AVRational fr = av_guess_frame_rate(fmt.p, stream, nullptr);
         const double frameDur = (fr.num > 0 && fr.den > 0) ? av_q2d(av_inv_q(fr)) : 1.0 / 30.0;
 
-        // Recuperação: começar a meio do ficheiro.
-        double seekTarget = startSeconds_;
-        if (loop_ && duration_ > 0.0) seekTarget = std::fmod(seekTarget, duration_.load());
+        // Zona In..Out e passagem inicial (recuperação / saltos a meio).
+        const double fileDur = duration_.load();
+        const double effOut = range_.effectiveOut(fileDur); // 0 = desconhecido (até ao EOF)
+        const double passLen = range_.passLength(fileDur);
+        int passIndex = 0;
+        double seekTarget = range_.in;
+        range_.split(startTime_, fileDur, passIndex, seekTarget);
+        double passOffset = passLen > 0.0 ? passIndex * passLen : 0.0;
         const int64_t startPtsStream = stream->start_time != AV_NOPTS_VALUE ? stream->start_time : 0;
-        if (seekTarget > 0.0) {
-            const auto ts = startPtsStream + static_cast<int64_t>(seekTarget / tb);
-            if (av_seek_frame(fmt.p, streamIndex, ts, AVSEEK_FLAG_BACKWARD) >= 0)
-                avcodec_flush_buffers(cc.p);
-            else
-                seekTarget = 0.0;
-        }
+        auto seekTo = [&](double target) -> bool {
+            if (target <= 0.0) {
+                if (av_seek_frame(fmt.p, streamIndex, startPtsStream, AVSEEK_FLAG_BACKWARD) < 0 &&
+                    avformat_seek_file(fmt.p, -1, INT64_MIN, 0, INT64_MAX, 0) < 0)
+                    return false;
+            } else if (av_seek_frame(fmt.p, streamIndex, startPtsStream + static_cast<int64_t>(target / tb),
+                                     AVSEEK_FLAG_BACKWARD) < 0) {
+                return false;
+            }
+            avcodec_flush_buffers(cc.p);
+            return true;
+        };
+        if (seekTarget > 0.0 && !seekTo(seekTarget)) seekTarget = 0.0;
 
         Packet pkt;
         Frame frame;
         Sws sws;
         if (!pkt.p || !frame.p) return fail("sem memória");
 
-        double loopOffset = 0.0;
         double lastTime = -1.0;
         double lastLocal = 0.0;
         int64_t framesThisPass = 0;
@@ -233,6 +218,7 @@ void VideoDecoder::run() {
         int consecutiveErrors = 0;
         bool draining = false;
         bool skipUntilTarget = seekTarget > 0.0;
+        bool passDone = false; // chegou ao ponto Out
 
         state_ = State::Playing;
 
@@ -253,8 +239,12 @@ void VideoDecoder::run() {
                 if (local + frameDur * 0.5 < seekTarget) return true;
                 skipUntilTarget = false;
             }
+            if (effOut > 0.0 && local >= effOut - frameDur * 0.25) {
+                passDone = true; // depois do ponto Out: esta passagem acabou
+                return true;
+            }
 
-            double t = local + loopOffset;
+            double t = local + passOffset;
             if (t <= lastTime) t = lastTime + frameDur * 0.5; // tempos sempre crescentes
             lastTime = t;
 
@@ -324,25 +314,26 @@ void VideoDecoder::run() {
             }
             if (consecutiveErrors > kMaxConsecutiveErrors) return fail("demasiados erros de descodificação");
 
-            if (draining && rc == AVERROR_EOF) {
-                // Fim do ficheiro.
-                if (framesTotal <= 1) {
+            if (passDone || (draining && rc == AVERROR_EOF)) {
+                // Fim de uma passagem (ponto Out ou fim do ficheiro).
+                if (framesTotal <= 1 && !passDone) {
                     still_ = true; // imagem fixa: o frame único fica no ecrã
                     state_ = State::Ended;
                     break;
                 }
-                if (!loop_) {
+                ++passIndex;
+                if (range_.passes > 0 && passIndex >= range_.passes) {
                     state_ = State::Ended;
                     break;
                 }
-                // Próxima volta: o tempo local recomeça em 0, por isso o offset é o fim desta volta.
-                loopOffset = lastTime + frameDur;
+                // Próxima passagem: volta ao ponto In.
+                passOffset = passLen > 0.0 ? passIndex * passLen : lastTime + frameDur - range_.in;
                 framesThisPass = 0;
-                lastLocal = 0.0;
-                if (av_seek_frame(fmt.p, streamIndex, startPtsStream, AVSEEK_FLAG_BACKWARD) < 0 &&
-                    avformat_seek_file(fmt.p, -1, INT64_MIN, 0, INT64_MAX, 0) < 0)
-                    return fail("não foi possível voltar ao início para loop");
-                avcodec_flush_buffers(cc.p);
+                lastLocal = range_.in;
+                passDone = false;
+                seekTarget = range_.in;
+                skipUntilTarget = seekTarget > 0.0;
+                if (!seekTo(seekTarget)) return fail("não foi possível voltar ao ponto In para repetir");
                 draining = false;
             }
         }

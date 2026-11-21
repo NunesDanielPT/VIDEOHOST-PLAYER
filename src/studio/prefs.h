@@ -23,20 +23,16 @@ inline bool openLastProject() { return get("general/openLastProject", true); }
 inline bool autoStartEngine() { return get("general/autoStartEngine", false); }
 inline bool confirmQuit() { return get("general/confirmQuit", true); }
 
-// Workspace
-inline bool originTopLeft() { return get("workspace/originTopLeft", false); }
-inline bool showLayerOutline() { return get("workspace/showLayerOutline", true); }
+// Playlist
+inline bool selectionFollowsPlayback() { return get("playlist/selectionFollows", true); }
+inline bool shiftSkipsTransitions() { return get("playlist/shiftCut", true); }
+inline double imageDuration() { return get("playlist/imageDuration", 10.0); }
+inline double defaultFade() { return get("playlist/defaultFade", 1.0); }
+inline bool newCuesPauseAtEnd() { return get("playlist/newPauseAtEnd", false); }
 
-// Board (Dashboard)
-inline bool showColumnIndex() { return get("board/showColumnIndex", true); }
-inline bool loopBoard() { return get("board/loopBoard", false); }
-inline bool shiftSkipsTransitions() { return get("board/shiftSkipsTransitions", true); }
-inline double defaultColumnFade() { return get("board/defaultFade", 1.0); }
-
-// Timeline
-inline bool timelineSnap() { return get("timeline/snap", true); }
-inline double imageClipDuration() { return get("timeline/imageDuration", 10.0); }
-inline bool followPlayhead() { return get("timeline/followPlayhead", true); }
+// Áudio
+inline QString audioDevice() { return get("audio/device", QString()); }
+inline double normalizeTarget() { return get("audio/normalizeTarget", -16.0); }
 
 // Motor e saídas
 inline bool vsync() { return get("engine/vsync", true); }
@@ -57,7 +53,7 @@ inline vthost::protocol::EngineSettings engineSettings() {
     s.vsync = vsync();
     s.previewFps = previewFps();
     s.priority = enginePriority().toStdString();
-    s.loopBoard = loopBoard();
+    s.audioDevice = audioDevice().toStdString();
     return s;
 }
 

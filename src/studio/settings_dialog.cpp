@@ -1,6 +1,7 @@
 #include "settings_dialog.h"
 
 #include "app_info.h"
+#include "engine_client.h"
 #include "prefs.h"
 
 #include <QCheckBox>
@@ -14,6 +15,7 @@
 #include <QLocale>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QPointer>
 #include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
@@ -48,7 +50,7 @@ QLabel* note(const QString& text, QWidget* parent) {
 
 bool SettingsDialog::checkUpdatesOnStartup() { return prefs::get(kAutoUpdateKey, true); }
 
-SettingsDialog::SettingsDialog(QWidget* parent, int initialTab) : QDialog(parent) {
+SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* engine) : QDialog(parent) {
     setWindowTitle(tr("Preferences"));
     setMinimumSize(620, 460);
     auto* tabs = new QTabWidget(this);
@@ -100,51 +102,54 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab) : QDialog(parent
         tabs->addTab(page, tr("General"));
     }
 
-    // ---- Workspace
+    // ---- Playlist
     {
         auto* page = new QWidget(tabs);
         auto* f = new QFormLayout(page);
-        f->addRow(tr("Workspace origin:"),
-                  combo(page, "workspace/originTopLeft", false,
-                        {{tr("Center of the canvas"), false}, {tr("Top-left corner"), true}}));
-        f->addRow(QString(), check(page, tr("Show the outline of the selected layer"), "workspace/showLayerOutline", true));
-        auto* depth = new QComboBox(page);
-        depth->addItem(tr("8 bits"));
-        depth->addItem(tr("10 bits HDR (coming soon)"));
-        depth->setEnabled(false);
-        f->addRow(tr("Color depth:"), depth);
-        auto* aa = new QComboBox(page);
-        aa->addItem(tr("Linear filtering"));
-        aa->setEnabled(false);
-        f->addRow(tr("Anti-aliasing:"), aa);
-        tabs->addTab(page, tr("Workspace"));
+        f->addRow(QString(), check(page, tr("Select the cue on air automatically"), "playlist/selectionFollows", true));
+        f->addRow(QString(), check(page, tr("Hold SHIFT to play without transition (cut)"), "playlist/shiftCut", true));
+        f->addRow(QString(), check(page, tr("New cues pause at the end (hold the last frame)"), "playlist/newPauseAtEnd", false));
+        f->addRow(tr("Duration of images added to the playlist:"),
+                  dspin(page, "playlist/imageDuration", 10.0, 0.1, 3600.0, tr(" s")));
+        f->addRow(tr("Fade time when clicking a fade icon:"), dspin(page, "playlist/defaultFade", 1.0, 0.1, 60.0, tr(" s")));
+        f->addRow(QString(), note(tr("SPACE plays/pauses. ENTER or double-click plays the selected cue. Without \"pause at "
+                                     "end\", the playlist continues to the next cue (or to the \"Goto\" cue)."),
+                                  page));
+        tabs->addTab(page, tr("Playlist"));
     }
 
-    // ---- Board (Dashboard)
+    // ---- Áudio
     {
         auto* page = new QWidget(tabs);
         auto* f = new QFormLayout(page);
-        f->addRow(QString(), check(page, tr("Show the column index"), "board/showColumnIndex", true));
-        f->addRow(tr("At the end of the board:"),
-                  combo(page, "board/loopBoard", false,
-                        {{tr("Stay on the last column"), false}, {tr("Go back to the first column"), true}}));
-        f->addRow(QString(), check(page, tr("Hold SHIFT to skip transitions"), "board/shiftSkipsTransitions", true));
-        f->addRow(tr("Default transition for new columns:"),
-                  dspin(page, "board/defaultFade", 1.0, 0.0, 60.0, QStringLiteral(" s")));
-        f->addRow(QString(), note(tr("SPACE launches the next column, ALT+SPACE the previous one."), page));
-        tabs->addTab(page, tr("Board"));
-    }
-
-    // ---- Timeline
-    {
-        auto* page = new QWidget(tabs);
-        auto* f = new QFormLayout(page);
-        f->addRow(QString(), check(page, tr("Snap media to useful timings (hold SHIFT to invert)"), "timeline/snap", true));
-        f->addRow(QString(), check(page, tr("Follow the playhead while playing"), "timeline/followPlayhead", true));
-        f->addRow(tr("Duration of images dropped on the timeline:"),
-                  dspin(page, "timeline/imageDuration", 10.0, 0.1, 3600.0, QStringLiteral(" s")));
-        f->addRow(QString(), note(tr("SPACE plays or stops the timeline. CTRL+SHIFT+X cuts the selected media."), page));
-        tabs->addTab(page, tr("Timeline"));
+        auto* device = new QComboBox(page);
+        device->addItem(tr("Windows default sound card"), QString());
+        const QString current = prefs::audioDevice();
+        if (!current.isEmpty()) device->addItem(tr("Saved device"), current);
+        device->setCurrentIndex(device->count() - 1);
+        savers_.push_back([device] { prefs::set("audio/device", device->currentData().toString()); });
+        if (engine && engine->isConnected()) {
+            vthost::protocol::Command c;
+            c.type = vthost::protocol::CommandType::ListAudioDevices;
+            QPointer<QComboBox> box(device);
+            engine->send(c, [box, current](const vthost::protocol::ParsedResponse& r) {
+                if (!box || !r.ok || !r.audioDevices) return;
+                box->clear();
+                box->addItem(SettingsDialog::tr("Windows default sound card"), QString());
+                for (const auto& d : *r.audioDevices)
+                    box->addItem(QString::fromStdString(d.name) + (d.isDefault ? SettingsDialog::tr("  (default)") : QString()),
+                                   QString::fromStdString(d.id));
+                box->setCurrentIndex(std::max(0, box->findData(current)));
+            });
+        }
+        f->addRow(tr("Sound card:"), device);
+        f->addRow(tr("Normalization target:"), dspin(page, "audio/normalizeTarget", -16.0, -40.0, -5.0, tr(" LUFS")));
+        f->addRow(QString(), note(tr("Each cue is analysed when added (loudness in LUFS, EBU R128). With \"Normalize "
+                                     "loudness\" on, quieter and louder videos are brought to the same level, without "
+                                     "letting peaks go above -1 dBFS. -16 LUFS suits most events; -23 LUFS is the "
+                                     "broadcast standard."),
+                                  page));
+        tabs->addTab(page, tr("Audio"));
     }
 
     // ---- Motor e saídas
@@ -172,7 +177,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab) : QDialog(parent
         auto* f = new QFormLayout(page);
         f->addRow(QString(), check(page, tr("Ask for confirmation before leaving Show Mode"), "show/confirmLeave", true));
         f->addRow(QString(), note(tr("In Show Mode editing is locked, the engine cannot be stopped and updates are not "
-                                     "installed. Live controls (GO, opacity, visibility, properties) keep working."),
+                                     "installed. Playback controls (play, pause, next, GOTO) keep working."),
                                   page));
         tabs->addTab(page, tr("Show Mode"));
     }
@@ -233,13 +238,19 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab) : QDialog(parent
         auto row = [](QTreeWidgetItem* g, const QString& action, const QString& shortcut) {
             new QTreeWidgetItem(g, {action, shortcut});
         };
-        const QString ctrl = QStringLiteral("Ctrl");
         const QString shift = QStringLiteral("Shift");
 
-        auto* gShow = group(tr("Show"));
-        row(gShow, tr("GO next cue (Dashboard) / play-pause (Timeline)"), keys(QKeySequence(Qt::Key_Space)));
-        row(gShow, tr("GO previous cue"), keys(QKeySequence(Qt::ALT | Qt::Key_Space)));
-        row(gShow, tr("GO without transition (cut)"), tr("%1 + click on a column / GO").arg(shift));
+        auto* gShow = group(tr("Playback"));
+        row(gShow, tr("Play / pause"), keys(QKeySequence(Qt::Key_Space)));
+        row(gShow, tr("Play the selected cue"), tr("Enter / double-click"));
+        row(gShow, tr("Play without transition (cut)"), tr("%1 + Enter / double-click").arg(shift));
+        row(gShow, tr("Stop (black)"), keys(QKeySequence(Qt::Key_Escape)));
+        row(gShow, tr("Next cue"), keys(QKeySequence(Qt::CTRL | Qt::Key_Right)));
+        row(gShow, tr("Previous cue"), keys(QKeySequence(Qt::CTRL | Qt::Key_Left)));
+        row(gShow, tr("Go to the last 30 / 20 / 10 seconds"),
+            keys(QKeySequence(Qt::CTRL | Qt::Key_3)) + QStringLiteral(" / ") + keys(QKeySequence(Qt::CTRL | Qt::Key_2)) +
+                QStringLiteral(" / ") + keys(QKeySequence(Qt::CTRL | Qt::Key_1)));
+        row(gShow, tr("Loop the playlist"), keys(QKeySequence(Qt::CTRL | Qt::Key_R)));
         row(gShow, tr("Show Mode (lock editing)"), keys(QKeySequence(Qt::CTRL | Qt::Key_L)));
         row(gShow, tr("Countdown window"), keys(QKeySequence(Qt::CTRL | Qt::Key_T)));
         row(gShow, tr("Countdown window full screen"), tr("Double-click or %1").arg(keys(QKeySequence(Qt::Key_F11))));
@@ -249,28 +260,20 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab) : QDialog(parent
         row(gFile, tr("Open project"), keys(QKeySequence(QKeySequence::Open)));
         row(gFile, tr("Save"), keys(QKeySequence(QKeySequence::Save)));
         row(gFile, tr("Save as"), keys(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S)));
+        row(gFile, tr("Add media"), keys(QKeySequence(Qt::CTRL | Qt::Key_I)));
         row(gFile, tr("Preferences"), keys(QKeySequence(Qt::CTRL | Qt::Key_Comma)));
         row(gFile, tr("Quit"), keys(QKeySequence(Qt::CTRL | Qt::Key_Q)));
 
         auto* gEdit = group(tr("Edit"));
         row(gEdit, tr("Undo"), keys(QKeySequence(QKeySequence::Undo)));
         row(gEdit, tr("Redo"), keys(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z)) + QStringLiteral("  /  ") +
-                                  keys(QKeySequence(Qt::CTRL | Qt::Key_Y)));
-        row(gEdit, tr("Outputs and canvases"), keys(QKeySequence(Qt::CTRL | Qt::Key_Semicolon)));
-        row(gEdit, tr("Rename a layer"), tr("Double-click on the layer name"));
-        row(gEdit, tr("Place the selected media in a cell"), tr("Double-click on the cell"));
-        row(gEdit, tr("Cue settings (transition, auto-follow, go to)"), tr("Right-click on the column header"));
-
-        auto* gTimeline = group(tr("Timeline"));
-        row(gTimeline, tr("Cut clip at the playhead"), keys(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_X)));
-        row(gTimeline, tr("Delete selected clip"), keys(QKeySequence(Qt::Key_Delete)));
-        row(gTimeline, tr("Zoom"), tr("%1 + mouse wheel").arg(ctrl));
-        row(gTimeline, tr("Toggle snapping"), tr("%1 while dragging").arg(shift));
-
-        auto* gMapping = group(tr("Mapping editor"));
-        row(gMapping, tr("Move the selected point 1 px"), tr("Arrow keys"));
-        row(gMapping, tr("Move the selected point 10 px"), tr("%1 + arrow keys").arg(shift));
-        row(gMapping, tr("Select the next point"), keys(QKeySequence(Qt::Key_Tab)));
+                                   keys(QKeySequence(Qt::CTRL | Qt::Key_Y)));
+        row(gEdit, tr("Delete the selected cue"), keys(QKeySequence(Qt::Key_Delete)));
+        row(gEdit, tr("Duplicate the selected cue"), keys(QKeySequence(Qt::CTRL | Qt::Key_D)));
+        row(gEdit, tr("Outputs"), keys(QKeySequence(Qt::CTRL | Qt::Key_Semicolon)));
+        row(gEdit, tr("Reorder cues"), tr("Drag in the playlist"));
+        row(gEdit, tr("Add files"), tr("Drag from Windows Explorer into the playlist"));
+        row(gEdit, tr("Set In / Out"), tr("Drag the white markers on the waveform"));
 
         tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
         tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);

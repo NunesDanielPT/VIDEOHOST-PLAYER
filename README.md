@@ -2,9 +2,9 @@
 
 # VTHOST
 
-**PT** · Media server / player de vídeo para espetáculos, em Windows. Feito para **nunca deixar o ecrã cair**: o motor de playback corre num processo próprio, é vigiado por um watchdog e retoma o show automaticamente se alguma coisa falhar.
+**PT** · Player de vídeo para espetáculos (playlist de cues, estilo Mitti), em Windows. Feito para **nunca deixar o ecrã cair**: o motor de playback corre num processo próprio, é vigiado por um watchdog e retoma o show automaticamente se alguma coisa falhar.
 
-**EN** · Show-control media server / video player for Windows. Built so that **the output never drops**: playback runs in its own process, is supervised by a watchdog and automatically resumes the show if anything fails.
+**EN** · Show playback software (cue playlist, Mitti-style) for Windows. Built so that **the output never drops**: playback runs in its own process, is supervised by a watchdog and automatically resumes the show if anything fails.
 
 Criado por / Created by **Daniel Nunes** — [github.com/NunesDanielPT](https://github.com/NunesDanielPT)
 
@@ -14,9 +14,9 @@ Criado por / Created by **Daniel Nunes** — [github.com/NunesDanielPT](https://
 
 | Executável | PT | EN |
 |---|---|---|
-| `vthost-studio.exe` | Interface de edição (Qt 6): biblioteca de media, grelha layers × colunas (cues), GO, Show Mode | Editing UI (Qt 6): media library, layers × columns (cues) grid, GO, Show Mode |
+| `vthost-studio.exe` | Interface (Qt 6): playlist de cues, preview, forma de onda, Inspector, countdown na rede, Show Mode | UI (Qt 6): cue playlist, preview, waveform, inspector, network countdown, Show Mode |
 | `vthost-watchdog.exe` | Mantém o motor vivo: relança-o após crash ou bloqueio | Keeps the engine alive: relaunches it after a crash or hang |
-| `vthost-engine.exe` | Motor sem interface: FFmpeg + Direct3D 11, saídas em ecrã inteiro | Headless engine: FFmpeg + Direct3D 11, fullscreen outputs |
+| `vthost-engine.exe` | Motor sem interface: FFmpeg + Direct3D 11 + WASAPI, saídas em ecrã inteiro e NDI | Headless engine: FFmpeg + Direct3D 11 + WASAPI, fullscreen and NDI outputs |
 
 Fechar ou crashar o Studio **não pára** o show. / Closing or crashing the Studio **does not stop** the show.
 

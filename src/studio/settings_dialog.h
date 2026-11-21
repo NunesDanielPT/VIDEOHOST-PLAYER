@@ -1,8 +1,10 @@
 #pragma once
-// Preferências (Ctrl+,), organizadas como no Millumin: Geral, Workspace, Board,
-// Timeline, Motor e saídas, Show Mode, Atualizações e, por último, Sobre.
+// Preferências (Ctrl+,): Geral, Playlist, Áudio, Motor e saídas, Show Mode,
+// Countdown, Atalhos, Atualizações e, por último, Sobre.
 
 #include <QDialog>
+
+class EngineClient;
 
 #include <functional>
 #include <vector>
@@ -15,7 +17,7 @@ class SettingsDialog : public QDialog {
 public:
     static constexpr int kAboutTab = -1; // último separador
 
-    explicit SettingsDialog(QWidget* parent = nullptr, int initialTab = 0);
+    explicit SettingsDialog(QWidget* parent = nullptr, int initialTab = 0, EngineClient* engine = nullptr);
 
     static bool checkUpdatesOnStartup();
 

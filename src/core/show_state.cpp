@@ -2,7 +2,6 @@
 
 #include "vthost/core/atomic_file.h"
 #include "vthost/core/paths.h"
-#include "props_json.h"
 
 #include <algorithm>
 #include <cmath>
@@ -15,49 +14,40 @@ using nlohmann::json;
 namespace vthost {
 
 std::string serializeShowState(const ShowState& s) {
-    json layers = json::array();
-    for (const auto& l : s.layers)
-    {
-        json lj = propsToJson(l.props);
-        lj.update(json{{"layer", l.layerId}, {"media", l.mediaId}, {"position", l.positionSeconds}});
-        layers.push_back(std::move(lj));
-    }
     json j = {{"format", "vthost-show-state"},
+              {"version", 2},
               {"projectPath", s.projectPath},
               {"showMode", s.showMode},
-              {"activeColumn", s.activeColumn},
-              {"timeline", s.timelineId},
-              {"timelineTime", s.timelineTime},
-              {"timelinePlaying", s.timelinePlaying},
-              {"layers", layers}};
+              {"cue", s.cueId},
+              {"cueTime", s.cueTime},
+              {"paused", s.paused},
+              {"testCard", s.testCard}};
     return j.dump(2, ' ', false, json::error_handler_t::replace);
 }
 
 bool parseShowState(const std::string& text, ShowState& out) {
     try {
         const json j = json::parse(text, nullptr, false);
-        if (j.is_discarded() || !j.is_object() || j.value("format", "") != "vthost-show-state")
-            return false;
+        if (j.is_discarded() || !j.is_object()) return false;
+        auto str = [&](const char* k) {
+            auto it = j.find(k);
+            return (it != j.end() && it->is_string()) ? it->get<std::string>() : std::string{};
+        };
+        auto flag = [&](const char* k) {
+            auto it = j.find(k);
+            return it != j.end() && it->is_boolean() && it->get<bool>();
+        };
+        if (str("format") != "vthost-show-state") return false;
         ShowState s;
-        s.projectPath = j.value("projectPath", "");
-        s.showMode = j.value("showMode", false);
-        s.activeColumn = j.value("activeColumn", -1);
-        s.timelineId = j.value("timeline", "");
-        const double tt = j.value("timelineTime", 0.0);
-        s.timelineTime = std::isfinite(tt) ? std::clamp(tt, 0.0, kMaxTimelineSeconds) : 0.0;
-        s.timelinePlaying = j.value("timelinePlaying", false);
-        if (auto a = j.find("layers"); a != j.end() && a->is_array()) {
-            for (const auto& l : *a) {
-                if (!l.is_object()) continue;
-                LayerPlayback lp;
-                lp.layerId = l.value("layer", "");
-                lp.mediaId = l.value("media", "");
-                double pos = l.value("position", 0.0);
-                lp.positionSeconds = std::isfinite(pos) ? std::max(0.0, pos) : 0.0;
-                propsFromJson(l, lp.props);
-                if (!lp.layerId.empty()) s.layers.push_back(std::move(lp));
-            }
+        s.projectPath = str("projectPath");
+        s.showMode = flag("showMode");
+        s.cueId = str("cue");
+        if (auto it = j.find("cueTime"); it != j.end() && it->is_number()) {
+            const double t = it->get<double>();
+            s.cueTime = std::isfinite(t) ? std::clamp(t, 0.0, 1e9) : 0.0;
         }
+        s.paused = flag("paused");
+        s.testCard = flag("testCard");
         out = std::move(s);
         return true;
     } catch (...) {

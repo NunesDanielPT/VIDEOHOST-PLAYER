@@ -22,19 +22,25 @@
 - Motor sai com `0` e estado `StoppingOnPurpose` → o watchdog termina também.
 - Mais de 5 arranques num minuto → espera 5 s entre tentativas, mas nunca desiste.
 
-**Motor** (`src/engine`): sem interface.
-- `VideoDecoder`: uma thread por media, FFmpeg, fila limitada a 3 frames, interrupt callback para parar mesmo a meio de uma leitura bloqueada, erros → estado `Error` (nunca excepção para fora).
-- `LayerPlayer`: media atual + anterior durante o fade. O relógio de cada media só arranca quando o primeiro frame existe. Sem frame novo → fica o último (frame hold). Descodificadores retirados são destruídos noutra thread para não haver soluços.
-- `Renderer`: D3D11, canvas com alfa pré-multiplicado, blend normal/add/multiply/screen; fallback para WARP.
-- `OutputWindow`: janela sem bordas por monitor, sem cursor, ignora Alt+F4, bloqueia protetor de ecrã; se o monitor faltar abre uma pré-visualização e volta ao sítio quando o monitor reaparece.
+**Motor** (`src/engine`): sem interface. Desde a 0.7.0 é um **player de playlist** (estilo Mitti).
+- `VideoDecoder`: uma thread por cue, FFmpeg, fila limitada a 3 frames, zona In..Out repetida N vezes (`DecodeRange`), interrupt callback para parar mesmo a meio de uma leitura bloqueada, erros → estado `Error` (nunca excepção para fora). Ficheiros só de áudio → `NoVideo` (imagem preta).
+- `AudioDecoder`: abre o mesmo ficheiro à parte (um problema no som nunca pára a imagem), converte para float estéreo 48 kHz com a velocidade aplicada (reamostragem), fila limitada a ~1 s com o tempo de media de cada bloco.
+- `AudioOutput`: WASAPI partilhado, thread "Pro Audio", mistura a cue no ar e a anterior (crossfade) com rampas de ganho por período, medidores L/R. Placa desligada → tenta reabrir de segundo a segundo; o vídeo nunca espera pelo som.
+- `MediaClock`: relógio de cada cue (tempo de media = base + tempo real × velocidade, pausa). Imagem e som leem o mesmo relógio: o som alinha-se lendo o bloco do tempo pedido (salta/insere silêncio se o desvio passar de 30 ms).
+- `CuePlayer`: cue no ar + anterior durante o crossfade/fade para preto. Fade in/out (por tempo da cue), crossfade (tempo real), pausa no início/fim, saltos (`seek`, GOTO 30/20/10). O relógio só arranca no 1.º frame. Sem frame novo → fica o último (frame hold). Descodificadores retirados são destruídos no `reaper` (outra thread).
+- Fim de cue (`EngineApp::handleCueEnd`): pausa no fim → fica no último frame; apagar no fim → preto; senão "ir para" ou a cue seguinte (respeita "repetir a playlist"). Proteção: nada avança antes de 250 ms (ficheiros estragados que "acabam" logo).
+- `Renderer`: D3D11, um canvas com a resolução do projeto; a imagem da cue é desenhada com ajuste/escala/posição. Fallback para WARP.
+- `OutputWindow`: janela sem bordas por monitor, sem cursor, ignora Alt+F4, bloqueia protetor de ecrã; o canvas aparece com a proporção certa (barras pretas); se o monitor faltar abre uma pré-visualização e volta ao sítio quando o monitor reaparece.
 - `IpcServer`: named pipe local (`PIPE_REJECT_REMOTE_CLIENTS`), comandos executados no render loop através de uma fila.
-- Recuperação: `show_state.json` tem projeto, Show Mode, coluna ativa, media/posição/opacidade de cada layer.
+- Recuperação: `show_state.json` tem projeto, Show Mode, test card, cue no ar, tempo de cue e pausa.
 
-**Núcleo** (`src/core`): portátil, sem Windows nem Qt, testado em Linux com ASan/UBSan e em Windows. Projeto (parser tolerante), protocolo, escrita atómica, log, estado do show.
+**Núcleo** (`src/core`): portátil, sem Windows nem Qt, testado em Linux com ASan/UBSan e em Windows. Projeto (parser tolerante, converte projetos 0.6), protocolo, medidor de loudness (BS.1770 / EBU R128), countdown, escrita atómica, log, estado do show.
 
-## Canvas e mapping
+## Projeto (formato 2)
 
-Cada canvas é um render target com a sua resolução; as layers compõem-se no canvas a que pertencem. Cada saída desenha uma **região** de um canvas através de uma malha de 48×48 quads (`buildWarpGrid`, `src/core/mapping.cpp`): perspetiva por homografia (4 cantos) composta com uma grelha de pontos interpolada por Catmull-Rom (pontos-fantasma nas bordas: grelha regular = identidade exata). O shader de saída aplica soft-edge por lado (curva em S + gama, as duas metades somam 1 em luz linear), brilho e, se ligado, o test card procedural no espaço do canvas — contínuo entre saídas, para alinhar projetores. O editor de mapping envia `set_output_mapping` ao vivo; o motor só reconstrói a malha da saída, sem recarregar o projeto.
+`cues`: id estável (`Q1`...), ID visível, nome, ficheiro, cor, notas, In/Out, velocidade (25–400 %), repetições (0 = infinito), pausa no início/fim, apagar no fim, fade in/out, crossfade, "ir para", mute, volume (dB), normalização (LUFS e pico medidos pelo Studio) e geometria (ajuste, escala, X/Y). `outputs`: ecrã, janela ou NDI. Também: resolução, repetir a playlist, volume geral.
+
+Ganho de áudio de uma cue = volume + normalização (alvo − LUFS medidos, ±20 dB, limitado para o pico não passar de −1 dBFS) + volume geral, vezes os fades.
 
 ## Saídas
 
@@ -51,9 +57,9 @@ O Studio pede a lista de ecrãs ao motor (`list_displays`); se o motor estiver d
 
 O motor reduz o canvas para no máximo 960×540, copia-o para a CPU de forma assíncrona (anel de 3 texturas staging, `D3D11_MAP_FLAG_DO_NOT_WAIT`, nunca espera pela GPU) e escreve-o a ~30 fps no bloco partilhado `Local\VTHOST_Preview` (`src/core/include/vthost/core/preview.h`). A sincronização é um seqlock: o motor nunca espera pelo Studio; o Studio descarta cópias apanhadas a meio. É exatamente a imagem que sai para os outputs.
 
-## Timeline
+## Studio (estilo Mitti)
 
-Cada projeto tem timelines com clips (layer, media, início, duração, ponto de entrada) e segmentos (com ou sem loop). Quando uma timeline está ativa, é ela que decide o que toca em cada layer: em cada frame o motor vê que clip está sob a cabeça de leitura e, se mudou, arranca a media no ponto certo. Pausa congela o relógio das media (frame hold). Um GO no Dashboard sai do modo timeline. O estado da timeline (id, tempo, a tocar) também é gravado para recuperação.
+Barra de transporte (play/pausa, parar, anterior/seguinte, repetir playlist, GOTO 30/20/10, código de tempo, volume geral e medidor), playlist (miniatura, número/ID, cor, Start/TRT, ícones de comportamento clicáveis, arrastar ficheiros e reordenar), preview com tempo decorrido e restante, forma de onda (In/Out arrastáveis, clicar para saltar) e Inspector. A análise das media (`MediaCache`) corre em threads de fundo: miniatura/info num pool de 2 threads; forma de onda + loudness numa thread de prioridade baixa (nunca rouba CPU ao show).
 
 ## Atualizações
 
@@ -87,29 +93,11 @@ Ver `src/core/include/vthost/core/protocol.h`. Uma mensagem JSON por linha, um p
 3. Ficheiros sempre gravados de forma atómica.
 4. Interface em PT e EN: qualquer texto novo no Studio usa `tr()` e é traduzido em `translations/vthost_studio_pt_PT.ts`.
 
-## Cues (colunas do Dashboard)
-
-Cada coluna tem `id` estável (`K1`, `K2`…), `transition` (`crossfade` | `fade-black` | `cut`),
-`fade` (duração), `follow` (`none` | `media-end` | `timer`), `followSeconds` e `jumpTo`
-(id da cue seguinte; vazio = a próxima da lista). `Project::nextColumn()` decide a cue
-seguinte e é usado pelo Studio (GO / Espaço) e pelo motor (avanço automático).
-Com `media-end` os vídeos da cue tocam uma vez (sem loop). O motor não segue uma cue
-nos primeiros 250 ms (proteção contra ficheiros que "acabam" logo).
-Fade pelo preto: na 1.ª metade a media anterior vai a 0, na 2.ª metade a nova chega a 1.
-
-Barra de tempo: `layer_seek` recria o descodificador na posição pedida (o último frame
-fica no ecrã até o novo estar pronto); `layer_pause` congela o relógio da layer.
-Ambos são recusados com uma timeline activa. O estado traz `duration` e `paused` por layer.
-
-Desfazer/refazer no Studio: instantâneos JSON do projeto (máx. 100), alterações a menos
-de 400 ms umas das outras ficam num só passo; desativado em Show Mode.
-
 ## Countdown
 
-`computeCountdown()` (núcleo, testado) decide o que se conta a partir do estado do motor:
-timeline → até ao fim do último clip; cue com avanço por tempo → até à cue seguinte;
-senão → o vídeo com mais tempo por tocar entre as layers da cue. O Studio interpola entre
-estados (`advanceCountdown`) e mostra-o no Workspace, na janela de countdown (Ctrl+T) e numa
+`computeCountdown()` (núcleo, testado) conta o que falta à cue no ar (todas as repetições;
+em loop infinito, a passagem actual). O Studio interpola entre estados (`advanceCountdown`)
+e mostra-o no preview, na janela de countdown (Ctrl+T) e numa
 página web servida pelo próprio Studio (`CountdownServer`, QTcpServer, só GET, máx. 64
 ligações, porta 8088 por omissão): `GET /` (página em `src/studio/web/countdown.html`) e
 `GET /api/countdown` (JSON). O motor não é tocado: se o Studio fechar, só a página pára.

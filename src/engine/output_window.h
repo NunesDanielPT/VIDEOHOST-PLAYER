@@ -23,9 +23,9 @@ public:
     OutputWindow& operator=(const OutputWindow&) = delete;
 
     bool create();
-    void present(bool vsync, bool testCard); // desenha a região do canvas (com warp) e apresenta
-    // Muda o canvas/mapping sem recriar a janela (edição ao vivo do warp/soft-edge).
-    void setSource(const std::string& canvasId, const OutputMapping& mapping);
+    void present(bool vsync, bool testCard); // desenha o canvas (com barras pretas se o formato diferir)
+    // Canvas a mostrar e o seu tamanho (para manter a proporção, sem esticar).
+    void setCanvas(const std::string& canvasId, int canvasW, int canvasH);
     void placeOnMonitor();    // reposiciona (ex.: após mudança de monitores)
 
     const std::string& id() const { return config_.id; }
@@ -43,7 +43,12 @@ private:
 
     Renderer& renderer_;
     Output config_;
-    std::string canvasId_; // efetivo (resolvido pelo motor)
+    void updateLetterbox();
+
+    std::string canvasId_ = "C1";
+    int canvasW_ = 1920;
+    int canvasH_ = 1080;
+    OutputMapping mapping_; // canvas inteiro, centrado e com a proporção certa
     WarpMesh mesh_;
     std::string detail_;
     HWND hwnd_ = nullptr;

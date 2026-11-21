@@ -1,7 +1,7 @@
 # VTHOST — instruções para o Claude
 
 - Autor: Daniel Nunes (github.com/NunesDanielPT). Comunicar em português de Portugal.
-- Media server para espetáculos em Windows; referência funcional: Millumin 5. Prioridade número 1: **estabilidade, o output nunca pode cair**.
+- Player de vídeo para espetáculos em Windows (playlist de cues); referência funcional: Mitti (só existe para Mac). Até à 0.6 a referência era o Millumin 5. Prioridade número 1: **estabilidade, o output nunca pode cair**.
 - Ler `docs/ARCHITECTURE.md` antes de mexer no motor.
 
 ## Regras

@@ -1,6 +1,6 @@
 # Roadmap
 
-Referência funcional: media servers de espetáculo como o Millumin 5. A interface e o código do VTHOST são próprios.
+Referência funcional: até à 0.6, media servers como o Millumin 5; desde a 0.7.0, players de playlist como o Mitti (só existe para Mac). A interface e o código do VTHOST são próprios.
 
 ## Fase 1 — MVP (em curso)
 - [x] Motor separado + watchdog com heartbeat e recuperação do show
@@ -66,12 +66,19 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [x] Countdown (0.6.1): no Workspace, janela própria (ecrã inteiro para o palco) e página web na rede local
 - [x] Miniaturas nas células do Dashboard (como no Millumin), com barra de progresso na cue no ar
 
-## Fase 3.5 — Áudio (0.7.0)
-- [ ] Som por layer (WASAPI), escolha da placa de som
-- [ ] Volume por media e por layer, mute
-- [ ] Normalização: análise de loudness (LUFS) por media e ganho automático
+## Fase 4 — Player de playlist (0.7.0)
+- [x] Interface tipo Mitti: barra de transporte, playlist com miniaturas e ícones, preview com tempos, forma de onda, Inspector
+- [x] Cues: In/Out, velocidade, repetições, pausa no início/fim, apagar no fim, fade in/out, crossfade, "ir para", cor, ID, notas
+- [x] GOTO 30/20/10, repetir a playlist, SHIFT = sem transição
+- [x] Som no motor (WASAPI): mistura com crossfade, volume por cue e geral, mute, escolha da placa de som, medidores
+- [x] Normalização de loudness (LUFS, EBU R128) com limite de pico
+- [x] Removido: layers, Dashboard, Timeline, canvases múltiplos, mapping/warp/soft-edge, efeitos
+- [x] Countdown na rede local mantido (agora da cue no ar)
+- [ ] Seleção de várias cues para alterar em conjunto
+- [ ] Legendas (SRT), saída de áudio por canais/placas diferentes por cue
+- [ ] Time-stretch sem mudar o tom ao mudar a velocidade
 
-## Fase 4 — Controlo (0.8.0)
+## Fase 5 — Controlo (0.8.0)
 - [ ] OSC entrada/saída, MIDI learn, DMX/Art-Net de entrada
 - [ ] Várias timelines por projeto, timelines disparadas a partir do Dashboard
 - [ ] OSC, MIDI, Art-Net/DMX de entrada
@@ -79,7 +86,7 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [ ] NDI de entrada e saída
 - [ ] Bitfocus Companion / Stream Deck
 
-## Fase 5 — Avançado
+## Fase 6 — Avançado
 - [ ] Pixel mapping para LEDs
 - [ ] Scripting
 - [ ] Players remotos controlados pela rede
