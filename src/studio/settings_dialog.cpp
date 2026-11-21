@@ -8,6 +8,8 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QHeaderView>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLocale>
 #include <QMessageBox>
@@ -16,6 +18,7 @@
 #include <QSettings>
 #include <QSpinBox>
 #include <QTabWidget>
+#include <QTreeWidget>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -184,6 +187,72 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab) : QDialog(parent
         f->addRow(QString(), checkNow);
         f->addRow(QString(), note(tr("Updates are never installed while Show Mode is on."), page));
         tabs->addTab(page, tr("Updates"));
+    }
+
+    // ---- Atalhos (só leitura): todos os atalhos do VTHOST Studio.
+    {
+        auto* page = new QWidget(tabs);
+        auto* vl = new QVBoxLayout(page);
+        auto* tree = new QTreeWidget(page);
+        tree->setColumnCount(2);
+        tree->setHeaderLabels({tr("Action"), tr("Shortcut")});
+        tree->setRootIsDecorated(true);
+        tree->setSelectionMode(QAbstractItemView::NoSelection);
+        tree->setFocusPolicy(Qt::NoFocus);
+        auto keys = [](const QKeySequence& k) { return k.toString(QKeySequence::NativeText); };
+        auto group = [tree](const QString& name) {
+            auto* g = new QTreeWidgetItem(tree, {name});
+            QFont f = g->font(0);
+            f.setBold(true);
+            g->setFont(0, f);
+            g->setFirstColumnSpanned(true);
+            g->setExpanded(true);
+            return g;
+        };
+        auto row = [](QTreeWidgetItem* g, const QString& action, const QString& shortcut) {
+            new QTreeWidgetItem(g, {action, shortcut});
+        };
+        const QString ctrl = QStringLiteral("Ctrl");
+        const QString shift = QStringLiteral("Shift");
+
+        auto* gShow = group(tr("Show"));
+        row(gShow, tr("GO next cue (Dashboard) / play-pause (Timeline)"), keys(QKeySequence(Qt::Key_Space)));
+        row(gShow, tr("GO previous cue"), keys(QKeySequence(Qt::ALT | Qt::Key_Space)));
+        row(gShow, tr("GO without transition (cut)"), tr("%1 + click on a column / GO").arg(shift));
+        row(gShow, tr("Show Mode (lock editing)"), keys(QKeySequence(Qt::CTRL | Qt::Key_L)));
+
+        auto* gFile = group(tr("File"));
+        row(gFile, tr("New project"), keys(QKeySequence(QKeySequence::New)));
+        row(gFile, tr("Open project"), keys(QKeySequence(QKeySequence::Open)));
+        row(gFile, tr("Save"), keys(QKeySequence(QKeySequence::Save)));
+        row(gFile, tr("Save as"), keys(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S)));
+        row(gFile, tr("Preferences"), keys(QKeySequence(Qt::CTRL | Qt::Key_Comma)));
+        row(gFile, tr("Quit"), keys(QKeySequence(Qt::CTRL | Qt::Key_Q)));
+
+        auto* gEdit = group(tr("Edit"));
+        row(gEdit, tr("Undo"), keys(QKeySequence(QKeySequence::Undo)));
+        row(gEdit, tr("Redo"), keys(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z)) + QStringLiteral("  /  ") +
+                                  keys(QKeySequence(Qt::CTRL | Qt::Key_Y)));
+        row(gEdit, tr("Outputs and canvases"), keys(QKeySequence(Qt::CTRL | Qt::Key_Semicolon)));
+        row(gEdit, tr("Rename a layer"), tr("Double-click on the layer name"));
+        row(gEdit, tr("Place the selected media in a cell"), tr("Double-click on the cell"));
+        row(gEdit, tr("Cue settings (transition, auto-follow, go to)"), tr("Right-click on the column header"));
+
+        auto* gTimeline = group(tr("Timeline"));
+        row(gTimeline, tr("Cut clip at the playhead"), keys(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_X)));
+        row(gTimeline, tr("Delete selected clip"), keys(QKeySequence(Qt::Key_Delete)));
+        row(gTimeline, tr("Zoom"), tr("%1 + mouse wheel").arg(ctrl));
+        row(gTimeline, tr("Toggle snapping"), tr("%1 while dragging").arg(shift));
+
+        auto* gMapping = group(tr("Mapping editor"));
+        row(gMapping, tr("Move the selected point 1 px"), tr("Arrow keys"));
+        row(gMapping, tr("Move the selected point 10 px"), tr("%1 + arrow keys").arg(shift));
+        row(gMapping, tr("Select the next point"), keys(QKeySequence(Qt::Key_Tab)));
+
+        tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+        tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        vl->addWidget(tree);
+        tabs->addTab(page, tr("Shortcuts"));
     }
 
     // ---- Sobre (última secção)

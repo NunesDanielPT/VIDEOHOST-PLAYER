@@ -1,6 +1,7 @@
 #include "main_window.h"
 
 #include "app_info.h"
+#include "cue_dialog.h"
 #include "dashboard_table.h"
 #include "layer_header.h"
 #include "library_panel.h"
@@ -11,6 +12,7 @@
 #include "prefs.h"
 #include "settings_dialog.h"
 #include "timeline_panel.h"
+#include "transport_bar.h"
 #include "vthost/core/paths.h"
 
 #include <QAction>
@@ -52,6 +54,7 @@ QString qs(const std::string& s) { return QString::fromStdString(s); }
 std::string ss(const QString& s) { return s.toStdString(); }
 
 const QColor kActiveColumn(255, 136, 0);
+constexpr std::size_t kMaxUndo = 100;
 
 } // namespace
 
@@ -90,6 +93,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     project_ = Project::makeDefault();
     project_.name = ss(tr("Untitled"));
     ensureTimeline();
+    clearUndo();
     refreshAll();
     selectLayer(0);
 
@@ -157,6 +161,25 @@ void MainWindow::buildUi() {
     wbar->addWidget(outputsBtn);
     wl->addLayout(wbar);
     wl->addWidget(preview_, 1);
+    // Barra de tempo do vídeo da layer selecionada (saltar / pausar), ao vivo.
+    transport_ = new TransportBar(workspace);
+    wl->addWidget(transport_);
+    connect(transport_, &TransportBar::seekRequested, this, [this](double t, bool) {
+        if (transportLayer_.empty()) return;
+        protocol::Command c;
+        c.type = protocol::CommandType::LayerSeek;
+        c.layer = transportLayer_;
+        c.value = t;
+        engine_->sendLatest(QStringLiteral("seek:") + qs(transportLayer_), c);
+    });
+    connect(transport_, &TransportBar::pauseRequested, this, [this](bool pause) {
+        if (transportLayer_.empty()) return;
+        protocol::Command c;
+        c.type = protocol::CommandType::LayerPause;
+        c.layer = transportLayer_;
+        c.on = pause;
+        engine_->send(c);
+    });
 
     properties_ = new PropertiesPanel(this);
     connect(properties_, &PropertiesPanel::propsChanged, this, &MainWindow::onPropsChanged);
@@ -319,6 +342,11 @@ void MainWindow::buildMenus() {
     editActions_ << aNew << aOpen;
 
     auto* edit = menuBar()->addMenu(tr("&Edit"));
+    undoAction_ = edit->addAction(tr("&Undo"), this, &MainWindow::undo);
+    undoAction_->setShortcut(QKeySequence::Undo);
+    redoAction_ = edit->addAction(tr("&Redo"), this, &MainWindow::redo);
+    redoAction_->setShortcuts({QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z), QKeySequence(Qt::CTRL | Qt::Key_Y)});
+    edit->addSeparator();
     editActions_ << edit->addAction(tr("Add media..."), this, &MainWindow::addMedia);
     edit->addSeparator();
     editActions_ << edit->addAction(tr("Add layer"), this, &MainWindow::addLayer)
@@ -328,7 +356,8 @@ void MainWindow::buildMenus() {
     editActions_ << edit->addAction(tr("Add column"), this, &MainWindow::addColumn)
                  << edit->addAction(tr("Remove column"), this, &MainWindow::removeColumn)
                  << edit->addAction(tr("Rename column..."), this, &MainWindow::renameColumn)
-                 << edit->addAction(tr("Column fade time..."), this, &MainWindow::setColumnFade);
+                 << edit->addAction(tr("Cue settings..."), this,
+                                    [this] { cueSettings(dashboard_->currentColumn()); });
     edit->addSeparator();
     editActions_ << edit->addAction(tr("Canvas size..."), this, &MainWindow::setCanvasSize);
 
@@ -390,6 +419,7 @@ QString MainWindow::timelineId() const {
 }
 
 void MainWindow::markChanged() {
+    recordUndo();
     dirty_ = true;
     updateTitle();
     pushTimer_.start();
@@ -417,6 +447,7 @@ void MainWindow::setProject(Project p, const QString& path) {
     projectPath_ = path;
     dirty_ = false;
     if (!path.isEmpty()) QSettings().setValue(QStringLiteral("lastProject"), path);
+    clearUndo();
     refreshAll();
     selectLayer(project_.layers.empty() ? -1 : 0);
     pushTimer_.start();
@@ -578,6 +609,7 @@ void MainWindow::renameLayer() {
 void MainWindow::addColumn() {
     if (showMode_) return;
     Column c;
+    c.id = project_.newColumnId();
     c.name = ss(tr("Cue %1").arg(project_.columns.size() + 1));
     c.fadeSeconds = prefs::defaultColumnFade();
     project_.columns.push_back(std::move(c));
@@ -599,15 +631,12 @@ void MainWindow::renameColumn() {
     markChanged();
 }
 
-void MainWindow::setColumnFade() {
-    const int col = dashboard_->currentColumn();
-    if (col < 0 || col >= static_cast<int>(project_.columns.size())) return;
-    auto& c = project_.columns[static_cast<std::size_t>(col)];
-    bool ok = false;
-    const double v = QInputDialog::getDouble(this, tr("Column fade time"), tr("Fade (seconds):"), c.fadeSeconds, 0.0,
-                                             60.0, 2, &ok);
-    if (!ok) return;
-    c.fadeSeconds = v;
+void MainWindow::cueSettings(int column) {
+    if (showMode_ || column < 0 || column >= static_cast<int>(project_.columns.size())) return;
+    CueDialog dlg(project_, column, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    if (column >= static_cast<int>(project_.columns.size())) return;
+    dlg.applyTo(project_.columns[static_cast<std::size_t>(column)]);
     refreshDashboard();
     markChanged();
 }
@@ -807,8 +836,8 @@ void MainWindow::showColumnMenu(int column, const QPoint& globalPos) {
     menu.addAction(tr("GO this column"), this, [this, column] { go(column); });
     menu.addSeparator();
     QList<QAction*> edit;
-    edit << menu.addAction(tr("Rename column..."), this, &MainWindow::renameColumn)
-         << menu.addAction(tr("Column fade time..."), this, &MainWindow::setColumnFade);
+    edit << menu.addAction(tr("Cue settings..."), this, [this, column] { cueSettings(column); })
+         << menu.addAction(tr("Rename column..."), this, &MainWindow::renameColumn);
     menu.addSeparator();
     edit << menu.addAction(tr("Insert column before"), this, [this, column] { insertColumnAt(column); })
          << menu.addAction(tr("Insert column after"), this, [this, column] { insertColumnAt(column + 1); })
@@ -911,6 +940,7 @@ void MainWindow::toggleLayerVisible(int row) {
     c.layer = l.id;
     c.on = effectiveVisible(l);
     engine_->send(c);
+    recordUndo();
     dirty_ = true;
     updateTitle();
     if (!showMode_) pushTimer_.start();
@@ -922,6 +952,7 @@ void MainWindow::toggleLayerLock(int row) {
     if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
     Layer& l = project_.layers[static_cast<std::size_t>(row)];
     l.locked = !l.locked;
+    recordUndo();
     dirty_ = true;
     updateTitle();
     if (!showMode_) pushTimer_.start();
@@ -934,6 +965,7 @@ void MainWindow::insertColumnAt(int index) {
     if (showMode_) return;
     index = std::clamp(index, 0, static_cast<int>(project_.columns.size()));
     Column c;
+    c.id = project_.newColumnId();
     c.name = ss(tr("Cue %1").arg(project_.columns.size() + 1));
     c.fadeSeconds = prefs::defaultColumnFade();
     project_.columns.insert(project_.columns.begin() + index, std::move(c));
@@ -945,6 +977,7 @@ void MainWindow::insertColumnAt(int index) {
 void MainWindow::duplicateColumn(int column) {
     if (showMode_ || column < 0 || column >= static_cast<int>(project_.columns.size())) return;
     Column copy = project_.columns[static_cast<std::size_t>(column)];
+    copy.id = project_.newColumnId();
     copy.name = ss(tr("%1 copy").arg(qs(copy.name)));
     project_.columns.insert(project_.columns.begin() + column + 1, std::move(copy));
     if (activeColumn_ > column) ++activeColumn_;
@@ -965,7 +998,10 @@ void MainWindow::moveColumn(int from, int to) {
 
 void MainWindow::deleteColumn(int column) {
     if (showMode_ || column < 0 || column >= static_cast<int>(project_.columns.size())) return;
+    const std::string removedId = project_.columns[static_cast<std::size_t>(column)].id;
     project_.columns.erase(project_.columns.begin() + column);
+    for (auto& c : project_.columns)
+        if (c.jumpTo == removedId) c.jumpTo.clear(); // salto para uma cue apagada: volta a "a seguinte"
     if (activeColumn_ == column) activeColumn_ = -1;
     else if (activeColumn_ > column) --activeColumn_;
     refreshDashboard();
@@ -987,6 +1023,7 @@ void MainWindow::selectLayer(int row) {
         dashboard_->setCurrentCell(row, std::max(0, dashboard_->currentColumn()));
     }
     updateSelectionViews();
+    updateTransport();
 }
 
 void MainWindow::updateSelectionViews() {
@@ -1028,6 +1065,7 @@ void MainWindow::applyLayerProps(int row, const LayerProps& props, bool persist)
     c.props = l.props;
     engine_->sendLatest(QStringLiteral("props:") + qs(l.id), c);
     if (persist) {
+        recordUndo();
         dirty_ = true;
         updateTitle();
         if (!showMode_) pushTimer_.start();
@@ -1081,15 +1119,12 @@ void MainWindow::go(int column) {
 }
 
 void MainWindow::goNext() {
-    const int n = static_cast<int>(project_.columns.size());
-    if (n == 0) return;
-    int next = activeColumn_ + 1;
-    if (next >= n) {
-        if (!prefs::loopBoard()) {
-            infoLabel_->setText(tr("End of the board."));
-            return;
-        }
-        next = 0;
+    if (project_.columns.empty()) return;
+    // Respeita "depois desta, ir para" de cada cue.
+    const int next = project_.nextColumn(activeColumn_, prefs::loopBoard());
+    if (next < 0) {
+        infoLabel_->setText(tr("End of the board."));
+        return;
     }
     go(next);
 }
@@ -1199,6 +1234,7 @@ void MainWindow::stopEngine() {
 
 void MainWindow::onEngineConnection(bool connected) {
     engineLabel_->setText(connected ? tr("Engine: connected") : tr("Engine: offline"));
+    updateTransport();
     engineLabel_->setStyleSheet(connected ? QStringLiteral("color: #3c3; padding: 0 8px;")
                                           : QStringLiteral("color: #e44; padding: 0 8px;"));
     if (connected) {
@@ -1225,6 +1261,7 @@ void MainWindow::onEngineStatus() {
                 project_ = std::move(*r.project);
                 ensureTimeline();
                 projectPath_ = QSettings().value(QStringLiteral("lastProject")).toString();
+                clearUndo();
                 activeColumn_ = s.activeColumn;
                 showMode_ = s.showMode;
                 showModeAction_->setChecked(showMode_);
@@ -1250,6 +1287,7 @@ void MainWindow::onEngineStatus() {
     timelinePanel_->setState(s.timelineTime, s.timelinePlaying, qs(s.timelineId) == timelineId());
     preview_->setFps(s.fps);
     updateSelectionViews();
+    updateTransport();
 
     QStringList problems;
     for (const auto& o : s.outputs)
@@ -1262,6 +1300,115 @@ void MainWindow::onEngineStatus() {
     if (s.recovered) info += QStringLiteral("  |  ") + tr("Engine was restarted and the show resumed");
     if (!problems.isEmpty()) info += QStringLiteral("  |  ⚠ ") + problems.join(QStringLiteral("; "));
     infoLabel_->setText(info);
+}
+
+// ------------------------------------------------------------------ desfazer / refazer
+
+void MainWindow::recordUndo() {
+    if (restoring_) return;
+    std::string now = serializeProject(project_);
+    if (now == undoBase_) return;
+    if (undoBase_.empty()) { // ainda sem estado base: este passa a sê-lo
+        undoBase_ = std::move(now);
+        return;
+    }
+    // Alterações seguidas (ex. rodar um valor, várias teclas) ficam num só passo.
+    if (undoStack_.empty() || !lastUndoPush_.isValid() || lastUndoPush_.elapsed() > 400) {
+        undoStack_.push_back(std::move(undoBase_));
+        while (undoStack_.size() > kMaxUndo) undoStack_.pop_front();
+    }
+    lastUndoPush_.restart();
+    undoBase_ = std::move(now);
+    redoStack_.clear();
+    updateUndoActions();
+}
+
+void MainWindow::clearUndo() {
+    undoStack_.clear();
+    redoStack_.clear();
+    undoBase_ = serializeProject(project_);
+    lastUndoPush_.invalidate();
+    updateUndoActions();
+}
+
+void MainWindow::undo() {
+    if (showMode_) return;
+    recordUndo(); // inclui alterações ainda por registar
+    if (undoStack_.empty()) return;
+    redoStack_.push_back(undoBase_);
+    std::string target = std::move(undoStack_.back());
+    undoStack_.pop_back();
+    restoreSnapshot(target);
+}
+
+void MainWindow::redo() {
+    if (showMode_ || redoStack_.empty()) return;
+    undoStack_.push_back(undoBase_);
+    std::string target = std::move(redoStack_.back());
+    redoStack_.pop_back();
+    restoreSnapshot(target);
+}
+
+void MainWindow::restoreSnapshot(const std::string& json) {
+    auto r = parseProject(json);
+    if (!r.project) {
+        infoLabel_->setText(tr("Could not undo: %1").arg(qs(r.error)));
+        updateUndoActions();
+        return;
+    }
+    restoring_ = true;
+    project_ = std::move(*r.project);
+    ensureTimeline();
+    undoBase_ = serializeProject(project_);
+    lastUndoPush_.invalidate(); // o próximo passo nunca se junta a este
+    if (activeColumn_ >= static_cast<int>(project_.columns.size())) activeColumn_ = -1;
+    if (project_.findLayer(soloLayer_) == nullptr) soloLayer_.clear();
+    const int sel = std::min(selectedLayer_, static_cast<int>(project_.layers.size()) - 1);
+    refreshAll();
+    selectLayer(sel);
+    markChanged(); // envia para o motor (sem registar: restoring_)
+    restoring_ = false;
+    updateUndoActions();
+}
+
+void MainWindow::updateUndoActions() {
+    if (undoAction_) undoAction_->setEnabled(!showMode_ && !undoStack_.empty());
+    if (redoAction_) redoAction_->setEnabled(!showMode_ && !redoStack_.empty());
+}
+
+// ------------------------------------------------------------------ barra de tempo
+
+void MainWindow::updateTransport() {
+    if (!transport_) return;
+    transportLayer_.clear();
+    if (!engine_->isConnected() || !engine_->hasStatus()) {
+        transport_->setUnavailable(tr("Engine not running"));
+        return;
+    }
+    const auto& s = engine_->lastStatus();
+    if (!s.timelineId.empty()) {
+        transport_->setUnavailable(tr("Timeline active: use the timeline controls"));
+        return;
+    }
+    if (selectedLayer_ < 0 || selectedLayer_ >= static_cast<int>(project_.layers.size())) {
+        transport_->setUnavailable(tr("No layer selected"));
+        return;
+    }
+    const Layer& layer = project_.layers[static_cast<std::size_t>(selectedLayer_)];
+    for (const auto& ls : s.layers) {
+        if (ls.id != layer.id) continue;
+        const MediaItem* m = project_.findMedia(ls.mediaId);
+        if (ls.mediaId.empty() || !m) break;
+        const QString title = qs(layer.name) + QStringLiteral(" · ") + QFileInfo(qs(m->path)).completeBaseName();
+        if (ls.duration <= 0.0) {
+            transport_->setUnavailable(title + QStringLiteral("  (") + tr("still image") + QStringLiteral(")"));
+            return;
+        }
+        transportLayer_ = layer.id;
+        transport_->setState(title, ls.position, ls.duration, ls.paused, ls.state == "playing");
+        return;
+    }
+    transport_->setUnavailable(tr("No video on layer %1").arg(qs(layer.name)));
 }
 
 // ------------------------------------------------------------------ vista
@@ -1287,7 +1434,26 @@ void MainWindow::refreshDashboard() {
     for (int c = 0; c < static_cast<int>(project_.columns.size()); ++c) {
         const auto& col = project_.columns[static_cast<std::size_t>(c)];
         const QString index = prefs::showColumnIndex() ? QStringLiteral("%1  ").arg(c + 1, 2, 10, QLatin1Char('0')) : QString();
-        auto* h = new QTableWidgetItem(QStringLiteral("%1▶  %2\n%3 s").arg(index, qs(col.name)).arg(col.fadeSeconds, 0, 'f', 1));
+        // 2.ª linha: transição, avanço automático e salto (ex. "dissolve 1.0 s · ⏱ 10 s · ↪ 03").
+        QStringList info;
+        switch (col.transition) {
+        case TransitionType::Crossfade: info << tr("dissolve %1 s").arg(col.fadeSeconds, 0, 'f', 1); break;
+        case TransitionType::FadeThroughBlack: info << tr("black %1 s").arg(col.fadeSeconds, 0, 'f', 1); break;
+        case TransitionType::Cut: info << tr("cut"); break;
+        }
+        if (col.follow == FollowMode::MediaEnd) info << QStringLiteral("⏭ ") + tr("at end");
+        else if (col.follow == FollowMode::Timer)
+            info << QStringLiteral("⏱ ") + tr("%1 s").arg(col.followSeconds, 0, 'f', 1);
+        if (const int j = project_.columnIndex(col.jumpTo); j >= 0)
+            info << QStringLiteral("↪ %1").arg(j + 1, 2, 10, QLatin1Char('0'));
+        auto* h = new QTableWidgetItem(QStringLiteral("%1▶  %2\n%3").arg(index, qs(col.name), info.join(QStringLiteral(" · "))));
+        QString tip = tr("Click: GO. Right-click: cue settings.");
+        if (col.follow == FollowMode::MediaEnd) tip += QStringLiteral("\n") + tr("Goes to the next cue when its videos end.");
+        else if (col.follow == FollowMode::Timer)
+            tip += QStringLiteral("\n") + tr("Goes to the next cue after %1 s.").arg(col.followSeconds, 0, 'f', 1);
+        if (const int j = project_.columnIndex(col.jumpTo); j >= 0)
+            tip += QStringLiteral("\n") + tr("Then goes to cue %1 (%2).").arg(j + 1).arg(qs(project_.columns[static_cast<std::size_t>(j)].name));
+        h->setToolTip(tip);
         if (c == activeColumn_) {
             h->setBackground(kActiveColumn);
             h->setForeground(Qt::black);
@@ -1335,6 +1501,7 @@ void MainWindow::updateEditingEnabled() {
     for (auto* w : editWidgets_) w->setEnabled(edit);
     for (auto* a : editActions_) a->setEnabled(edit);
     library_->setEditable(edit);
+    updateUndoActions();
     dashboard_->setEditable(edit);
     timelinePanel_->setEditable(edit);
     // Properties e o arrastar no Workspace continuam ativos: são controlos ao vivo.

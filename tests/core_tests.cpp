@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <random>
+#include <set>
 #include <string>
 
 namespace {
@@ -490,7 +491,84 @@ static void testLayerProps() {
           near(cs[3].y, 1080));
 }
 
+static void testCues() {
+    // Ids gerados para projectos antigos, opções da cue e saltos.
+    auto r = parseProject(R"({"format":"vthost-project","version":1,"name":"x",
+      "columns":[{"name":"a"},{"name":"b","id":"K1"},{"name":"c","id":"K1"},
+                 {"name":"d","transition":"fade-black","follow":"timer","followSeconds":-5,"jumpTo":"nope"}]})");
+    CHECK(r.project);
+    if (!r.project) return;
+    auto& p = *r.project;
+    CHECK(p.columns.size() == 4);
+    std::set<std::string> ids;
+    for (const auto& c : p.columns) {
+        CHECK(!c.id.empty());
+        ids.insert(c.id);
+    }
+    CHECK(ids.size() == 4);
+    CHECK(p.columns[1].id == "K1");
+    CHECK(p.columns[3].transition == TransitionType::FadeThroughBlack);
+    CHECK(p.columns[3].follow == FollowMode::Timer);
+    CHECK(p.columns[3].followSeconds == 0.1);
+    CHECK(p.columns[3].jumpTo.empty()); // destino inexistente descartado
+    CHECK(p.columns[0].transition == TransitionType::Crossfade && p.columns[0].follow == FollowMode::None);
+
+    // nextColumn: sequência, fim, loop e salto.
+    CHECK(p.nextColumn(-1, false) == 0);
+    CHECK(p.nextColumn(0, false) == 1);
+    CHECK(p.nextColumn(3, false) == -1);
+    CHECK(p.nextColumn(3, true) == 0);
+    p.columns[3].jumpTo = p.columns[1].id;
+    CHECK(p.nextColumn(3, false) == 1);
+    p.columns[2].jumpTo = p.columns[2].id; // salto para si própria: repete
+    CHECK(p.nextColumn(2, false) == 2);
+    CHECK(Project().nextColumn(0, true) == -1);
+
+    // Ida e volta.
+    p.columns[0].transition = TransitionType::Cut;
+    p.columns[0].follow = FollowMode::MediaEnd;
+    p.columns[0].followSeconds = 7.5;
+    auto back = parseProject(serializeProject(p));
+    CHECK(back.project);
+    if (back.project) {
+        const auto& b = back.project->columns;
+        CHECK(b.size() == 4 && b[0].id == p.columns[0].id && b[0].transition == TransitionType::Cut);
+        CHECK(b[0].follow == FollowMode::MediaEnd && b[0].followSeconds == 7.5);
+        CHECK(b[3].jumpTo == p.columns[1].id && b[2].jumpTo == p.columns[2].id);
+    }
+    const std::string nid = p.newColumnId();
+    CHECK(p.columnIndex(nid) < 0 && !nid.empty());
+    CHECK(Project::makeDefault().columns[0].id == "K1");
+
+    // Protocolo: seek/pausa de layer e duração no estado.
+    using namespace vthost::protocol;
+    auto sk = parseCommand(R"({"cmd":"layer_seek","layer":"L1","time":12.5})");
+    CHECK(sk.command && sk.command->type == CommandType::LayerSeek && sk.command->value == 12.5);
+    CHECK(!parseCommand(R"({"cmd":"layer_seek","layer":"L1"})").command);
+    auto neg = parseCommand(R"({"cmd":"layer_seek","layer":"L1","time":-3})");
+    CHECK(neg.command && neg.command->value == 0.0);
+    Command pz;
+    pz.type = CommandType::LayerPause;
+    pz.layer = "L2";
+    pz.on = true;
+    auto pb = parseCommand(serializeCommand(pz));
+    CHECK(pb.command && pb.command->type == CommandType::LayerPause && pb.command->on && pb.command->layer == "L2");
+    CHECK(!parseCommand(R"({"cmd":"layer_pause","layer":"L1"})").command);
+    EngineStatus st;
+    st.activeColumnTime = 4.5;
+    LayerStatus ls;
+    ls.id = "L1";
+    ls.duration = 30.0;
+    ls.paused = true;
+    st.layers.push_back(ls);
+    auto sr = parseResponse(statusResponse(st));
+    CHECK(sr.status && sr.status->activeColumnTime == 4.5);
+    CHECK(sr.status && sr.status->layers.size() == 1 && sr.status->layers[0].duration == 30.0 &&
+          sr.status->layers[0].paused);
+}
+
 int main() {
+    testCues();
     testMapping();
     testLayerProps();
     testVersion();

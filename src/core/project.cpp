@@ -160,6 +160,36 @@ LoopMode loopModeFromString(const std::string& s) {
     return LoopMode::Infinite;
 }
 
+const char* toString(TransitionType t) {
+    switch (t) {
+    case TransitionType::Crossfade: return "crossfade";
+    case TransitionType::FadeThroughBlack: return "fade-black";
+    case TransitionType::Cut: return "cut";
+    }
+    return "crossfade";
+}
+
+TransitionType transitionFromString(const std::string& s) {
+    if (s == "fade-black") return TransitionType::FadeThroughBlack;
+    if (s == "cut") return TransitionType::Cut;
+    return TransitionType::Crossfade;
+}
+
+const char* toString(FollowMode m) {
+    switch (m) {
+    case FollowMode::None: return "none";
+    case FollowMode::MediaEnd: return "media-end";
+    case FollowMode::Timer: return "timer";
+    }
+    return "none";
+}
+
+FollowMode followModeFromString(const std::string& s) {
+    if (s == "media-end") return FollowMode::MediaEnd;
+    if (s == "timer") return FollowMode::Timer;
+    return FollowMode::None;
+}
+
 const char* toString(OutputType t) {
     switch (t) {
     case OutputType::Display: return "display";
@@ -198,12 +228,40 @@ const Layer* Project::findLayer(const std::string& id) const {
     return nullptr;
 }
 
+int Project::columnIndex(const std::string& columnId) const {
+    if (columnId.empty()) return -1;
+    for (std::size_t i = 0; i < columns.size(); ++i)
+        if (columns[i].id == columnId) return static_cast<int>(i);
+    return -1;
+}
+
+int Project::nextColumn(int current, bool loopBoard) const {
+    const int n = static_cast<int>(columns.size());
+    if (n == 0) return -1;
+    if (current < 0 || current >= n) return 0;
+    if (int j = columnIndex(columns[static_cast<std::size_t>(current)].jumpTo); j >= 0) return j;
+    if (current + 1 < n) return current + 1;
+    return loopBoard ? 0 : -1;
+}
+
+std::string Project::newColumnId() const {
+    for (int i = 1;; ++i) {
+        std::string id = "K" + std::to_string(i);
+        if (columnIndex(id) < 0) return id;
+    }
+}
+
 Project Project::makeDefault() {
     Project p;
     p.canvases = {{"C1", "Canvas 1", 1920, 1080}};
     p.layers = {{"L1", "Layer 1", "", {}, true}, {"L2", "Layer 2", "", {}, true}};
     p.timelines = {{"T1", "Timeline 1", {}, {}}};
-    for (int i = 1; i <= 4; ++i) p.columns.push_back({"Cue " + std::to_string(i), 1.0, {}});
+    for (int i = 1; i <= 4; ++i) {
+        Column c;
+        c.id = "K" + std::to_string(i);
+        c.name = "Cue " + std::to_string(i);
+        p.columns.push_back(std::move(c));
+    }
     Output o;
     o.id = "O1";
     o.name = "Output 1";
@@ -322,8 +380,13 @@ ParseResult parseProject(const std::string& text) {
             for (const auto& c : *a) {
                 if (!c.is_object()) continue;
                 Column col;
+                col.id = getString(c, "id");
                 col.name = getString(c, "name");
                 col.fadeSeconds = std::clamp(getNumber(c, "fade", 1.0), 0.0, 60.0);
+                col.transition = transitionFromString(getString(c, "transition", "crossfade"));
+                col.follow = followModeFromString(getString(c, "follow", "none"));
+                col.followSeconds = std::clamp(getNumber(c, "followSeconds", 10.0), 0.1, 86400.0);
+                col.jumpTo = getString(c, "jumpTo");
                 if (auto cells = c.find("cells"); cells != c.end() && cells->is_object()) {
                     for (auto it = cells->begin(); it != cells->end(); ++it) {
                         if (!it.value().is_string()) continue;
@@ -336,6 +399,20 @@ ParseResult parseProject(const std::string& text) {
                     }
                 }
                 p.columns.push_back(std::move(col));
+            }
+            // Ids estáveis: gera os que faltam ou estão repetidos; descarta saltos inválidos.
+            std::set<std::string> seen;
+            for (auto& col : p.columns)
+                if (col.id.empty() || !seen.insert(col.id).second) col.id.clear();
+            for (auto& col : p.columns) {
+                if (!col.id.empty()) continue;
+                col.id = p.newColumnId();
+            }
+            for (auto& col : p.columns) {
+                if (!col.jumpTo.empty() && p.columnIndex(col.jumpTo) < 0) {
+                    r.warnings.push_back("salto de cue para cue inexistente ignorado");
+                    col.jumpTo.clear();
+                }
             }
         }
 
@@ -445,7 +522,14 @@ std::string serializeProject(const Project& p) {
     for (const auto& c : p.columns) {
         json cells = json::object();
         for (const auto& [layer, media] : c.cells) cells[layer] = media;
-        j["columns"].push_back({{"name", c.name}, {"fade", c.fadeSeconds}, {"cells", cells}});
+        j["columns"].push_back({{"id", c.id},
+                                {"name", c.name},
+                                {"fade", c.fadeSeconds},
+                                {"transition", toString(c.transition)},
+                                {"follow", toString(c.follow)},
+                                {"followSeconds", c.followSeconds},
+                                {"jumpTo", c.jumpTo},
+                                {"cells", cells}});
     }
     j["outputs"] = json::array();
     for (const auto& o : p.outputs)

@@ -2,6 +2,77 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="pt_PT" sourcelanguage="en">
 <context>
+    <name>CueDialog</name>
+    <message>
+        <source> s</source>
+        <translation> s</translation>
+    </message>
+    <message>
+        <source>"After this cue, go to" is used by GO next (Space) and by the automatic follow. Example: at the last cue choose cue 03 to loop back to it. With "When the videos end" the videos of this cue play once.</source>
+        <translation>"Depois desta cue, ir para" é usado pelo GO seguinte (Espaço) e pelo avanço automático. Exemplo: na última cue escolha a cue 03 para voltar a ela. Com "Quando os vídeos acabam" os vídeos desta cue tocam uma vez.</translation>
+    </message>
+    <message>
+        <source>After a fixed time</source>
+        <translation>Ao fim de um tempo fixo</translation>
+    </message>
+    <message>
+        <source>After this cue, go to:</source>
+        <translation>Depois desta cue, ir para:</translation>
+    </message>
+    <message>
+        <source>Cue settings</source>
+        <translation>Definições da cue</translation>
+    </message>
+    <message>
+        <source>Cut</source>
+        <translation>Corte</translation>
+    </message>
+    <message>
+        <source>Dissolve (crossfade)</source>
+        <translation>Dissolve (crossfade)</translation>
+    </message>
+    <message>
+        <source>Fade through black</source>
+        <translation>Fade pelo preto</translation>
+    </message>
+    <message>
+        <source>Go to the next cue automatically:</source>
+        <translation>Avançar automaticamente:</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>Nome:</translation>
+    </message>
+    <message>
+        <source>Next cue in the list</source>
+        <translation>Cue seguinte na lista</translation>
+    </message>
+    <message>
+        <source>No (wait for GO)</source>
+        <translation>Não (esperar pelo GO)</translation>
+    </message>
+    <message>
+        <source>Time:</source>
+        <translation>Tempo:</translation>
+    </message>
+    <message>
+        <source>Transition duration:</source>
+        <translation>Duração da transição:</translation>
+    </message>
+    <message>
+        <source>Transition into this cue:</source>
+        <translation>Transição para esta cue:</translation>
+    </message>
+    <message>
+        <source>When the videos of this cue end</source>
+        <translation>Quando os vídeos desta cue acabam</translation>
+    </message>
+    <message>
+        <source>repeat this cue</source>
+        <translation>repetir esta cue</translation>
+    </message>
+</context>
+<context>
     <name>LibraryPanel</name>
     <message>
         <source>Add media...</source>
@@ -35,6 +106,10 @@
         <translation>%1 fps</translation>
     </message>
     <message>
+        <source>%1 s</source>
+        <translation>%1 s</translation>
+    </message>
+    <message>
         <source>&amp;Edit</source>
         <translation>&amp;Editar</translation>
     </message>
@@ -63,12 +138,20 @@
         <translation>Sai&amp;r</translation>
     </message>
     <message>
+        <source>&amp;Redo</source>
+        <translation>&amp;Refazer</translation>
+    </message>
+    <message>
         <source>&amp;Save</source>
         <translation>&amp;Guardar</translation>
     </message>
     <message>
         <source>&amp;Show</source>
         <translation>E&amp;spetáculo</translation>
+    </message>
+    <message>
+        <source>&amp;Undo</source>
+        <translation>&amp;Desfazer</translation>
     </message>
     <message>
         <source>+ Column</source>
@@ -131,12 +214,8 @@
         <translation>Limpar célula</translation>
     </message>
     <message>
-        <source>Column fade time</source>
-        <translation>Tempo de fade da coluna</translation>
-    </message>
-    <message>
-        <source>Column fade time...</source>
-        <translation>Tempo de fade da coluna...</translation>
+        <source>Click: GO. Right-click: cue settings.</source>
+        <translation>Clique: GO. Botão direito: definições da cue.</translation>
     </message>
     <message>
         <source>Connected to a running show.</source>
@@ -159,12 +238,20 @@
         <translation>Não foi possível iniciar o instalador.</translation>
     </message>
     <message>
+        <source>Could not undo: %1</source>
+        <translation>Não foi possível desfazer: %1</translation>
+    </message>
+    <message>
         <source>Could not write live project: %1</source>
         <translation>Não foi possível escrever o projeto ao vivo: %1</translation>
     </message>
     <message>
         <source>Cue %1</source>
         <translation>Cue %1</translation>
+    </message>
+    <message>
+        <source>Cue settings...</source>
+        <translation>Definições da cue...</translation>
     </message>
     <message>
         <source>Dashboard</source>
@@ -207,6 +294,10 @@
         <translation>Motor</translation>
     </message>
     <message>
+        <source>Engine not running</source>
+        <translation>Motor parado</translation>
+    </message>
+    <message>
         <source>Engine was restarted and the show resumed</source>
         <translation>O motor foi reiniciado e o espetáculo retomado</translation>
     </message>
@@ -217,10 +308,6 @@
     <message>
         <source>Engine: offline</source>
         <translation>Motor: desligado</translation>
-    </message>
-    <message>
-        <source>Fade (seconds):</source>
-        <translation>Fade (segundos):</translation>
     </message>
     <message>
         <source>GO failed: %1</source>
@@ -241,6 +328,14 @@
     <message>
         <source>GO this column</source>
         <translation>GO nesta coluna</translation>
+    </message>
+    <message>
+        <source>Goes to the next cue after %1 s.</source>
+        <translation>Avança para a cue seguinte ao fim de %1 s.</translation>
+    </message>
+    <message>
+        <source>Goes to the next cue when its videos end.</source>
+        <translation>Avança para a cue seguinte quando os vídeos acabam.</translation>
     </message>
     <message>
         <source>Height (px):</source>
@@ -299,8 +394,16 @@
         <translation>Nome:</translation>
     </message>
     <message>
+        <source>No layer selected</source>
+        <translation>Nenhuma layer selecionada</translation>
+    </message>
+    <message>
         <source>No releases have been published yet.</source>
         <translation>Ainda não foi publicada nenhuma versão.</translation>
+    </message>
+    <message>
+        <source>No video on layer %1</source>
+        <translation>Sem vídeo na layer %1</translation>
     </message>
     <message>
         <source>Open logs folder</source>
@@ -461,8 +564,16 @@
         <translation>A atualização está pronta. O motor vai parar e as saídas ficam a negro durante a instalação. Instalar agora?</translation>
     </message>
     <message>
+        <source>Then goes to cue %1 (%2).</source>
+        <translation>Depois vai para a cue %1 (%2).</translation>
+    </message>
+    <message>
         <source>Timeline</source>
         <translation>Timeline</translation>
+    </message>
+    <message>
+        <source>Timeline active: use the timeline controls</source>
+        <translation>Timeline activa: use os controlos da timeline</translation>
     </message>
     <message>
         <source>Timeline: %1</source>
@@ -519,6 +630,26 @@
     <message>
         <source>Width (px):</source>
         <translation>Largura (px):</translation>
+    </message>
+    <message>
+        <source>at end</source>
+        <translation>no fim</translation>
+    </message>
+    <message>
+        <source>black %1 s</source>
+        <translation>preto %1 s</translation>
+    </message>
+    <message>
+        <source>cut</source>
+        <translation>corte</translation>
+    </message>
+    <message>
+        <source>dissolve %1 s</source>
+        <translation>dissolve %1 s</translation>
+    </message>
+    <message>
+        <source>still image</source>
+        <translation>imagem fixa</translation>
     </message>
     <message>
         <source>vthost-watchdog was not found next to the Studio.</source>
@@ -1040,6 +1171,22 @@
 <context>
     <name>SettingsDialog</name>
     <message>
+        <source>%1 + arrow keys</source>
+        <translation>%1 + setas</translation>
+    </message>
+    <message>
+        <source>%1 + click on a column / GO</source>
+        <translation>%1 + clique numa coluna / GO</translation>
+    </message>
+    <message>
+        <source>%1 + mouse wheel</source>
+        <translation>%1 + roda do rato</translation>
+    </message>
+    <message>
+        <source>%1 while dragging</source>
+        <translation>%1 enquanto arrasta</translation>
+    </message>
+    <message>
         <source>10 bits HDR (coming soon)</source>
         <translation>10 bits HDR (brevemente)</translation>
     </message>
@@ -1068,8 +1215,16 @@
         <translation>Acima do normal (recomendado)</translation>
     </message>
     <message>
+        <source>Action</source>
+        <translation>Acção</translation>
+    </message>
+    <message>
         <source>Anti-aliasing:</source>
         <translation>Anti-aliasing:</translation>
+    </message>
+    <message>
+        <source>Arrow keys</source>
+        <translation>Setas</translation>
     </message>
     <message>
         <source>Ask before quitting</source>
@@ -1112,12 +1267,36 @@
         <translation>Criado por %1</translation>
     </message>
     <message>
+        <source>Cue settings (transition, auto-follow, go to)</source>
+        <translation>Definições da cue (transição, avanço automático, ir para)</translation>
+    </message>
+    <message>
+        <source>Cut clip at the playhead</source>
+        <translation>Cortar o clip na cabeça de leitura</translation>
+    </message>
+    <message>
         <source>Default transition for new columns:</source>
         <translation>Transição por omissão das colunas novas:</translation>
     </message>
     <message>
+        <source>Delete selected clip</source>
+        <translation>Apagar o clip selecionado</translation>
+    </message>
+    <message>
+        <source>Double-click on the cell</source>
+        <translation>Duplo clique na célula</translation>
+    </message>
+    <message>
+        <source>Double-click on the layer name</source>
+        <translation>Duplo clique no nome da layer</translation>
+    </message>
+    <message>
         <source>Duration of images dropped on the timeline:</source>
         <translation>Duração das imagens largadas na timeline:</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>Editar</translation>
     </message>
     <message>
         <source>Engine &amp;&amp; outputs</source>
@@ -1128,8 +1307,24 @@
         <translation>Prioridade do motor:</translation>
     </message>
     <message>
+        <source>File</source>
+        <translation>Ficheiro</translation>
+    </message>
+    <message>
         <source>Follow the playhead while playing</source>
         <translation>Seguir a cabeça de leitura durante a reprodução</translation>
+    </message>
+    <message>
+        <source>GO next cue (Dashboard) / play-pause (Timeline)</source>
+        <translation>GO cue seguinte (Dashboard) / play-pausa (Timeline)</translation>
+    </message>
+    <message>
+        <source>GO previous cue</source>
+        <translation>GO cue anterior</translation>
+    </message>
+    <message>
+        <source>GO without transition (cut)</source>
+        <translation>GO sem transição (corte)</translation>
     </message>
     <message>
         <source>General</source>
@@ -1164,8 +1359,24 @@
         <translation>Filtragem linear</translation>
     </message>
     <message>
+        <source>Mapping editor</source>
+        <translation>Editor de mapping</translation>
+    </message>
+    <message>
         <source>Media server and video player for live shows.</source>
         <translation>Media server e player de vídeo para espetáculos ao vivo.</translation>
+    </message>
+    <message>
+        <source>Move the selected point 1 px</source>
+        <translation>Mover o ponto selecionado 1 px</translation>
+    </message>
+    <message>
+        <source>Move the selected point 10 px</source>
+        <translation>Mover o ponto selecionado 10 px</translation>
+    </message>
+    <message>
+        <source>New project</source>
+        <translation>Projecto novo</translation>
     </message>
     <message>
         <source>Normal</source>
@@ -1176,8 +1387,20 @@
         <translation>Desligado</translation>
     </message>
     <message>
+        <source>Open project</source>
+        <translation>Abrir projeto</translation>
+    </message>
+    <message>
         <source>Open the last project at startup</source>
         <translation>Abrir o último projeto ao arrancar</translation>
+    </message>
+    <message>
+        <source>Outputs and canvases</source>
+        <translation>Saídas e canvas</translation>
+    </message>
+    <message>
+        <source>Place the selected media in a cell</source>
+        <translation>Pôr a media selecionada numa célula</translation>
     </message>
     <message>
         <source>Preferences</source>
@@ -1188,6 +1411,22 @@
         <translation>Projeto</translation>
     </message>
     <message>
+        <source>Quit</source>
+        <translation>Sair</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation>Refazer</translation>
+    </message>
+    <message>
+        <source>Rename a layer</source>
+        <translation>Mudar o nome de uma layer</translation>
+    </message>
+    <message>
+        <source>Right-click on the column header</source>
+        <translation>Botão direito no cabeçalho da coluna</translation>
+    </message>
+    <message>
         <source>SPACE launches the next column, ALT+SPACE the previous one.</source>
         <translation>ESPAÇO lança a coluna seguinte, ALT+ESPAÇO a anterior.</translation>
     </message>
@@ -1196,8 +1435,36 @@
         <translation>ESPAÇO reproduz ou pára a timeline. CTRL+SHIFT+X corta a media selecionada.</translation>
     </message>
     <message>
+        <source>Save</source>
+        <translation>Guardar</translation>
+    </message>
+    <message>
+        <source>Save as</source>
+        <translation>Guardar como</translation>
+    </message>
+    <message>
+        <source>Select the next point</source>
+        <translation>Selecionar o ponto seguinte</translation>
+    </message>
+    <message>
+        <source>Shortcut</source>
+        <translation>Atalho</translation>
+    </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation>Atalhos</translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <translation>Espetáculo</translation>
+    </message>
+    <message>
         <source>Show Mode</source>
         <translation>Modo Espetáculo</translation>
+    </message>
+    <message>
+        <source>Show Mode (lock editing)</source>
+        <translation>Modo Espetáculo (bloquear edição)</translation>
     </message>
     <message>
         <source>Show the column index</source>
@@ -1236,8 +1503,16 @@
         <translation>Timeline</translation>
     </message>
     <message>
+        <source>Toggle snapping</source>
+        <translation>Ligar/desligar o encaixe</translation>
+    </message>
+    <message>
         <source>Top-left corner</source>
         <translation>Canto superior esquerdo</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>Desfazer</translation>
     </message>
     <message>
         <source>Updates</source>
@@ -1266,6 +1541,10 @@
     <message>
         <source>Workspace preview frame rate:</source>
         <translation>Fotogramas por segundo do preview do Workspace:</translation>
+    </message>
+    <message>
+        <source>Zoom</source>
+        <translation>Zoom</translation>
     </message>
     <message>
         <source>© %1 %2. All rights reserved.</source>
@@ -1380,6 +1659,17 @@
     <message>
         <source>segment %1</source>
         <translation>segmento %1</translation>
+    </message>
+</context>
+<context>
+    <name>TransportBar</name>
+    <message>
+        <source>No video on the selected layer</source>
+        <translation>Sem vídeo na layer selecionada</translation>
+    </message>
+    <message>
+        <source>Pause / resume the video of the selected layer</source>
+        <translation>Pausar / retomar o vídeo da layer selecionada</translation>
     </message>
 </context>
 <context>

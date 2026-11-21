@@ -56,12 +56,20 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [ ] Mais efeitos: chroma key, LUT, blur, levels, ISF
 - [ ] Importar projetos do MapSim (projetores, zonas de blend)
 
-## Fase 3.5 — Áudio (0.6.0)
+## Fase 3.4 — Cues e edição (0.6.0)
+- [x] Definições por cue: transição (dissolve, fade pelo preto, corte) e duração
+- [x] Avanço automático por cue: quando os vídeos acabam ou ao fim de X segundos
+- [x] "Depois desta cue, ir para": saltos entre cues (ex. da 15 voltar à 3), usados pelo GO e pelo avanço automático
+- [x] Barra de tempo no Workspace: decorrido/restante, saltar arrastando, pausa por layer
+- [x] Desfazer/refazer (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y), até 100 passos
+- [x] Lista de todos os atalhos nas Preferências
+
+## Fase 3.5 — Áudio (0.7.0)
 - [ ] Som por layer (WASAPI), escolha da placa de som
 - [ ] Volume por media e por layer, mute
 - [ ] Normalização: análise de loudness (LUFS) por media e ganho automático
 
-## Fase 4 — Controlo (0.7.0)
+## Fase 4 — Controlo (0.8.0)
 - [ ] OSC entrada/saída, MIDI learn, DMX/Art-Net de entrada
 - [ ] Várias timelines por projeto, timelines disparadas a partir do Dashboard
 - [ ] OSC, MIDI, Art-Net/DMX de entrada

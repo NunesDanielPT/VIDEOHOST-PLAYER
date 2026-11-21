@@ -83,6 +83,24 @@ ParsedCommand parseCommand(const std::string& line) {
                 return r;
             }
             c.on = it->get<bool>();
+        } else if (cmd == "layer_seek") {
+            c.type = CommandType::LayerSeek;
+            c.layer = str(j, "layer");
+            auto t = num(j, "time");
+            if (c.layer.empty() || !t) {
+                r.error = "layer_seek: faltam 'layer'/'time'";
+                return r;
+            }
+            c.value = std::clamp(*t, 0.0, kMaxTimelineSeconds);
+        } else if (cmd == "layer_pause") {
+            c.type = CommandType::LayerPause;
+            c.layer = str(j, "layer");
+            auto it = j.find("on");
+            if (c.layer.empty() || it == j.end() || !it->is_boolean()) {
+                r.error = "layer_pause: faltam 'layer'/'on'";
+                return r;
+            }
+            c.on = it->get<bool>();
         } else if (cmd == "timeline") {
             c.type = CommandType::Timeline;
             c.timeline = str(j, "timeline");
@@ -189,6 +207,8 @@ std::string serializeCommand(const Command& c) {
         break;
     case CommandType::SetTestCard: j = {{"cmd", "set_test_card"}, {"on", c.on}}; break;
     case CommandType::SetPreviewCanvas: j = {{"cmd", "set_preview_canvas"}, {"canvas", c.canvas}}; break;
+    case CommandType::LayerSeek: j = {{"cmd", "layer_seek"}, {"layer", c.layer}, {"time", c.value}}; break;
+    case CommandType::LayerPause: j = {{"cmd", "layer_pause"}, {"layer", c.layer}, {"on", c.on}}; break;
     case CommandType::Shutdown: j["cmd"] = "shutdown"; break;
     }
     return dump(j);
@@ -204,7 +224,8 @@ std::string statusResponse(const EngineStatus& s) {
     json layers = json::array();
     for (const auto& l : s.layers)
         layers.push_back({{"id", l.id}, {"media", l.mediaId}, {"state", l.state},
-                          {"position", l.position}, {"error", l.error}});
+                          {"position", l.position}, {"error", l.error}, {"duration", l.duration},
+                          {"paused", l.paused}});
     json outputs = json::array();
     for (const auto& o : s.outputs)
         outputs.push_back({{"id", o.id}, {"monitor", o.monitor}, {"ok", o.ok}, {"error", o.error},
@@ -216,6 +237,7 @@ std::string statusResponse(const EngineStatus& s) {
                 {"projectPath", s.projectPath},
                 {"showMode", s.showMode},
                 {"activeColumn", s.activeColumn},
+                {"activeColumnTime", s.activeColumnTime},
                 {"fps", s.fps},
                 {"uptime", s.uptimeSeconds},
                 {"recovered", s.recovered},
@@ -259,6 +281,7 @@ ParsedResponse parseResponse(const std::string& line) {
             es.projectPath = str(s, "projectPath");
             es.showMode = s.value("showMode", false);
             es.activeColumn = static_cast<int>(num(s, "activeColumn").value_or(-1));
+            es.activeColumnTime = std::max(0.0, num(s, "activeColumnTime").value_or(0.0));
             es.fps = num(s, "fps").value_or(0.0);
             es.uptimeSeconds = num(s, "uptime").value_or(0.0);
             es.recovered = s.value("recovered", false);
@@ -271,7 +294,10 @@ ParsedResponse parseResponse(const std::string& line) {
                 for (const auto& l : *a)
                     if (l.is_object())
                         es.layers.push_back({str(l, "id"), str(l, "media"), str(l, "state"),
-                                             num(l, "position").value_or(0.0), str(l, "error")});
+                                             num(l, "position").value_or(0.0), str(l, "error"),
+                                             std::max(0.0, num(l, "duration").value_or(0.0)),
+                                             l.contains("paused") && l["paused"].is_boolean() &&
+                                                 l["paused"].get<bool>()});
             if (auto a = s.find("outputs"); a != s.end() && a->is_array())
                 for (const auto& o : *a)
                     if (o.is_object())

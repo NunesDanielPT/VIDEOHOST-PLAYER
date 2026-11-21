@@ -10,6 +10,8 @@
 //   {"cmd":"stop_all","fade":1.0}
 //   {"cmd":"set_layer_props","layer":"L1","props":{"opacity":0.5,"blend":"add","x":0,"y":0,"scale":1,"rotation":0}}
 //   {"cmd":"set_layer_visible","layer":"L1","on":false}   // olho da layer, ao vivo
+//   {"cmd":"layer_seek","layer":"L1","time":12.5}         // salta dentro do vídeo da layer
+//   {"cmd":"layer_pause","layer":"L1","on":true}          // pausa/retoma o vídeo da layer
 //   {"cmd":"timeline","action":"play|pause|stop|seek","timeline":"T1","time":12.5}
 //   {"cmd":"set_show_mode","on":true}
 //   {"cmd":"get_status"}
@@ -31,7 +33,7 @@ namespace vthost::protocol {
 
 inline constexpr std::size_t kMaxLineBytes = 1024 * 1024;
 
-enum class CommandType { Ping, LoadProject, Go, StopAll, SetLayerProps, SetLayerVisible, Timeline, SetShowMode, GetStatus, ListDisplays, SetSettings, SetOutputMapping, SetTestCard, SetPreviewCanvas, Shutdown };
+enum class CommandType { Ping, LoadProject, Go, StopAll, SetLayerProps, SetLayerVisible, Timeline, SetShowMode, GetStatus, ListDisplays, SetSettings, SetOutputMapping, SetTestCard, SetPreviewCanvas, LayerSeek, LayerPause, Shutdown };
 enum class TimelineAction { Play, Pause, Stop, Seek };
 
 // Preferências do motor (enviadas pelo Studio ao ligar e quando mudam).
@@ -48,7 +50,7 @@ struct Command {
     std::string path;
     std::string layer;
     int column = -1;
-    double value = 0.0; // fade (stop_all, go: -1 = o da coluna) / tempo (timeline; -1 = posição actual)
+    double value = 0.0; // fade (stop_all, go: -1 = o da coluna) / tempo (timeline -1 = posição actual; layer_seek)
     bool on = false;
     LayerProps props;
     std::string timeline;
@@ -73,6 +75,8 @@ struct LayerStatus {
     std::string state; // "idle" | "loading" | "playing" | "error"
     double position = 0.0;
     std::string error;
+    double duration = 0.0; // segundos (0 = desconhecida / imagem)
+    bool paused = false;
 };
 
 struct OutputStatus {
@@ -104,6 +108,7 @@ struct EngineStatus {
     std::string projectPath;
     bool showMode = false;
     int activeColumn = -1;
+    double activeColumnTime = 0.0; // segundos desde o disparo da cue activa
     double fps = 0.0;
     double uptimeSeconds = 0.0;
     bool recovered = false; // motor reiniciado pelo watchdog e show retomado

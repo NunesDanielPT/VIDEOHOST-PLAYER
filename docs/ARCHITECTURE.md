@@ -86,3 +86,20 @@ Ver `src/core/include/vthost/core/protocol.h`. Uma mensagem JSON por linha, um p
 2. Memória limitada: filas de frames com tamanho fixo.
 3. Ficheiros sempre gravados de forma atómica.
 4. Interface em PT e EN: qualquer texto novo no Studio usa `tr()` e é traduzido em `translations/vthost_studio_pt_PT.ts`.
+
+## Cues (colunas do Dashboard)
+
+Cada coluna tem `id` estável (`K1`, `K2`…), `transition` (`crossfade` | `fade-black` | `cut`),
+`fade` (duração), `follow` (`none` | `media-end` | `timer`), `followSeconds` e `jumpTo`
+(id da cue seguinte; vazio = a próxima da lista). `Project::nextColumn()` decide a cue
+seguinte e é usado pelo Studio (GO / Espaço) e pelo motor (avanço automático).
+Com `media-end` os vídeos da cue tocam uma vez (sem loop). O motor não segue uma cue
+nos primeiros 250 ms (proteção contra ficheiros que "acabam" logo).
+Fade pelo preto: na 1.ª metade a media anterior vai a 0, na 2.ª metade a nova chega a 1.
+
+Barra de tempo: `layer_seek` recria o descodificador na posição pedida (o último frame
+fica no ecrã até o novo estar pronto); `layer_pause` congela o relógio da layer.
+Ambos são recusados com uma timeline activa. O estado traz `duration` e `paused` por layer.
+
+Desfazer/refazer no Studio: instantâneos JSON do projeto (máx. 100), alterações a menos
+de 400 ms umas das outras ficam num só passo; desativado em Show Mode.

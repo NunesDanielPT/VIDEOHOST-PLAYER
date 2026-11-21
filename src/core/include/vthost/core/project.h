@@ -117,9 +117,32 @@ struct Layer {
     bool locked = false; // bloqueada: não se move, escala nem roda
 };
 
+// Transição entre cues (colunas).
+enum class TransitionType {
+    Crossfade,        // dissolve: a anterior desaparece enquanto a nova aparece
+    FadeThroughBlack, // a anterior vai a preto, depois a nova aparece
+    Cut,              // corte seco
+};
+const char* toString(TransitionType t);
+TransitionType transitionFromString(const std::string& s);
+
+// Avanço automático para a cue seguinte.
+enum class FollowMode {
+    None,     // só manualmente (GO / Espaço)
+    MediaEnd, // quando os vídeos da cue acabam
+    Timer,    // ao fim de followSeconds desde o disparo
+};
+const char* toString(FollowMode m);
+FollowMode followModeFromString(const std::string& s);
+
 struct Column {
+    std::string id;                           // estável (ex. "K3"); usado por jumpTo
     std::string name;
-    double fadeSeconds = 1.0;                 // 0..60
+    double fadeSeconds = 1.0;                 // 0..60 (duração da transição)
+    TransitionType transition = TransitionType::Crossfade;
+    FollowMode follow = FollowMode::None;
+    double followSeconds = 10.0;              // 0.1..86400 (modo Timer)
+    std::string jumpTo;                       // id da cue seguinte ("" = a próxima na lista)
     std::map<std::string, std::string> cells; // layerId -> mediaId
 };
 
@@ -203,6 +226,12 @@ struct Project {
     std::string resolveCanvasId(const std::string& canvasId) const;
     const MediaItem* findMedia(const std::string& id) const;
     const Layer* findLayer(const std::string& id) const;
+    int columnIndex(const std::string& columnId) const; // -1 se não existir
+    // Cue que se segue a `current` (respeita jumpTo). -1 se não houver
+    // (última cue sem jumpTo e sem loopBoard). current < 0 -> primeira cue.
+    int nextColumn(int current, bool loopBoard) const;
+    // Id de coluna novo e único ("K1", "K2", ...).
+    std::string newColumnId() const;
 
     // Projecto novo com 2 layers, 4 colunas, 1 output e 1 timeline vazia.
     static Project makeDefault();

@@ -37,6 +37,10 @@ qt_add_executable(vthost-studio WIN32
     properties_panel.h
     timeline_panel.cpp
     timeline_panel.h
+    cue_dialog.cpp
+    cue_dialog.h
+    transport_bar.cpp
+    transport_bar.h
     timeline_widget.cpp
     timeline_widget.h
 )

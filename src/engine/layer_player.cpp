@@ -41,7 +41,7 @@ void LayerPlayer::setPaused(bool paused) {
 }
 
 void LayerPlayer::play(const std::string& mediaId, const std::string& utf8Path, bool loop,
-                       double fadeSeconds, double startSeconds, const std::string& tag) {
+                       double fadeSeconds, double startSeconds, const std::string& tag, FadeStyle style) {
     // A media actual passa a "anterior" e desaparece com o fade.
     // (Se já havia um fade a decorrer, a anterior antiga é descartada.)
     retire(previous_);
@@ -49,17 +49,41 @@ void LayerPlayer::play(const std::string& mediaId, const std::string& utf8Path, 
     current_ = Slot{};
     current_.mediaId = mediaId;
     current_.tag = tag;
+    current_.path = utf8Path;
+    current_.loop = loop;
     current_.decoder = std::make_unique<VideoDecoder>(utf8Path, loop, startSeconds);
     fadeSeconds_ = std::clamp(fadeSeconds, 0.0, 60.0);
+    fadeStyle_ = style;
     fadeStart_ = Clock::now();
 }
 
-void LayerPlayer::stop(double fadeSeconds) {
+void LayerPlayer::seek(double seconds) {
+    if (!current_.decoder || current_.path.empty() || current_.decoder->isStill()) return;
+    if (!std::isfinite(seconds)) return;
+    const double d = current_.decoder->duration();
+    seconds = std::max(0.0, seconds);
+    if (d > 0.0) seconds = std::min(seconds, std::max(0.0, d - 0.05));
+    // A textura fica: o frame actual mantém-se até o descodificador novo ter o primeiro.
+    VideoDecoder::retireAsync(std::move(current_.decoder));
+    current_.decoder = std::make_unique<VideoDecoder>(current_.path, current_.loop, seconds);
+    current_.clockStarted = false;
+    current_.shownTime = seconds;
+    current_.frozenTime = seconds;
+}
+
+double LayerPlayer::duration() const {
+    if (!current_.decoder || current_.decoder->isStill()) return 0.0;
+    const double d = current_.decoder->duration();
+    return std::isfinite(d) ? std::max(0.0, d) : 0.0;
+}
+
+void LayerPlayer::stop(double fadeSeconds, FadeStyle style) {
     if (!current_.decoder && !current_.texture.valid()) return;
     retire(previous_);
     previous_ = std::move(current_);
     current_ = Slot{};
     fadeSeconds_ = std::clamp(fadeSeconds, 0.0, 60.0);
+    fadeStyle_ = style;
     fadeStart_ = Clock::now();
 }
 
@@ -107,8 +131,14 @@ void LayerPlayer::update(Renderer& renderer) {
 
 void LayerPlayer::draw(Renderer& renderer, const LayerProps& props, float extraOpacity) {
     const float p = fadeProgress();
-    if (previous_.hasFrame) renderer.drawLayer(previous_.texture, props, (1.0f - p) * extraOpacity);
-    if (current_.hasFrame) renderer.drawLayer(current_.texture, props, p * extraOpacity);
+    float prevAlpha = 1.0f - p;
+    float curAlpha = p;
+    if (fadeStyle_ == FadeStyle::ThroughBlack) {
+        prevAlpha = std::clamp(1.0f - 2.0f * p, 0.0f, 1.0f);
+        curAlpha = std::clamp(2.0f * p - 1.0f, 0.0f, 1.0f);
+    }
+    if (previous_.hasFrame && prevAlpha > 0.0f) renderer.drawLayer(previous_.texture, props, prevAlpha * extraOpacity);
+    if (current_.hasFrame && curAlpha > 0.0f) renderer.drawLayer(current_.texture, props, curAlpha * extraOpacity);
 }
 
 bool LayerPlayer::ended() const {

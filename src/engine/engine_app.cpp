@@ -175,30 +175,41 @@ void EngineApp::syncOutputs() {
 
 
 
-bool EngineApp::go(int column, std::string* error, double fadeOverride) {
+bool EngineApp::go(int column, std::string* error, double fadeOverride, bool retrigger) {
     if (column < 0 || column >= static_cast<int>(project_.columns.size())) {
         if (error) *error = "coluna inexistente";
         return false;
     }
     leaveTimeline(); // o dashboard volta a mandar nas layers
     const Column& col = project_.columns[static_cast<std::size_t>(column)];
-    const double fade = fadeOverride >= 0.0 ? fadeOverride : col.fadeSeconds; // Shift+GO = corte seco
+    // Shift+GO (fadeOverride 0) = corte seco; transição "corte" ignora a duração.
+    double fade = fadeOverride >= 0.0 ? fadeOverride : col.fadeSeconds;
+    if (fadeOverride < 0.0 && col.transition == TransitionType::Cut) fade = 0.0;
+    const auto style = col.transition == TransitionType::FadeThroughBlack ? LayerPlayer::FadeStyle::ThroughBlack
+                                                                           : LayerPlayer::FadeStyle::Cross;
+    // "Seguir no fim do vídeo": o vídeo da cue toca uma vez, senão nunca acabaria.
+    const bool followOnEnd = col.follow == FollowMode::MediaEnd;
     for (const auto& layer : project_.layers) {
         auto& player = players_[layer.id];
         if (!player) player = std::make_unique<LayerPlayer>(layer.id);
+        player->setPaused(false); // GO retoma layers pausadas na barra de tempo
         auto cell = col.cells.find(layer.id);
         if (cell == col.cells.end()) {
             // Célula vazia: a coluna define o estado completo, por isso a layer apaga-se.
-            player->stop(fade);
+            player->stop(fade, style);
             continue;
         }
         const MediaItem* media = project_.findMedia(cell->second);
         if (!media) continue;
-        // Já está a tocar: não reinicia (exceto se já acabou, ex. "once").
-        if (player->mediaId() == media->id && player->tag().empty() && !player->ended()) continue;
-        player->play(media->id, media->path, media->loops(), fade);
+        // Já está a tocar: não reinicia (exceto se já acabou, ex. "once", ou se a cue
+        // é repetida por um salto para si própria).
+        if (!retrigger && player->mediaId() == media->id && player->tag().empty() &&
+            !player->ended() && !followOnEnd)
+            continue;
+        player->play(media->id, media->path, media->loops() && !followOnEnd, fade, 0.0, {}, style);
     }
     activeColumn_ = column;
+    columnStart_ = Clock::now();
     log::info("GO coluna " + std::to_string(column) + " (" + col.name + ")");
     saveStateIfDue(true);
     return true;
@@ -229,8 +240,10 @@ void EngineApp::recover() {
         if (it == players_.end()) continue;
         layerProps_[lp.layerId] = lp.props;
         if (!st.timelineId.empty()) continue; // a timeline repõe as media sozinha
+        const bool followOnEnd = activeColumn_ >= 0 && activeColumn_ < static_cast<int>(project_.columns.size()) &&
+                                 project_.columns[static_cast<std::size_t>(activeColumn_)].follow == FollowMode::MediaEnd;
         if (const MediaItem* m = project_.findMedia(lp.mediaId))
-            it->second->play(m->id, m->path, m->loops(), 0.0, lp.positionSeconds);
+            it->second->play(m->id, m->path, m->loops() && !followOnEnd, 0.0, lp.positionSeconds);
     }
     if (!st.timelineId.empty() && project_.findTimeline(st.timelineId)) {
         activeTimeline_ = st.timelineId;
@@ -328,6 +341,15 @@ std::string EngineApp::handle(const std::string& line) {
             }
         return errorResponse("layer inexistente");
     }
+    case CommandType::LayerSeek:
+    case CommandType::LayerPause: {
+        if (!activeTimeline_.empty()) return errorResponse("timeline activa: use os controlos da timeline");
+        auto it = players_.find(c.layer);
+        if (it == players_.end() || !it->second) return errorResponse("layer inexistente");
+        if (c.type == CommandType::LayerSeek) it->second->seek(c.value);
+        else it->second->setPaused(c.on);
+        return okResponse();
+    }
     case CommandType::Timeline:
         switch (c.action) {
         case TimelineAction::Play:
@@ -370,6 +392,8 @@ protocol::EngineStatus EngineApp::buildStatus() const {
     s.projectPath = projectPath_;
     s.showMode = showMode_;
     s.activeColumn = activeColumn_;
+    if (activeColumn_ >= 0)
+        s.activeColumnTime = std::chrono::duration<double>(Clock::now() - columnStart_).count();
     s.fps = fps_;
     s.uptimeSeconds = std::chrono::duration<double>(Clock::now() - startTime_).count();
     s.recovered = recovered_;
@@ -382,7 +406,7 @@ protocol::EngineStatus EngineApp::buildStatus() const {
         auto it = players_.find(l.id);
         if (it == players_.end()) continue;
         s.layers.push_back({l.id, it->second->mediaId(), it->second->stateName(), it->second->position(),
-                            it->second->error()});
+                            it->second->error(), it->second->duration(), it->second->paused()});
     }
     for (const auto& cfg : project_.outputs) {
         protocol::OutputStatus os;
@@ -607,15 +631,42 @@ void EngineApp::handleMediaEnds() {
         else if (m->loopMode == LoopMode::AutoFollow) follow = true;
     }
     const int n = static_cast<int>(project_.columns.size());
-    if (follow && activeColumn_ >= 0 && n > 0) {
-        int next = activeColumn_ + 1;
-        if (next >= n) next = settings_.loopBoard ? 0 : -1; // fim do board: pára ou volta ao início
-        if (next >= 0 && next != activeColumn_) {
-            std::string err;
-            log::info("auto-follow: coluna " + std::to_string(next));
-            go(next, &err);
+    if (activeColumn_ < 0 || activeColumn_ >= n) return;
+    const Column& col = project_.columns[static_cast<std::size_t>(activeColumn_)];
+    const double elapsed = std::chrono::duration<double>(Clock::now() - columnStart_).count();
+    // Proteção: um ficheiro estragado que "acaba" logo não pode disparar GO a cada frame.
+    if (elapsed < 0.25) return;
+
+    const char* reason = "auto-follow";
+    if (col.follow == FollowMode::Timer && elapsed >= col.followSeconds) {
+        follow = true;
+        reason = "tempo da cue";
+    } else if (col.follow == FollowMode::MediaEnd) {
+        // Segue quando todos os vídeos da cue acabaram (imagens fixas não contam).
+        bool anyVideo = false;
+        bool allEnded = true;
+        for (const auto& [layerId, mediaId] : col.cells) {
+            auto it = players_.find(layerId);
+            if (it == players_.end() || it->second->mediaId() != mediaId || !it->second->tag().empty()) continue;
+            if (it->second->duration() <= 0.0 && !it->second->ended()) {
+                if (it->second->stateName() == "loading") allEnded = false; // ainda não se sabe
+                continue;
+            }
+            anyVideo = true;
+            if (!it->second->ended()) allEnded = false;
+        }
+        if (anyVideo && allEnded) {
+            follow = true;
+            reason = "fim do vídeo da cue";
         }
     }
+    if (!follow) return;
+    const int next = project_.nextColumn(activeColumn_, settings_.loopBoard);
+    if (next < 0) return; // fim do board: fica na última cue
+    if (next == activeColumn_ && col.jumpTo.empty()) return;
+    std::string err;
+    log::info(std::string(reason) + ": coluna " + std::to_string(next));
+    go(next, &err, -1.0, next == activeColumn_);
 }
 
 void EngineApp::renderFrame() {

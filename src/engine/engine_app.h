@@ -45,7 +45,7 @@ private:
 
     std::string handle(const std::string& line);
     bool loadProject(const std::string& path, std::string* error);
-    bool go(int column, std::string* error, double fadeOverride = -1.0);
+    bool go(int column, std::string* error, double fadeOverride = -1.0, bool retrigger = false);
     void applySettings(const protocol::EngineSettings& s);
     void stopAll(double fade);
 
@@ -87,6 +87,7 @@ private:
     std::string previewCanvas_; // "" = primeiro canvas
     Clock::time_point lastPreview_{};
     int activeColumn_ = -1;
+    Clock::time_point columnStart_ = Clock::now(); // instante do último GO (follow por tempo)
     bool running_ = true;
     int exitCode_ = kExitRequested;
     bool recovered_ = false;

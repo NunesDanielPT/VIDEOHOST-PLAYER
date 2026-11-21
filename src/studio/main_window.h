@@ -11,9 +11,11 @@
 #include "update_checker.h"
 #include "vthost/core/project.h"
 
+#include <QElapsedTimer>
 #include <QMainWindow>
 #include <QTimer>
 
+#include <deque>
 #include <optional>
 
 class DashboardTable;
@@ -28,6 +30,7 @@ class QLabel;
 class QSplitter;
 class QTabWidget;
 class TimelinePanel;
+class TransportBar;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -63,7 +66,7 @@ private:
     void addColumn();
     void removeColumn();
     void renameColumn();
-    void setColumnFade();
+    void cueSettings(int column);
     void placeMedia(int row, int column, const QString& mediaId);
     void clearCell(int row, int column);
     void openOutputs();
@@ -97,6 +100,17 @@ private:
     void onLayerDragged(double dx, double dy, bool finished);
     void onCornerDragged(int corner, double dx, double dy, bool finished);
     void applyLayerProps(int row, const vthost::LayerProps& props, bool persist);
+
+    // Desfazer / refazer (Ctrl+Z / Ctrl+Shift+Z): instantâneos do projecto.
+    void recordUndo();
+    void clearUndo();
+    void undo();
+    void redo();
+    void restoreSnapshot(const std::string& json);
+    void updateUndoActions();
+
+    // Barra de tempo do Workspace
+    void updateTransport();
 
     // Show
     void go(int column);
@@ -147,6 +161,12 @@ private:
     QString workspaceCanvas_;    // canvas mostrado no Workspace
     std::optional<vthost::LayerProps> dragStartProps_;
     QTimer pushTimer_;
+    std::deque<std::string> undoStack_;
+    std::deque<std::string> redoStack_;
+    std::string undoBase_;        // estado actual já registado
+    QElapsedTimer lastUndoPush_;  // agrupa alterações seguidas (ex. arrastar um valor)
+    bool restoring_ = false;
+    std::string transportLayer_;  // layer controlada pela barra de tempo
 
     QSplitter* mainSplit_ = nullptr;
     QSplitter* topSplit_ = nullptr;
@@ -158,6 +178,9 @@ private:
     DashboardTable* dashboard_ = nullptr;
     LayerHeader* layerHeader_ = nullptr;
     TimelinePanel* timelinePanel_ = nullptr;
+    TransportBar* transport_ = nullptr;
+    QAction* undoAction_ = nullptr;
+    QAction* redoAction_ = nullptr;
     QLabel* engineLabel_ = nullptr;
     QLabel* infoLabel_ = nullptr;
     QAction* showModeAction_ = nullptr;
