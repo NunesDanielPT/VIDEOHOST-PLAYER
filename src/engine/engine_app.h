@@ -1,7 +1,8 @@
 #pragma once
 
+#include "audio_output.h"
+#include "cue_player.h"
 #include "ipc_server.h"
-#include "layer_player.h"
 #include "ndi_output.h"
 #include "output_window.h"
 #include "renderer.h"
@@ -45,26 +46,15 @@ private:
 
     std::string handle(const std::string& line);
     bool loadProject(const std::string& path, std::string* error);
-    bool go(int column, std::string* error, double fadeOverride = -1.0, bool retrigger = false);
+    bool play(int index, const CuePlayer::StartOptions& opts, std::string* error);
     void applySettings(const protocol::EngineSettings& s);
-    void stopAll(double fade);
-
-    // Timeline
-    bool timelinePlay(const std::string& id, double time, std::string* error);
-    void timelinePause();
-    void timelineStop();
-    bool timelineSeek(const std::string& id, double time, std::string* error);
-    void leaveTimeline();
-    double timelineTime() const;
-    void updateTimeline();
+    void handleCueEnd();      // fim da cue: pausa, apaga, "ir para" ou a seguinte
 
     // Preview partilhado com o Studio
     bool initPreview();
     void writePreview(const std::uint8_t* data, int rowPitch, int width, int height);
-    void syncLayers();
+    void syncCanvas();
     void syncOutputs();
-    void syncCanvases();
-    void handleMediaEnds(); // modos de loop: once-stop / auto-follow
     void recover();
     void renderFrame();
     void saveStateIfDue(bool force = false);
@@ -72,31 +62,21 @@ private:
 
     Renderer renderer_;
     IpcServer ipc_;
+    AudioOutput audio_;
+    std::unique_ptr<CuePlayer> player_; // criado depois do renderer
     Project project_;
     std::string projectPath_;
     std::vector<std::unique_ptr<OutputWindow>> outputs_; // Display / Window
     std::vector<std::unique_ptr<NdiOutput>> ndi_;
     std::vector<Output> outputConfig_;                   // configuração aplicada
-    std::map<std::string, float> clipFade_;              // fades dos clips da timeline, por layer
-    std::map<std::string, std::unique_ptr<LayerPlayer>> players_;
-    std::map<std::string, LayerProps> layerProps_;
     std::vector<std::string> warnings_;
     bool showMode_ = false;
     protocol::EngineSettings settings_;
     bool testCard_ = false;
-    std::string previewCanvas_; // "" = primeiro canvas
     Clock::time_point lastPreview_{};
-    int activeColumn_ = -1;
-    Clock::time_point columnStart_ = Clock::now(); // instante do último GO (follow por tempo)
     bool running_ = true;
     int exitCode_ = kExitRequested;
     bool recovered_ = false;
-
-    std::string activeTimeline_; // "" = modo dashboard
-    double tlTime_ = 0.0;        // tempo da timeline em tlAnchor_
-    Clock::time_point tlAnchor_ = Clock::now();
-    bool tlPlaying_ = false;
-    double tlLastEval_ = 0.0;
 
     HANDLE previewMapping_ = nullptr;
     std::uint8_t* previewBlock_ = nullptr;

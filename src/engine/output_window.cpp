@@ -1,5 +1,8 @@
 #include "output_window.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "displays.h"
 #include "vthost/core/log.h"
 
@@ -164,21 +167,41 @@ void OutputWindow::resize(int w, int h) {
         renderer_.device()->CreateRenderTargetView(back.Get(), nullptr, &rtv_);
     width_ = w;
     height_ = h;
+    updateLetterbox();
 }
 
-void OutputWindow::setSource(const std::string& canvasId, const OutputMapping& mapping) {
+void OutputWindow::setCanvas(const std::string& canvasId, int canvasW, int canvasH) {
+    if (canvasId == canvasId_ && canvasW == canvasW_ && canvasH == canvasH_ && mesh_.vb) return;
     canvasId_ = canvasId;
-    config_.canvasId = canvasId;
-    config_.mapping = mapping;
-    config_.mapping.sanitize();
-    WarpMesh m;
-    if (renderer_.buildWarpMesh(config_.mapping, m)) mesh_ = m;
+    canvasW_ = std::max(1, canvasW);
+    canvasH_ = std::max(1, canvasH);
+    updateLetterbox();
+}
+
+void OutputWindow::updateLetterbox() {
+    // Ajusta o canvas à saída mantendo a proporção (barras pretas onde sobrar).
+    OutputMapping m;
+    if (width_ > 0 && height_ > 0) {
+        const double ca = static_cast<double>(canvasW_) / canvasH_;
+        const double oa = static_cast<double>(width_) / height_;
+        double w = 1.0, h = 1.0;
+        if (ca > oa) h = oa / ca;
+        else w = ca / oa;
+        const double x0 = (1.0 - w) / 2.0, y0 = (1.0 - h) / 2.0;
+        if (std::abs(w - 1.0) > 1e-4 || std::abs(h - 1.0) > 1e-4) {
+            m.mode = WarpMode::Perspective;
+            m.corners = {{{x0, y0}, {x0 + w, y0}, {x0 + w, y0 + h}, {x0, y0 + h}}};
+        }
+    }
+    mapping_ = m;
+    WarpMesh mesh;
+    if (renderer_.buildWarpMesh(mapping_, mesh)) mesh_ = mesh;
 }
 
 void OutputWindow::present(bool vsync, bool testCard) {
     if (!swapChain_ || !rtv_) return;
-    if (!mesh_.vb) setSource(canvasId_, config_.mapping);
-    renderer_.drawOutput(rtv_.Get(), width_, height_, canvasId_, config_.mapping, mesh_, testCard);
+    if (!mesh_.vb) updateLetterbox();
+    renderer_.drawOutput(rtv_.Get(), width_, height_, canvasId_, mapping_, mesh_, testCard);
     const HRESULT hr = swapChain_->Present(vsync ? 1 : 0, 0);
     if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
         lost_ = true;

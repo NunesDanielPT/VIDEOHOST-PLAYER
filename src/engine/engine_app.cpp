@@ -20,8 +20,12 @@ namespace vthost {
 
 using namespace std::chrono_literals;
 
+namespace {
+const std::string kCanvasId = "C1"; // o player tem um só canvas (resolução do projecto)
+} // namespace
+
 EngineApp::~EngineApp() {
-    players_.clear();
+    player_.reset();
     outputs_.clear();
     if (previewBlock_) UnmapViewOfFile(previewBlock_);
     if (previewMapping_) CloseHandle(previewMapping_);
@@ -69,49 +73,23 @@ bool EngineApp::loadProject(const std::string& path, std::string* error) {
     projectPath_ = path;
     warnings_ = r.warnings;
     for (const auto& w : warnings_) log::warn("projecto: " + w);
-    log::info("projecto carregado: " + project_.name + " (" + path + ")");
+    log::info("projecto carregado: " + project_.name + " (" + path + ", " + std::to_string(project_.cues.size()) + " cues)");
 
-    syncCanvases();
-    syncLayers();
+    syncCanvas();
     syncOutputs();
-    if (activeColumn_ >= static_cast<int>(project_.columns.size())) activeColumn_ = -1;
-    if (!activeTimeline_.empty() && !project_.findTimeline(activeTimeline_)) timelineStop();
-    // Clips da timeline podem ter mudado: reavalia no próximo frame.
-    if (!activeTimeline_.empty())
-        for (auto& [id, p] : players_) p->clearTag();
+    // A cue no ar continua; recebe os parâmetros novos (volume, fades...) e o índice actual.
+    if (player_ && player_->active()) {
+        const int idx = project_.cueIndex(player_->cueId());
+        if (idx >= 0) player_->updateCue(project_.cues[static_cast<std::size_t>(idx)], idx);
+        else player_->updateCue(player_->cue(), -1); // cue apagada: acaba e pára
+    }
     return true;
 }
 
-void EngineApp::syncLayers() {
-    // Layers novas ganham um player; as removidas desaparecem. As que continuam
-    // NÃO são interrompidas: editar o projecto não pára o que está no ecrã.
-    std::set<std::string> ids;
-    for (const auto& l : project_.layers) {
-        ids.insert(l.id);
-        if (!players_.count(l.id)) players_[l.id] = std::make_unique<LayerPlayer>(l.id);
-        layerProps_[l.id] = l.props;
-    }
-    for (auto it = players_.begin(); it != players_.end();) {
-        if (!ids.count(it->first)) {
-            layerProps_.erase(it->first);
-            it = players_.erase(it);
-        } else {
-            ++it;
-        }
-    }
-}
-
-void EngineApp::syncCanvases() {
-    std::set<std::string> ids;
-    if (project_.canvases.empty()) {
-        renderer_.ensureCanvas("C1", 1920, 1080);
-        ids.insert("C1");
-    }
-    for (const auto& c : project_.canvases) {
-        renderer_.ensureCanvas(c.id, c.width, c.height);
-        ids.insert(c.id);
-    }
-    renderer_.keepOnlyCanvases(ids);
+void EngineApp::syncCanvas() {
+    renderer_.ensureCanvas(kCanvasId, project_.width, project_.height);
+    renderer_.keepOnlyCanvases({kCanvasId});
+    for (auto& w : outputs_) w->setCanvas(kCanvasId, project_.width, project_.height);
 }
 
 namespace {
@@ -124,19 +102,9 @@ bool sameOutput(const Output& a, const Output& b) {
 } // namespace
 
 void EngineApp::syncOutputs() {
-    // Canvas e mapping mudam-se sem recriar janelas (sem piscar).
-    for (auto& w : outputs_)
-        for (const auto& o : project_.outputs)
-            if (o.id == w->id()) {
-                const std::string cid = project_.resolveCanvasId(o.canvasId);
-                if (cid != w->config().canvasId || !(o.mapping == w->config().mapping)) w->setSource(cid, o.mapping);
-            }
     bool same = outputConfig_.size() == project_.outputs.size();
     for (std::size_t i = 0; same && i < outputConfig_.size(); ++i) same = sameOutput(outputConfig_[i], project_.outputs[i]);
-    if (same) {
-        outputConfig_ = project_.outputs;
-        return;
-    }
+    if (same) return;
 
     // Só recria as saídas que mudaram: as outras continuam sem piscar.
     std::vector<std::unique_ptr<OutputWindow>> oldWindows = std::move(outputs_);
@@ -149,13 +117,12 @@ void EngineApp::syncOutputs() {
             auto it = std::find_if(oldWindows.begin(), oldWindows.end(),
                                    [&](const auto& w) { return w && sameOutput(w->config(), o); });
             if (it != oldWindows.end()) {
-                (*it)->setSource(project_.resolveCanvasId(o.canvasId), o.mapping);
                 outputs_.push_back(std::move(*it));
                 continue;
             }
             auto w = std::make_unique<OutputWindow>(renderer_, o);
             if (!w->create()) log::error("output " + o.id + ": " + w->error());
-            w->setSource(project_.resolveCanvasId(o.canvasId), o.mapping);
+            w->setCanvas(kCanvasId, project_.width, project_.height);
             outputs_.push_back(std::move(w));
         } else if (o.type == OutputType::Ndi) {
             const std::string name = o.ndiName.empty() ? "VTHOST - " + o.name : o.ndiName;
@@ -173,52 +140,43 @@ void EngineApp::syncOutputs() {
     outputConfig_ = project_.outputs;
 }
 
+// ---------------------------------------------------------------- playlist
 
-
-bool EngineApp::go(int column, std::string* error, double fadeOverride, bool retrigger) {
-    if (column < 0 || column >= static_cast<int>(project_.columns.size())) {
-        if (error) *error = "coluna inexistente";
+bool EngineApp::play(int index, const CuePlayer::StartOptions& opts, std::string* error) {
+    if (index < 0 || index >= static_cast<int>(project_.cues.size())) {
+        if (error) *error = "cue inexistente";
         return false;
     }
-    leaveTimeline(); // o dashboard volta a mandar nas layers
-    const Column& col = project_.columns[static_cast<std::size_t>(column)];
-    // Shift+GO (fadeOverride 0) = corte seco; transição "corte" ignora a duração.
-    double fade = fadeOverride >= 0.0 ? fadeOverride : col.fadeSeconds;
-    if (fadeOverride < 0.0 && col.transition == TransitionType::Cut) fade = 0.0;
-    const auto style = col.transition == TransitionType::FadeThroughBlack ? LayerPlayer::FadeStyle::ThroughBlack
-                                                                           : LayerPlayer::FadeStyle::Cross;
-    // "Seguir no fim do vídeo": o vídeo da cue toca uma vez, senão nunca acabaria.
-    const bool followOnEnd = col.follow == FollowMode::MediaEnd;
-    for (const auto& layer : project_.layers) {
-        auto& player = players_[layer.id];
-        if (!player) player = std::make_unique<LayerPlayer>(layer.id);
-        player->setPaused(false); // GO retoma layers pausadas na barra de tempo
-        auto cell = col.cells.find(layer.id);
-        if (cell == col.cells.end()) {
-            // Célula vazia: a coluna define o estado completo, por isso a layer apaga-se.
-            player->stop(fade, style);
-            continue;
-        }
-        const MediaItem* media = project_.findMedia(cell->second);
-        if (!media) continue;
-        // Já está a tocar: não reinicia (exceto se já acabou, ex. "once", ou se a cue
-        // é repetida por um salto para si própria).
-        if (!retrigger && player->mediaId() == media->id && player->tag().empty() &&
-            !player->ended() && !followOnEnd)
-            continue;
-        player->play(media->id, media->path, media->loops() && !followOnEnd, fade, 0.0, {}, style);
-    }
-    activeColumn_ = column;
-    columnStart_ = Clock::now();
-    log::info("GO coluna " + std::to_string(column) + " (" + col.name + ")");
+    player_->start(project_.cues[static_cast<std::size_t>(index)], index, opts);
     saveStateIfDue(true);
     return true;
 }
 
-void EngineApp::stopAll(double fade) {
-    leaveTimeline();
-    for (auto& [id, p] : players_) p->stop(fade);
-    activeColumn_ = -1;
+void EngineApp::handleCueEnd() {
+    if (!player_->active() || player_->endHandled() || !player_->reachedEnd()) return;
+    // Proteção: um ficheiro que "acaba" logo não pode disparar a seguinte a cada frame.
+    if (player_->secondsSinceStart() < 0.25) return;
+    player_->setEndHandled();
+    const Cue cue = player_->cue();
+    const int idx = player_->index();
+    if (cue.pauseAtEnd) {
+        player_->holdAtEnd();
+        log::info("fim da cue " + std::to_string(idx + 1) + ": pausa no último frame");
+    } else if (cue.clearAtEnd || idx < 0) {
+        player_->stop(0.0);
+        log::info("fim da cue " + std::to_string(idx + 1) + ": apagar");
+    } else {
+        const int next = project_.nextCue(idx);
+        if (next < 0) {
+            player_->stop(0.0); // fim da playlist
+            log::info("fim da playlist");
+        } else {
+            CuePlayer::StartOptions o;
+            o.paused = project_.cues[static_cast<std::size_t>(next)].pauseAtStart;
+            std::string err;
+            play(next, o, &err);
+        }
+    }
     saveStateIfDue(true);
 }
 
@@ -234,24 +192,14 @@ void EngineApp::recover() {
         return;
     }
     showMode_ = st.showMode;
-    activeColumn_ = st.activeColumn;
-    for (const auto& lp : st.layers) {
-        auto it = players_.find(lp.layerId);
-        if (it == players_.end()) continue;
-        layerProps_[lp.layerId] = lp.props;
-        if (!st.timelineId.empty()) continue; // a timeline repõe as media sozinha
-        const bool followOnEnd = activeColumn_ >= 0 && activeColumn_ < static_cast<int>(project_.columns.size()) &&
-                                 project_.columns[static_cast<std::size_t>(activeColumn_)].follow == FollowMode::MediaEnd;
-        if (const MediaItem* m = project_.findMedia(lp.mediaId))
-            it->second->play(m->id, m->path, m->loops() && !followOnEnd, 0.0, lp.positionSeconds);
-    }
-    if (!st.timelineId.empty() && project_.findTimeline(st.timelineId)) {
-        activeTimeline_ = st.timelineId;
-        tlTime_ = st.timelineTime;
-        tlLastEval_ = st.timelineTime;
-        tlAnchor_ = Clock::now();
-        tlPlaying_ = st.timelinePlaying;
-        activeColumn_ = -1;
+    testCard_ = st.testCard;
+    const int idx = project_.cueIndex(st.cueId);
+    if (idx >= 0) {
+        CuePlayer::StartOptions o;
+        o.startTime = st.cueTime;
+        o.paused = st.paused;
+        o.cut = true;
+        play(idx, o, &err);
     }
     recovered_ = true;
     log::warn("RECUPERAÇÃO: show retomado após reinício do motor");
@@ -265,16 +213,11 @@ void EngineApp::saveStateIfDue(bool force) {
     ShowState st;
     st.projectPath = projectPath_;
     st.showMode = showMode_;
-    st.activeColumn = activeColumn_;
-    st.timelineId = activeTimeline_;
-    st.timelineTime = timelineTime();
-    st.timelinePlaying = tlPlaying_;
-    for (const auto& l : project_.layers) {
-        auto it = players_.find(l.id);
-        if (it == players_.end()) continue;
-        const auto pr = layerProps_.find(l.id);
-        st.layers.push_back({l.id, it->second->mediaId(), it->second->position(),
-                             pr != layerProps_.end() ? pr->second : l.props});
+    st.testCard = testCard_;
+    if (player_ && player_->active()) {
+        st.cueId = player_->cueId();
+        st.cueTime = player_->cueTime();
+        st.paused = player_->paused() || player_->holding();
     }
     std::string err;
     if (!saveShowState(st, &err)) {
@@ -298,81 +241,59 @@ std::string EngineApp::handle(const std::string& line) {
     case CommandType::Ping:
         return okResponse();
     case CommandType::LoadProject:
-        if (showMode_) return errorResponse("Show Mode activo: desligue-o para alterar o projecto");
         return loadProject(c.path, &err) ? okResponse() : errorResponse(err);
-    case CommandType::Go:
-        return go(c.column, &err, c.value) ? okResponse() : errorResponse(err);
+    case CommandType::Play: {
+        CuePlayer::StartOptions o;
+        o.paused = c.paused;
+        o.cut = c.cut;
+        return play(c.cue, o, &err) ? okResponse() : errorResponse(err);
+    }
+    case CommandType::Transport:
+        if (c.action == TransportAction::Stop) {
+            player_->stop(0.0);
+            log::info("stop");
+            saveStateIfDue(true);
+            return okResponse();
+        }
+        if (!player_->active()) return errorResponse("nada no ar");
+        if (player_->holding() && c.action != TransportAction::Pause) {
+            // Parada no fim: "play" continua para a cue seguinte.
+            const int next = project_.nextCue(player_->index());
+            if (next < 0) return errorResponse("fim da playlist");
+            CuePlayer::StartOptions o;
+            return play(next, o, &err) ? okResponse() : errorResponse(err);
+        }
+        if (c.action == TransportAction::Pause) player_->setPaused(true);
+        else if (c.action == TransportAction::Resume) player_->setPaused(false);
+        else player_->setPaused(!player_->paused());
+        saveStateIfDue(true);
+        return okResponse();
+    case CommandType::Seek:
+        if (!player_->active()) return errorResponse("nada no ar");
+        player_->seekInPass(c.time);
+        return okResponse();
+    case CommandType::SeekRemaining:
+        if (!player_->active()) return errorResponse("nada no ar");
+        player_->seekRemaining(c.time);
+        return okResponse();
     case CommandType::SetSettings:
         applySettings(c.settings);
         return okResponse();
-    case CommandType::SetOutputMapping: {
-        // Ao vivo (editor de mapping): sem recarregar o projeto nem recriar a janela.
-        for (auto& o : project_.outputs)
-            if (o.id == c.output) {
-                o.mapping = c.mapping;
-                for (auto& w : outputs_)
-                    if (w->id() == o.id) w->setSource(project_.resolveCanvasId(o.canvasId), o.mapping);
-                for (auto& cfg : outputConfig_)
-                    if (cfg.id == o.id) cfg.mapping = o.mapping;
-                return okResponse();
-            }
-        return errorResponse("saída inexistente");
-    }
-    case CommandType::SetTestCard:
-        testCard_ = c.on;
-        log::info(testCard_ ? "test card ligado" : "test card desligado");
-        return okResponse();
-    case CommandType::SetPreviewCanvas:
-        previewCanvas_ = c.canvas;
-        return okResponse();
-    case CommandType::StopAll:
-        stopAll(c.value);
-        return okResponse();
-    case CommandType::SetLayerProps:
-        if (!project_.findLayer(c.layer)) return errorResponse("layer inexistente");
-        layerProps_[c.layer] = c.props; // ao vivo, também em Show Mode
-        return okResponse();
-    case CommandType::SetLayerVisible: {
-        // Ao vivo (também em Show Mode): altera a cópia do projeto do motor.
-        for (auto& l : project_.layers)
-            if (l.id == c.layer) {
-                l.visible = c.on;
-                return okResponse();
-            }
-        return errorResponse("layer inexistente");
-    }
-    case CommandType::LayerSeek:
-    case CommandType::LayerPause: {
-        if (!activeTimeline_.empty()) return errorResponse("timeline activa: use os controlos da timeline");
-        auto it = players_.find(c.layer);
-        if (it == players_.end() || !it->second) return errorResponse("layer inexistente");
-        if (c.type == CommandType::LayerSeek) it->second->seek(c.value);
-        else it->second->setPaused(c.on);
-        return okResponse();
-    }
-    case CommandType::Timeline:
-        switch (c.action) {
-        case TimelineAction::Play:
-            return timelinePlay(c.timeline, c.value, &err) ? okResponse() : errorResponse(err);
-        case TimelineAction::Pause:
-            timelinePause();
-            return okResponse();
-        case TimelineAction::Stop:
-            timelineStop();
-            return okResponse();
-        case TimelineAction::Seek:
-            return timelineSeek(c.timeline, c.value, &err) ? okResponse() : errorResponse(err);
-        }
-        return errorResponse("acção de timeline desconhecida");
     case CommandType::SetShowMode:
         showMode_ = c.on;
         log::info(showMode_ ? "Show Mode ligado" : "Show Mode desligado");
         saveStateIfDue(true);
         return okResponse();
+    case CommandType::SetTestCard:
+        testCard_ = c.on;
+        log::info(testCard_ ? "test card ligado" : "test card desligado");
+        return okResponse();
     case CommandType::GetStatus:
         return statusResponse(buildStatus());
     case CommandType::ListDisplays:
         return displaysResponse(enumerateDisplays());
+    case CommandType::ListAudioDevices:
+        return audioDevicesResponse(AudioOutput::listDevices());
     case CommandType::Shutdown:
         if (showMode_) return errorResponse("Show Mode activo: desligue-o para parar o motor");
         setRunState(EngineRunState::StoppingOnPurpose);
@@ -391,23 +312,19 @@ protocol::EngineStatus EngineApp::buildStatus() const {
     s.projectName = project_.name;
     s.projectPath = projectPath_;
     s.showMode = showMode_;
-    s.activeColumn = activeColumn_;
-    if (activeColumn_ >= 0)
-        s.activeColumnTime = std::chrono::duration<double>(Clock::now() - columnStart_).count();
     s.fps = fps_;
     s.uptimeSeconds = std::chrono::duration<double>(Clock::now() - startTime_).count();
     s.recovered = recovered_;
-    s.timelineId = activeTimeline_;
-    s.timelineTime = timelineTime();
-    s.timelinePlaying = tlPlaying_;
     s.testCard = testCard_;
-    s.previewCanvas = project_.resolveCanvasId(previewCanvas_);
-    for (const auto& l : project_.layers) {
-        auto it = players_.find(l.id);
-        if (it == players_.end()) continue;
-        s.layers.push_back({l.id, it->second->mediaId(), it->second->stateName(), it->second->position(),
-                            it->second->error(), it->second->duration(), it->second->paused()});
+    if (player_) {
+        player_->fillStatus(s);
+        if (player_->active() && player_->index() >= 0) s.nextCue = project_.nextCue(player_->index());
     }
+    s.audioDevice = audio_.deviceName();
+    s.audioOk = audio_.ok();
+    s.audioError = audio_.error();
+    s.levelL = audio_.levelL();
+    s.levelR = audio_.levelR();
     for (const auto& cfg : project_.outputs) {
         protocol::OutputStatus os;
         os.id = cfg.id;
@@ -442,146 +359,17 @@ protocol::EngineStatus EngineApp::buildStatus() const {
 }
 
 void EngineApp::applySettings(const protocol::EngineSettings& s) {
-    if (s.priority != settings_.priority || !(s == settings_)) {
+    if (!(s == settings_)) {
         DWORD cls = ABOVE_NORMAL_PRIORITY_CLASS;
         if (s.priority == "normal") cls = NORMAL_PRIORITY_CLASS;
         else if (s.priority == "high") cls = HIGH_PRIORITY_CLASS;
         SetPriorityClass(GetCurrentProcess(), cls);
         log::info("preferências: vsync=" + std::string(s.vsync ? "on" : "off") + " preview=" +
                   std::to_string(s.previewFps) + "fps prioridade=" + s.priority +
-                  " loopBoard=" + (s.loopBoard ? "on" : "off"));
+                  " áudio=" + (s.audioDevice.empty() ? std::string("omissão") : s.audioDevice));
     }
+    audio_.setDevice(s.audioDevice);
     settings_ = s;
-}
-
-// ---------------------------------------------------------------- timeline
-
-double EngineApp::timelineTime() const {
-    if (!tlPlaying_) return tlTime_;
-    return tlTime_ + std::chrono::duration<double>(Clock::now() - tlAnchor_).count();
-}
-
-bool EngineApp::timelinePlay(const std::string& id, double time, std::string* error) {
-    if (!project_.findTimeline(id)) {
-        if (error) *error = "timeline inexistente";
-        return false;
-    }
-    if (activeTimeline_ != id) {
-        activeTimeline_ = id;
-        activeColumn_ = -1;
-        tlTime_ = 0.0;
-        tlLastEval_ = 0.0;
-        for (auto& [lid, p] : players_) p->clearTag();
-    }
-    if (time >= 0.0 && !timelineSeek(id, time, error)) return false;
-    tlTime_ = timelineTime();
-    tlAnchor_ = Clock::now();
-    tlPlaying_ = true;
-    for (auto& [lid, p] : players_) p->setPaused(false);
-    log::info("timeline " + id + " play @ " + std::to_string(tlTime_));
-    saveStateIfDue(true);
-    return true;
-}
-
-void EngineApp::timelinePause() {
-    if (activeTimeline_.empty() || !tlPlaying_) return;
-    tlTime_ = timelineTime();
-    tlPlaying_ = false;
-    for (auto& [lid, p] : players_) p->setPaused(true);
-    saveStateIfDue(true);
-}
-
-void EngineApp::timelineStop() {
-    clipFade_.clear();
-    if (activeTimeline_.empty()) return;
-    activeTimeline_.clear();
-    tlPlaying_ = false;
-    tlTime_ = 0.0;
-    for (auto& [lid, p] : players_) {
-        p->setPaused(false);
-        p->stop(0.3);
-    }
-    saveStateIfDue(true);
-}
-
-bool EngineApp::timelineSeek(const std::string& id, double time, std::string* error) {
-    const Timeline* tl = project_.findTimeline(id);
-    if (!tl) {
-        if (error) *error = "timeline inexistente";
-        return false;
-    }
-    if (activeTimeline_ != id) {
-        // Seek numa timeline parada: fica activa e em pausa nesse ponto.
-        activeTimeline_ = id;
-        activeColumn_ = -1;
-        tlPlaying_ = false;
-    }
-    tlTime_ = std::clamp(time, 0.0, tl->duration());
-    tlLastEval_ = tlTime_;
-    tlAnchor_ = Clock::now();
-    for (auto& [lid, p] : players_) {
-        p->clearTag(); // recomeça cada clip no ponto certo
-        p->setPaused(!tlPlaying_);
-    }
-    return true;
-}
-
-void EngineApp::leaveTimeline() {
-    clipFade_.clear();
-    if (activeTimeline_.empty()) return;
-    activeTimeline_.clear();
-    tlPlaying_ = false;
-    for (auto& [lid, p] : players_) p->setPaused(false);
-}
-
-void EngineApp::updateTimeline() {
-    if (activeTimeline_.empty()) return;
-    const Timeline* tl = project_.findTimeline(activeTimeline_);
-    if (!tl) {
-        timelineStop();
-        return;
-    }
-    double t = timelineTime();
-
-    // Segmentos em loop: ao passar o fim, volta ao início do segmento.
-    for (const auto& seg : tl->segments) {
-        if (!seg.loop || !tlPlaying_) continue;
-        const double len = seg.end - seg.start;
-        if (len < 0.1) continue;
-        if (tlLastEval_ >= seg.start - 0.001 && tlLastEval_ < seg.end && t >= seg.end) {
-            t = seg.start + std::fmod(t - seg.end, len);
-            tlTime_ = t;
-            tlAnchor_ = Clock::now();
-            for (auto& [lid, p] : players_) p->clearTag();
-            break;
-        }
-    }
-
-    const double dur = tl->duration();
-    if (tlPlaying_ && t >= dur) {
-        // Fim da timeline: fica parada no último frame.
-        t = dur;
-        tlTime_ = dur;
-        tlPlaying_ = false;
-        for (auto& [lid, p] : players_) p->setPaused(true);
-    }
-    tlLastEval_ = t;
-
-    for (const auto& layer : project_.layers) {
-        auto& player = players_[layer.id];
-        if (!player) player = std::make_unique<LayerPlayer>(layer.id);
-        const Clip* clip = tl->clipAt(layer.id, t);
-        clipFade_[layer.id] = clip ? static_cast<float>(clip->opacityAt(t)) : 1.0f;
-        if (clip) {
-            if (player->tag() == clip->id) continue;
-            const MediaItem* media = project_.findMedia(clip->mediaId);
-            if (!media) continue;
-            player->play(media->id, media->path, true, 0.0, clip->inPoint + (t - clip->start), clip->id);
-            player->setPaused(!tlPlaying_);
-        } else if (!player->mediaId().empty()) {
-            player->stop(0.0);
-        }
-    }
 }
 
 // ---------------------------------------------------------------- preview
@@ -606,7 +394,7 @@ void EngineApp::writePreview(const std::uint8_t* data, int rowPitch, int width, 
     h->height = static_cast<std::uint32_t>(height);
     h->stride = static_cast<std::uint32_t>(width * 4);
     int cw = 0, ch = 0;
-    renderer_.canvasSize(project_.resolveCanvasId(previewCanvas_), cw, ch);
+    renderer_.canvasSize(kCanvasId, cw, ch);
     h->canvasWidth = static_cast<std::uint32_t>(cw);
     h->canvasHeight = static_cast<std::uint32_t>(ch);
     std::uint8_t* dst = previewBlock_ + sizeof(PreviewHeader);
@@ -619,98 +407,19 @@ void EngineApp::writePreview(const std::uint8_t* data, int rowPitch, int width, 
 
 // ---------------------------------------------------------------- render loop
 
-void EngineApp::handleMediaEnds() {
-    if (!activeTimeline_.empty()) return; // na timeline mandam os clips
-    bool follow = false;
-    for (const auto& layer : project_.layers) {
-        auto it = players_.find(layer.id);
-        if (it == players_.end() || !it->second->ended() || !it->second->tag().empty()) continue;
-        const MediaItem* m = project_.findMedia(it->second->mediaId());
-        if (!m) continue;
-        if (m->loopMode == LoopMode::OnceStop) it->second->stop(0.0);
-        else if (m->loopMode == LoopMode::AutoFollow) follow = true;
-    }
-    const int n = static_cast<int>(project_.columns.size());
-    if (activeColumn_ < 0 || activeColumn_ >= n) return;
-    const Column& col = project_.columns[static_cast<std::size_t>(activeColumn_)];
-    const double elapsed = std::chrono::duration<double>(Clock::now() - columnStart_).count();
-    // Proteção: um ficheiro estragado que "acaba" logo não pode disparar GO a cada frame.
-    if (elapsed < 0.25) return;
-
-    const char* reason = "auto-follow";
-    if (col.follow == FollowMode::Timer && elapsed >= col.followSeconds) {
-        follow = true;
-        reason = "tempo da cue";
-    } else if (col.follow == FollowMode::MediaEnd) {
-        // Segue quando todos os vídeos da cue acabaram (imagens fixas não contam).
-        bool anyVideo = false;
-        bool allEnded = true;
-        for (const auto& [layerId, mediaId] : col.cells) {
-            auto it = players_.find(layerId);
-            if (it == players_.end() || it->second->mediaId() != mediaId || !it->second->tag().empty()) continue;
-            if (it->second->duration() <= 0.0 && !it->second->ended()) {
-                if (it->second->stateName() == "loading") allEnded = false; // ainda não se sabe
-                continue;
-            }
-            anyVideo = true;
-            if (!it->second->ended()) allEnded = false;
-        }
-        if (anyVideo && allEnded) {
-            follow = true;
-            reason = "fim do vídeo da cue";
-        }
-    }
-    if (!follow) return;
-    const int next = project_.nextColumn(activeColumn_, settings_.loopBoard);
-    if (next < 0) return; // fim do board: fica na última cue
-    if (next == activeColumn_ && col.jumpTo.empty()) return;
-    std::string err;
-    log::info(std::string(reason) + ": coluna " + std::to_string(next));
-    go(next, &err, -1.0, next == activeColumn_);
-}
-
 void EngineApp::renderFrame() {
-    updateTimeline();
-    handleMediaEnds();
-    for (auto& [id, p] : players_) p->update(renderer_);
+    player_->update(project_);
+    handleCueEnd();
 
-    // Cada canvas compõe as suas layers. layers[0] é a de cima: desenha de baixo para cima.
-    std::vector<std::string> canvasIds;
-    for (const auto& c : project_.canvases) canvasIds.push_back(c.id);
-    if (canvasIds.empty()) canvasIds.push_back("C1");
-    for (const auto& cid : canvasIds) {
-    renderer_.beginCanvas(cid);
-    for (auto it = project_.layers.rbegin(); it != project_.layers.rend(); ++it) {
-        if (!it->visible || project_.resolveCanvasId(it->canvasId) != cid) continue;
-        auto p = players_.find(it->id);
-        if (p == players_.end()) continue;
-        const auto pr = layerProps_.find(it->id);
-        const auto cf = clipFade_.find(it->id);
-        p->second->draw(renderer_, pr != layerProps_.end() ? pr->second : it->props,
-                        cf != clipFade_.end() ? cf->second : 1.0f);
-    }
-    }
+    renderer_.beginCanvas(kCanvasId);
+    player_->draw();
 
-    // Saídas NDI: canvas em resolução total, copiado sem esperar pela GPU; cada
-    // saída envia a sua região do canvas.
-    std::set<std::string> ndiCanvases;
-    for (const auto& n : ndi_)
-        if (n->ok())
-            for (const auto& o : project_.outputs)
-                if (o.id == n->id()) ndiCanvases.insert(project_.resolveCanvasId(o.canvasId));
-    for (const auto& cid : ndiCanvases)
-        renderer_.captureCanvas(cid, [this, &cid](const std::uint8_t* d, int pitch, int w, int h) {
-            for (auto& n : ndi_) {
-                for (const auto& o : project_.outputs) {
-                    if (o.id != n->id() || project_.resolveCanvasId(o.canvasId) != cid) continue;
-                    const OutputMapping& m = o.mapping;
-                    const int x0 = std::clamp(static_cast<int>(m.srcX), 0, w - 1);
-                    const int y0 = std::clamp(static_cast<int>(m.srcY), 0, h - 1);
-                    const int rw = std::clamp(m.srcW > 0 ? static_cast<int>(m.srcW) : w, 1, w - x0);
-                    const int rh = std::clamp(m.srcH > 0 ? static_cast<int>(m.srcH) : h, 1, h - y0);
-                    n->submit(d + static_cast<std::size_t>(y0) * pitch + static_cast<std::size_t>(x0) * 4, pitch, rw, rh, fps_);
-                }
-            }
+    // Saídas NDI: canvas em resolução total, copiado sem esperar pela GPU.
+    bool anyNdi = false;
+    for (const auto& n : ndi_) anyNdi = anyNdi || n->ok();
+    if (anyNdi)
+        renderer_.captureCanvas(kCanvasId, [this](const std::uint8_t* d, int pitch, int w, int h) {
+            for (auto& n : ndi_) n->submit(d, pitch, w, h, fps_);
         });
 
     // Preview para o Studio ao ritmo escolhido nas preferências.
@@ -718,7 +427,7 @@ void EngineApp::renderFrame() {
     if (previewBlock_ && settings_.previewFps > 0 &&
         now - lastPreview_ >= std::chrono::duration<double>(1.0 / settings_.previewFps)) {
         lastPreview_ = now;
-        renderer_.capturePreview(project_.resolveCanvasId(previewCanvas_),
+        renderer_.capturePreview(kCanvasId,
                                  [this](const std::uint8_t* d, int pitch, int w, int h) { writePreview(d, pitch, w, h); });
     }
 
@@ -739,7 +448,8 @@ int EngineApp::run(const Options& options) {
         log::error("renderer: " + err);
         return kExitInitFailed;
     }
-    syncCanvases();
+    player_ = std::make_unique<CuePlayer>(renderer_, audio_);
+    syncCanvas();
 
     // Nada de protector de ecrã, monitores a desligar ou PC a suspender durante o show.
     SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);

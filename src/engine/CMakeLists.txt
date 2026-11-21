@@ -6,15 +6,18 @@ add_executable(vthost-engine WIN32
     renderer.cpp
     output_window.cpp
     video_decoder.cpp
-    layer_player.cpp
+    audio_decoder.cpp
+    audio_output.cpp
+    cue_player.cpp
+    reaper.cpp
     ipc_server.cpp
     ndi_output.cpp
 )
 target_link_libraries(vthost-engine PRIVATE
     vthost_core
     vthost_winutil
-    FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil FFmpeg::swscale
-    d3d11 dxgi d3dcompiler winmm)
+    FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil FFmpeg::swscale FFmpeg::swresample
+    d3d11 dxgi d3dcompiler winmm ole32 avrt)
 
 # Copia as DLLs do FFmpeg para junto do executável.
 foreach(dll IN LISTS FFMPEG_DLLS)
