@@ -32,6 +32,16 @@
 
 **Núcleo** (`src/core`): portátil, sem Windows nem Qt, testado em Linux com ASan/UBSan e em Windows. Projeto (parser tolerante), protocolo, escrita atómica, log, estado do show.
 
+## Atualizações
+
+1. Ao arrancar (opção nas Definições) ou em *Ajuda → Procurar atualizações*, o Studio lê `api.github.com/repos/NunesDanielPT/VTHOST/releases/latest`.
+2. Se a tag (`vX.Y.Z`) for mais recente que a versão instalada, mostra as notas e oferece *Atualizar agora / Mais tarde / Ignorar esta versão*.
+3. Descarrega `VTHOST-Setup-X.Y.Z.exe` (só HTTPS, só domínios do GitHub) e compara o SHA-256 com o `digest` da release ou com `VTHOST-Setup-X.Y.Z.exe.sha256`. Sem hash confirmado não instala.
+4. Pede ao motor um `shutdown` limpo, lança o instalador em modo silencioso com `/RELAUNCH=1` e fecha. O instalador pára watchdog/motor/Studio, substitui os ficheiros e reabre o Studio.
+5. Nunca atualiza com o Show Mode ligado.
+
+O instalador é por utilizador (`%LOCALAPPDATA%\Programs\VTHOST`), por isso as atualizações não pedem permissões de administrador. Os dados (`%LOCALAPPDATA%\VTHOST`) nunca são apagados.
+
 ## Códigos de saída do motor
 
 | Código | Significado | Watchdog |

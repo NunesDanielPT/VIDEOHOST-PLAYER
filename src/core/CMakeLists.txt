@@ -6,6 +6,7 @@ add_library(vthost_core STATIC
     project.cpp
     protocol.cpp
     show_state.cpp
+    version.cpp
 )
 target_include_directories(vthost_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(vthost_core PUBLIC nlohmann_json::nlohmann_json)

@@ -12,7 +12,9 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [ ] Posição / escala / rotação por layer
 - [ ] Miniaturas na biblioteca e na grelha
 - [ ] Pré-visualização do canvas dentro do Studio
-- [ ] Instalador (MSI/Inno Setup)
+- [x] Instalador (Inno Setup, por utilizador, PT/EN)
+- [x] Atualizações automáticas a partir das GitHub Releases (SHA-256 verificado, bloqueadas em Show Mode)
+- [x] Definições com secção Sobre (autor, versão, créditos)
 
 ## Fase 2 — Desempenho
 - [ ] Descodificação por hardware (D3D11VA / NVDEC) sem cópia para a CPU

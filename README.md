@@ -30,6 +30,18 @@ Fechar ou crashar o Studio **não pára** o show. / Closing or crashing the Stud
 - Minidumps em `%LOCALAPPDATA%\VTHOST\crashes`, logs em `%LOCALAPPDATA%\VTHOST\logs`
 - Show Mode: bloqueia edição e paragem do motor / locks editing and engine shutdown
 
+## Instalar / Install
+
+**PT** · Descarregue `VTHOST-Setup-x.y.z.exe` em [Releases](https://github.com/NunesDanielPT/VTHOST/releases/latest) e execute-o. Não precisa de permissões de administrador. O VTHOST Studio procura atualizações sozinho (*Definições → Geral*).
+
+**EN** · Download `VTHOST-Setup-x.y.z.exe` from [Releases](https://github.com/NunesDanielPT/VTHOST/releases/latest) and run it. No admin rights needed. VTHOST Studio checks for updates automatically (*Settings → General*).
+
+## Publicar uma versão / Release
+
+1. Subir `VERSION` em `CMakeLists.txt` (ex. `0.2.0`) e fazer commit. / Bump `VERSION` in `CMakeLists.txt` and commit.
+2. `git tag v0.2.0 && git push origin v0.2.0`
+3. A CI cria a release com o instalador; os Studios instalados oferecem a atualização. / CI publishes the release with the installer; installed Studios offer the update.
+
 ## Compilar / Build
 
 Requisitos / Requirements: Windows 10/11 x64, Visual Studio 2022, CMake ≥ 3.24, Qt 6.8 (msvc2022_64).

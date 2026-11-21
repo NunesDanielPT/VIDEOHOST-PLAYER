@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine_client.h"
+#include "update_checker.h"
 #include "vthost/core/project.h"
 
 #include <QMainWindow>
@@ -68,7 +69,12 @@ private:
     void onEngineConnection(bool connected);
     void onEngineStatus();
 
-    void setLanguage(const QString& code);
+    // Definições e atualizações
+    void openSettings(int tab = 0);
+    void checkForUpdates(bool userInitiated);
+    void onUpdateAvailable(const UpdateInfo& info);
+    void downloadUpdate(const UpdateInfo& info);
+    void installUpdate(const QString& installerPath);
     void refreshAll();
     void refreshMediaList();
     void refreshGrid();
@@ -77,6 +83,8 @@ private:
     QString nextId(const QString& prefix) const;
 
     EngineClient* engine_ = nullptr;
+    UpdateChecker* updater_ = nullptr;
+    bool updateCheckIsManual_ = false;
     vthost::Project project_;
     QString projectPath_;
     bool dirty_ = false;

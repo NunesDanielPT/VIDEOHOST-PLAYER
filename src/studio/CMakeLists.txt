@@ -13,6 +13,11 @@ qt_add_executable(vthost-studio WIN32
     main_window.h
     engine_client.cpp
     engine_client.h
+    settings_dialog.cpp
+    settings_dialog.h
+    update_checker.cpp
+    update_checker.h
+    app_info.h
 )
 target_link_libraries(vthost-studio PRIVATE vthost_core Qt6::Widgets Qt6::Network)
 

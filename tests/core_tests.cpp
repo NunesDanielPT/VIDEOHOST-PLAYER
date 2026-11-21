@@ -5,6 +5,7 @@
 #include "vthost/core/project.h"
 #include "vthost/core/protocol.h"
 #include "vthost/core/show_state.h"
+#include "vthost/core/version.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -158,7 +159,28 @@ static void testAtomicWrite() {
     fs::remove_all(dir);
 }
 
+static void testVersion() {
+    auto v = parseVersion("v1.2.3");
+    CHECK(v && v->major == 1 && v->minor == 2 && v->patch == 3);
+    CHECK(parseVersion("0.1")->toString() == "0.1.0");
+    CHECK(parseVersion("2.0.0-beta.1") && parseVersion("2.0.0-beta.1")->major == 2);
+    CHECK(!parseVersion(""));
+    CHECK(!parseVersion("v"));
+    CHECK(!parseVersion("1.2.3.4"));
+    CHECK(!parseVersion("1..2"));
+    CHECK(!parseVersion("1.2."));
+    CHECK(!parseVersion("abc"));
+    CHECK(!parseVersion("99999999999"));
+    CHECK(isNewerVersion("v0.2.0", "0.1.9"));
+    CHECK(isNewerVersion("0.10.0", "0.9.0")); // numérico, não alfabético
+    CHECK(isNewerVersion("1.0.0", "0.99.99"));
+    CHECK(!isNewerVersion("0.1.0", "0.1.0"));
+    CHECK(!isNewerVersion("0.0.9", "0.1.0"));
+    CHECK(!isNewerVersion("lixo", "0.1.0"));
+}
+
 int main() {
+    testVersion();
     testProjectRoundTrip();
     testProjectTolerance();
     testFuzzNeverThrows();

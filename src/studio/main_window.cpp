@@ -1,9 +1,13 @@
 #include "main_window.h"
 
+#include "app_info.h"
+#include "settings_dialog.h"
+
+#include <memory>
+
 #include "vthost/core/paths.h"
 
 #include <QAction>
-#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDesktopServices>
@@ -19,6 +23,8 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QProcess>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QSettings>
 #include <QSlider>
@@ -49,8 +55,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     pushTimer_.setInterval(300);
     connect(&pushTimer_, &QTimer::timeout, this, &MainWindow::pushToEngine);
 
+    updater_ = new UpdateChecker(this);
+    connect(updater_, &UpdateChecker::updateAvailable, this, &MainWindow::onUpdateAvailable);
+    connect(updater_, &UpdateChecker::upToDate, this, [this](const QString& latest) {
+        if (!updateCheckIsManual_) return;
+        QMessageBox::information(this, tr("Updates"),
+                                 latest.isEmpty() ? tr("No releases have been published yet.")
+                                                  : tr("VTHOST is up to date (version %1).").arg(appinfo::kVersion));
+    });
+    connect(updater_, &UpdateChecker::checkFailed, this, [this](const QString& err) {
+        if (updateCheckIsManual_) QMessageBox::warning(this, tr("Updates"), err);
+    });
+
     buildUi();
     buildMenus();
+
+    // Verificação automática pouco depois de arrancar (sem incomodar se falhar).
+    if (SettingsDialog::checkUpdatesOnStartup())
+        QTimer::singleShot(4000, this, [this] { checkForUpdates(false); });
 
     project_ = Project::makeDefault();
     project_.name = ss(tr("Untitled"));
@@ -135,6 +157,8 @@ void MainWindow::buildMenus() {
     file->addAction(tr("&Save"), QKeySequence::Save, this, [this] { saveProject(); });
     file->addAction(tr("Save &as..."), QKeySequence::SaveAs, this, [this] { saveProjectAs(); });
     file->addSeparator();
+    file->addAction(tr("Settings..."), QKeySequence::Preferences, this, [this] { openSettings(0); });
+    file->addSeparator();
     file->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
     editActions_ << aNew << aOpen;
 
@@ -174,16 +198,10 @@ void MainWindow::buildMenus() {
         QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdWString(paths::logsDir().wstring())));
     });
 
-    auto* lang = menuBar()->addMenu(tr("&Language"));
-    auto* group = new QActionGroup(this);
-    const QString current = QSettings().value(QStringLiteral("language")).toString();
-    auto* pt = lang->addAction(QStringLiteral("Português"), this, [this] { setLanguage(QStringLiteral("pt_PT")); });
-    auto* en = lang->addAction(QStringLiteral("English"), this, [this] { setLanguage(QStringLiteral("en")); });
-    pt->setCheckable(true);
-    en->setCheckable(true);
-    group->addAction(pt);
-    group->addAction(en);
-    (current == QStringLiteral("en") ? en : pt)->setChecked(true);
+    auto* help = menuBar()->addMenu(tr("&Help"));
+    help->addAction(tr("Check for updates..."), this, [this] { checkForUpdates(true); });
+    help->addSeparator();
+    help->addAction(tr("About VTHOST"), this, [this] { openSettings(1); });
 
     auto* tb = addToolBar(tr("Show"));
     tb->setObjectName(QStringLiteral("toolbar"));
@@ -625,11 +643,6 @@ void MainWindow::onEngineStatus() {
 
 // ------------------------------------------------------------------ vista
 
-void MainWindow::setLanguage(const QString& code) {
-    QSettings().setValue(QStringLiteral("language"), code);
-    QMessageBox::information(this, tr("Language"), tr("The language will change the next time VTHOST Studio starts."));
-}
-
 void MainWindow::refreshAll() {
     refreshMediaList();
     refreshGrid();
@@ -704,4 +717,111 @@ void MainWindow::updateTitle() {
 void MainWindow::updateEditingEnabled() {
     for (auto* w : editWidgets_) w->setEnabled(!showMode_);
     for (auto* a : editActions_) a->setEnabled(!showMode_);
+}
+
+// ------------------------------------------------------------------ definições e atualizações
+
+void MainWindow::openSettings(int tab) {
+    SettingsDialog dlg(this, tab);
+    connect(&dlg, &SettingsDialog::checkForUpdatesRequested, this, [this] { checkForUpdates(true); });
+    dlg.exec();
+}
+
+void MainWindow::checkForUpdates(bool userInitiated) {
+    updateCheckIsManual_ = userInitiated;
+    updater_->check();
+}
+
+void MainWindow::onUpdateAvailable(const UpdateInfo& info) {
+    if (!updateCheckIsManual_ && QSettings().value(QStringLiteral("updates/skipVersion")).toString() == info.version)
+        return;
+
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Update available"));
+    box.setIcon(QMessageBox::Information);
+    box.setText(tr("VTHOST %1 is available (you have %2).").arg(info.version, appinfo::kVersion));
+    if (!info.notes.trimmed().isEmpty()) box.setDetailedText(info.notes);
+    auto* now = box.addButton(tr("Update now"), QMessageBox::AcceptRole);
+    box.addButton(tr("Later"), QMessageBox::RejectRole);
+    auto* skip = box.addButton(tr("Skip this version"), QMessageBox::DestructiveRole);
+    box.exec();
+    if (box.clickedButton() == skip) {
+        QSettings().setValue(QStringLiteral("updates/skipVersion"), info.version);
+        return;
+    }
+    if (box.clickedButton() != now) return;
+    if (showMode_) {
+        QMessageBox::warning(this, tr("Update"), tr("Turn off Show Mode before updating."));
+        return;
+    }
+    downloadUpdate(info);
+}
+
+void MainWindow::downloadUpdate(const UpdateInfo& info) {
+    auto* progress = new QProgressDialog(tr("Downloading VTHOST %1...").arg(info.version), tr("Cancel"), 0, 100, this);
+    progress->setWindowTitle(tr("Update"));
+    progress->setWindowModality(Qt::WindowModal);
+    progress->setMinimumDuration(0);
+    progress->setAutoClose(false);
+    progress->setAutoReset(false);
+    progress->setValue(0);
+
+    auto conns = std::make_shared<QList<QMetaObject::Connection>>();
+    auto cleanup = [progress, conns] {
+        for (const auto& c : *conns) QObject::disconnect(c);
+        progress->deleteLater();
+    };
+    *conns << connect(progress, &QProgressDialog::canceled, updater_, &UpdateChecker::cancelDownload);
+    *conns << connect(updater_, &UpdateChecker::downloadProgress, progress, [progress](qint64 rec, qint64 total) {
+        if (total > 0) progress->setValue(static_cast<int>(rec * 100 / total));
+    });
+    *conns << connect(updater_, &UpdateChecker::downloadFailed, this, [this, cleanup](const QString& err) {
+        cleanup();
+        QMessageBox::warning(this, tr("Update"), err);
+    });
+    *conns << connect(updater_, &UpdateChecker::downloadReady, this, [this, cleanup](const QString& path) {
+        cleanup();
+        installUpdate(path);
+    });
+    progress->show();
+    updater_->download(info);
+}
+
+void MainWindow::installUpdate(const QString& installerPath) {
+    if (showMode_) {
+        QMessageBox::warning(this, tr("Update"), tr("Turn off Show Mode before updating."));
+        return;
+    }
+    const auto b = QMessageBox::question(
+        this, tr("Update"),
+        tr("The update is ready. The engine will stop and the outputs will go dark while it installs. Install now?"));
+    if (b != QMessageBox::Yes) return;
+    if (!confirmDiscard()) return;
+    dirty_ = false; // já tratado: não perguntar outra vez ao fechar
+
+    auto launch = [this, installerPath] {
+        const QStringList args = {QStringLiteral("/SILENT"), QStringLiteral("/SUPPRESSMSGBOXES"),
+                                  QStringLiteral("/NORESTART"), QStringLiteral("/RELAUNCH=1")};
+        if (!QProcess::startDetached(installerPath, args)) {
+            QMessageBox::critical(this, tr("Update"), tr("Could not start the installer."));
+            return;
+        }
+        qApp->quit();
+    };
+
+    if (!engine_->isConnected()) {
+        launch();
+        return;
+    }
+    // Pára o motor de forma limpa antes de substituir os ficheiros.
+    protocol::Command c;
+    c.type = protocol::CommandType::Shutdown;
+    auto launched = std::make_shared<bool>(false);
+    auto once = [launch, launched] {
+        if (*launched) return;
+        *launched = true;
+        launch();
+    };
+    engine_->send(c, [once](const protocol::ParsedResponse&) { QTimer::singleShot(500, once); });
+    QTimer::singleShot(4000, this, once); // se o motor não responder, o instalador trata dele
 }

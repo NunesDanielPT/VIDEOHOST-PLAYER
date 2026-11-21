@@ -16,8 +16,8 @@
         <translation>&amp;Ficheiro</translation>
     </message>
     <message>
-        <source>&amp;Language</source>
-        <translation>&amp;Idioma</translation>
+        <source>&amp;Help</source>
+        <translation>A&amp;juda</translation>
     </message>
     <message>
         <source>&amp;New</source>
@@ -44,6 +44,10 @@
         <translation>E&amp;spetáculo</translation>
     </message>
     <message>
+        <source>About VTHOST</source>
+        <translation>Sobre o VTHOST</translation>
+    </message>
+    <message>
         <source>Add column</source>
         <translation>Adicionar coluna</translation>
     </message>
@@ -68,12 +72,20 @@
         <translation>Adicionar saída...</translation>
     </message>
     <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
         <source>Canvas size</source>
         <translation>Tamanho do canvas</translation>
     </message>
     <message>
         <source>Canvas size...</source>
         <translation>Tamanho do canvas...</translation>
+    </message>
+    <message>
+        <source>Check for updates...</source>
+        <translation>Procurar atualizações...</translation>
     </message>
     <message>
         <source>Clear cell</source>
@@ -104,6 +116,10 @@
 %1</translation>
     </message>
     <message>
+        <source>Could not start the installer.</source>
+        <translation>Não foi possível iniciar o instalador.</translation>
+    </message>
+    <message>
         <source>Could not write live project: %1</source>
         <translation>Não foi possível escrever o projeto ao vivo: %1</translation>
     </message>
@@ -114,6 +130,10 @@
     <message>
         <source>Double-click a cell to place the selected media. Click a column header to GO.</source>
         <translation>Duplo clique numa célula para colocar a media selecionada. Clique no cabeçalho de uma coluna para GO.</translation>
+    </message>
+    <message>
+        <source>Downloading VTHOST %1...</source>
+        <translation>A descarregar o VTHOST %1...</translation>
     </message>
     <message>
         <source>E&amp;ngine</source>
@@ -164,8 +184,8 @@
         <translation>Altura (px):</translation>
     </message>
     <message>
-        <source>Language</source>
-        <translation>Idioma</translation>
+        <source>Later</source>
+        <translation>Mais tarde</translation>
     </message>
     <message>
         <source>Layer %1</source>
@@ -190,6 +210,10 @@
     <message>
         <source>Name:</source>
         <translation>Nome:</translation>
+    </message>
+    <message>
+        <source>No releases have been published yet.</source>
+        <translation>Ainda não foi publicada nenhuma versão.</translation>
     </message>
     <message>
         <source>Opacity: %1</source>
@@ -268,12 +292,20 @@
         <translation>Selecione primeiro uma media na biblioteca.</translation>
     </message>
     <message>
+        <source>Settings...</source>
+        <translation>Definições...</translation>
+    </message>
+    <message>
         <source>Show</source>
         <translation>Espetáculo</translation>
     </message>
     <message>
         <source>Show Mode (lock editing)</source>
         <translation>Modo Espetáculo (bloquear edição)</translation>
+    </message>
+    <message>
+        <source>Skip this version</source>
+        <translation>Ignorar esta versão</translation>
     </message>
     <message>
         <source>Start engine</source>
@@ -292,10 +324,6 @@
         <translation>Parar o motor? Todas as saídas vão ficar a negro.</translation>
     </message>
     <message>
-        <source>The language will change the next time VTHOST Studio starts.</source>
-        <translation>O idioma muda da próxima vez que o VTHOST Studio arrancar.</translation>
-    </message>
-    <message>
         <source>The project has unsaved changes. Save them?</source>
         <translation>O projeto tem alterações por guardar. Guardar?</translation>
     </message>
@@ -306,12 +334,44 @@
 %1</translation>
     </message>
     <message>
+        <source>The update is ready. The engine will stop and the outputs will go dark while it installs. Install now?</source>
+        <translation>A atualização está pronta. O motor vai parar e as saídas ficam a negro durante a instalação. Instalar agora?</translation>
+    </message>
+    <message>
+        <source>Turn off Show Mode before updating.</source>
+        <translation>Desligue o Modo Espetáculo antes de atualizar.</translation>
+    </message>
+    <message>
         <source>Unsaved changes</source>
         <translation>Alterações por guardar</translation>
     </message>
     <message>
         <source>Untitled</source>
         <translation>Sem título</translation>
+    </message>
+    <message>
+        <source>Update</source>
+        <translation>Atualização</translation>
+    </message>
+    <message>
+        <source>Update available</source>
+        <translation>Atualização disponível</translation>
+    </message>
+    <message>
+        <source>Update now</source>
+        <translation>Atualizar agora</translation>
+    </message>
+    <message>
+        <source>Updates</source>
+        <translation>Atualizações</translation>
+    </message>
+    <message>
+        <source>VTHOST %1 is available (you have %2).</source>
+        <translation>O VTHOST %1 está disponível (tem a %2).</translation>
+    </message>
+    <message>
+        <source>VTHOST is up to date (version %1).</source>
+        <translation>O VTHOST está atualizado (versão %1).</translation>
     </message>
     <message>
         <source>VTHOST projects (*.vthost)</source>
@@ -328,6 +388,132 @@
     <message>
         <source>vthost-watchdog was not found next to the Studio.</source>
         <translation>O vthost-watchdog não foi encontrado junto do Studio.</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsDialog</name>
+    <message>
+        <source>About</source>
+        <translation>Sobre</translation>
+    </message>
+    <message>
+        <source>Check for updates now</source>
+        <translation>Procurar atualizações agora</translation>
+    </message>
+    <message>
+        <source>Check for updates when VTHOST Studio starts</source>
+        <translation>Procurar atualizações ao abrir o VTHOST Studio</translation>
+    </message>
+    <message>
+        <source>Created by %1</source>
+        <translation>Criado por %1</translation>
+    </message>
+    <message>
+        <source>General</source>
+        <translation>Geral</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Idioma</translation>
+    </message>
+    <message>
+        <source>Language:</source>
+        <translation>Idioma:</translation>
+    </message>
+    <message>
+        <source>Media server and video player for live shows.</source>
+        <translation>Media server e player de vídeo para espetáculos ao vivo.</translation>
+    </message>
+    <message>
+        <source>Project</source>
+        <translation>Projeto</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>Definições</translation>
+    </message>
+    <message>
+        <source>The language will change the next time VTHOST Studio starts.</source>
+        <translation>O idioma muda da próxima vez que o VTHOST Studio arrancar.</translation>
+    </message>
+    <message>
+        <source>Updates are never installed while Show Mode is on.</source>
+        <translation>As atualizações nunca são instaladas com o Modo Espetáculo ligado.</translation>
+    </message>
+    <message>
+        <source>Updates:</source>
+        <translation>Atualizações:</translation>
+    </message>
+    <message>
+        <source>Uses %1 (LGPL), %2 (LGPL) and %3 (MIT).</source>
+        <translation>Usa %1 (LGPL), %2 (LGPL) e %3 (MIT).</translation>
+    </message>
+    <message>
+        <source>Version %1</source>
+        <translation>Versão %1</translation>
+    </message>
+    <message>
+        <source>© %1 %2. All rights reserved.</source>
+        <translation>© %1 %2. Todos os direitos reservados.</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateChecker</name>
+    <message>
+        <source>Could not contact GitHub: %1</source>
+        <translation>Não foi possível contactar o GitHub: %1</translation>
+    </message>
+    <message>
+        <source>Could not get the checksum: %1</source>
+        <translation>Não foi possível obter o checksum: %1</translation>
+    </message>
+    <message>
+        <source>Could not read the downloaded installer.</source>
+        <translation>Não foi possível ler o instalador descarregado.</translation>
+    </message>
+    <message>
+        <source>Could not write to the temporary folder.</source>
+        <translation>Não foi possível escrever na pasta temporária.</translation>
+    </message>
+    <message>
+        <source>Download cancelled.</source>
+        <translation>Download cancelado.</translation>
+    </message>
+    <message>
+        <source>Download failed: %1</source>
+        <translation>O download falhou: %1</translation>
+    </message>
+    <message>
+        <source>Installer is larger than expected.</source>
+        <translation>O instalador é maior do que o esperado.</translation>
+    </message>
+    <message>
+        <source>Invalid checksum file; the update was not installed for safety.</source>
+        <translation>Ficheiro de checksum inválido; por segurança a atualização não foi instalada.</translation>
+    </message>
+    <message>
+        <source>The download was redirected to an unknown server.</source>
+        <translation>O download foi redirecionado para um servidor desconhecido.</translation>
+    </message>
+    <message>
+        <source>The downloaded installer is corrupted (checksum mismatch). Try again.</source>
+        <translation>O instalador descarregado está corrompido (checksum diferente). Tente outra vez.</translation>
+    </message>
+    <message>
+        <source>The latest release has an invalid version: %1</source>
+        <translation>A última versão publicada tem um número inválido: %1</translation>
+    </message>
+    <message>
+        <source>The release has no checksum; the update was not installed for safety.</source>
+        <translation>A versão publicada não tem checksum; por segurança a atualização não foi instalada.</translation>
+    </message>
+    <message>
+        <source>Unexpected answer from GitHub.</source>
+        <translation>Resposta inesperada do GitHub.</translation>
+    </message>
+    <message>
+        <source>Version %1 exists but has no installer yet.</source>
+        <translation>A versão %1 existe mas ainda não tem instalador.</translation>
     </message>
 </context>
 </TS>
