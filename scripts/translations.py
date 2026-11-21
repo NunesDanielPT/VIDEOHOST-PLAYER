@@ -17,7 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 STUDIO = ROOT / "src" / "studio"
 TS = STUDIO / "translations" / "vthost_studio_pt_PT.ts"
-TR_RE = re.compile(r'\btr\(\s*"((?:[^"\\]|\\.)*)"\s*\)')
+# tr("...") incluindo literais concatenados em várias linhas: tr("a " "b")
+TR_RE = re.compile(r'\btr\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)')
+PIECE_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
 
 def context_for(path: Path) -> str:
@@ -33,7 +35,7 @@ def extract():
     for f in sorted(STUDIO.glob("*.cpp")):
         if f.name == "main.cpp":
             continue
-        strings = sorted({unescape_cpp(m) for m in TR_RE.findall(f.read_text(encoding="utf-8"))})
+        strings = sorted({unescape_cpp("".join(PIECE_RE.findall(m))) for m in TR_RE.findall(f.read_text(encoding="utf-8"))})
         if strings:
             found[context_for(f)] = strings
     return found

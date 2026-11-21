@@ -20,6 +20,10 @@ qt_add_executable(vthost-studio WIN32
     app_info.h
     dashboard_table.cpp
     dashboard_table.h
+    layer_header.cpp
+    layer_header.h
+    outputs_dialog.cpp
+    outputs_dialog.h
     library_panel.cpp
     library_panel.h
     media_cache.cpp

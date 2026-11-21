@@ -60,6 +60,13 @@ LibraryPanel::LibraryPanel(MediaCache* cache, QWidget* parent) : QWidget(parent)
     list_->setDragEnabled(true);
     list_->setDragDropMode(QAbstractItemView::DragOnly);
     list_->setUniformItemSizes(true);
+    list_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(list_, &QListWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+        QListWidgetItem* item = list_->itemAt(pos);
+        if (!item) return;
+        list_->setCurrentItem(item);
+        emit contextMenuRequested(item->data(Qt::UserRole).toString(), list_->viewport()->mapToGlobal(pos));
+    });
 
     add_ = new QPushButton(QStringLiteral("+"), this);
     add_->setToolTip(tr("Add media..."));

@@ -25,6 +25,7 @@ public:
 signals:
     void addRequested();
     void removeRequested(const QString& mediaId);
+    void contextMenuRequested(const QString& mediaId, const QPoint& globalPos);
 
 private:
     void applyFilter();

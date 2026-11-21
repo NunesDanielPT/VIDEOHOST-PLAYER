@@ -18,6 +18,19 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [x] Atualizações automáticas a partir das GitHub Releases (SHA-256 verificado, bloqueadas em Show Mode)
 - [x] Definições com secção Sobre (autor, versão, créditos)
 
+## Fase 1.5 — Saídas e edição (0.3.0)
+- [x] Painel de Saídas: ecrãs detetados com nome do monitor/projetor, resolução, Hz e placa gráfica; Identificar
+- [x] Saídas por ecrã (fixas ao ecrã escolhido, mesmo que a ordem do Windows mude), janela e NDI
+- [ ] Saída Blackmagic DeckLink / UltraStudio (precisa do SDK Blackmagic)
+- [ ] Saída Spout (partilha de textura com Resolume/TouchDesigner no mesmo PC)
+- [x] Menus de botão direito em layers, colunas, células, media e clips
+- [x] Arrastar layers e colunas para mudar a ordem; olho (mostrar/esconder) e cadeado (bloquear)
+- [x] Modos de fim de media: loop, uma vez e congelar, uma vez e parar, auto-follow
+- [x] Timeline: cortar clip na cabeça de leitura (Ctrl+Shift+X), fade in/out por clip com pegas
+- [x] Logótipo e ícones
+- [ ] Keyframes (animar opacidade/posição/escala/rotação na timeline com curvas)
+- [ ] Transições por layer (crossfade / fade-in-and-out) como no Millumin
+
 ## Fase 2 — Desempenho
 - [ ] Descodificação por hardware (D3D11VA / NVDEC) sem cópia para a CPU
 - [ ] HAP / HAP Q / HAP Alpha descodificado na GPU (texturas DXT/BC)

@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo/vthost-logo.png" alt="VTHOST" width="560"></p>
+
 # VTHOST
 
 **PT** · Media server / player de vídeo para espetáculos, em Windows. Feito para **nunca deixar o ecrã cair**: o motor de playback corre num processo próprio, é vigiado por um watchdog e retoma o show automaticamente se alguma coisa falhar.

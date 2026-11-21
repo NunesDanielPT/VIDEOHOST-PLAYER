@@ -1,5 +1,6 @@
 #include "timeline_widget.h"
 
+#include "layer_header.h"
 #include "library_panel.h"
 #include "media_cache.h"
 
@@ -133,6 +134,82 @@ int TimelineWidget::clipAt(const QPointF& pos, bool* onRightEdge) const {
         }
     }
     return -1;
+}
+
+int TimelineWidget::rowOfLayer(const std::string& layerId) const {
+    if (!project_) return -1;
+    for (int r = 0; r < static_cast<int>(project_->layers.size()); ++r)
+        if (project_->layers[static_cast<std::size_t>(r)].id == layerId) return r;
+    return -1;
+}
+
+QRectF TimelineWidget::clipRect(const Clip& c, int row) const {
+    return {timeToX(c.start), rowTop(row) + 3, c.duration * pxPerSec_, kTrackH - 6};
+}
+
+// Pegas de fade: pequenos quadrados no topo do clip (início + fadeIn, fim - fadeOut).
+int TimelineWidget::fadeHandleAt(const QPointF& pos, bool* isFadeIn) const {
+    const Timeline* t = timeline();
+    if (!t || !editable_) return -1;
+    for (int i = static_cast<int>(t->clips.size()) - 1; i >= 0; --i) {
+        const Clip& c = t->clips[static_cast<std::size_t>(i)];
+        const int row = rowOfLayer(c.layerId);
+        if (row < 0) continue;
+        const QRectF r = clipRect(c, row);
+        if (pos.y() < r.top() - 2 || pos.y() > r.top() + 12) continue;
+        const double xin = r.left() + c.fadeIn * pxPerSec_;
+        const double xout = r.right() - c.fadeOut * pxPerSec_;
+        if (std::abs(pos.x() - xin) <= 6 && pos.x() >= r.left() - 2) {
+            if (isFadeIn) *isFadeIn = true;
+            return i;
+        }
+        if (std::abs(pos.x() - xout) <= 6 && pos.x() <= r.right() + 2) {
+            if (isFadeIn) *isFadeIn = false;
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool TimelineWidget::cutSelectedClipAtPlayhead() {
+    Timeline* tl = timeline();
+    if (!tl || !editable_ || selectedClipId_.isEmpty()) return false;
+    const double t = playhead();
+    for (std::size_t i = 0; i < tl->clips.size(); ++i) {
+        Clip& c = tl->clips[i];
+        if (QString::fromStdString(c.id) != selectedClipId_) continue;
+        if (t <= c.start + 0.04 || t >= c.end() - 0.04) return false; // cabeça de leitura fora do clip
+        Clip second = c;
+        second.id = newClipId().toStdString();
+        second.start = t;
+        second.duration = c.end() - t;
+        second.inPoint = c.inPoint + (t - c.start);
+        second.fadeIn = 0.0;
+        second.fadeOut = std::min(c.fadeOut, second.duration);
+        c.duration = t - c.start;
+        c.fadeOut = 0.0;
+        c.fadeIn = std::min(c.fadeIn, c.duration);
+        tl->clips.push_back(second);
+        selectedClipId_ = QString::fromStdString(second.id);
+        emit edited();
+        update();
+        return true;
+    }
+    return false;
+}
+
+void TimelineWidget::setClipFade(int clipIndex, bool fadeIn) {
+    Timeline* tl = timeline();
+    if (!tl || clipIndex < 0 || clipIndex >= static_cast<int>(tl->clips.size())) return;
+    Clip& c = tl->clips[static_cast<std::size_t>(clipIndex)];
+    bool ok = false;
+    const double v = QInputDialog::getDouble(this, fadeIn ? tr("Fade in") : tr("Fade out"), tr("Duration (seconds):"),
+                                             fadeIn ? c.fadeIn : c.fadeOut, 0.0, c.duration, 2, &ok);
+    if (!ok) return;
+    if (fadeIn) c.fadeIn = std::min(v, c.duration - c.fadeOut);
+    else c.fadeOut = std::min(v, c.duration - c.fadeIn);
+    emit edited();
+    update();
 }
 
 int TimelineWidget::segmentAt(double x) const {
@@ -278,6 +355,33 @@ void TimelineWidget::paintEvent(QPaintEvent*) {
             p.setPen(Qt::black);
             p.drawText(QRectF(textX, r.top(), r.right() - textX - 4, r.height()), Qt::AlignVCenter | Qt::AlignLeft,
                        m ? QFileInfo(mpath).fileName() : QStringLiteral("?"));
+            // Fades: zona escurecida em rampa + pegas no topo.
+            p.setRenderHint(QPainter::Antialiasing);
+            if (c.fadeIn > 0) {
+                QPolygonF tri;
+                tri << r.bottomLeft() << r.topLeft() << QPointF(r.left() + c.fadeIn * pxPerSec_, r.top());
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(0, 0, 0, 90));
+                p.drawPolygon(tri);
+                p.setPen(QPen(QColor(40, 40, 40), 1.2));
+                p.drawLine(r.bottomLeft(), QPointF(r.left() + c.fadeIn * pxPerSec_, r.top()));
+            }
+            if (c.fadeOut > 0) {
+                QPolygonF tri;
+                tri << r.bottomRight() << r.topRight() << QPointF(r.right() - c.fadeOut * pxPerSec_, r.top());
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(0, 0, 0, 90));
+                p.drawPolygon(tri);
+                p.setPen(QPen(QColor(40, 40, 40), 1.2));
+                p.drawLine(r.bottomRight(), QPointF(r.right() - c.fadeOut * pxPerSec_, r.top()));
+            }
+            if (editable_ && r.width() > 24) {
+                p.setPen(QPen(QColor(30, 30, 30), 1));
+                p.setBrush(Qt::white);
+                p.drawRect(QRectF(r.left() + c.fadeIn * pxPerSec_ - 4, r.top() - 1, 8, 8));
+                p.drawRect(QRectF(r.right() - c.fadeOut * pxPerSec_ - 4, r.top() - 1, 8, 8));
+            }
+            p.setBrush(Qt::NoBrush);
             if (QString::fromStdString(c.id) == selectedClipId_) {
                 p.setPen(QPen(Qt::white, 2));
                 p.drawPath(path);
@@ -298,12 +402,23 @@ void TimelineWidget::paintEvent(QPaintEvent*) {
     p.setPen(QColor(200, 200, 200));
     p.drawText(QRectF(8, kRulerH, kHeaderW - 10, kSegH), Qt::AlignVCenter | Qt::AlignLeft, tr("Segments"));
     for (int r = 0; r < rows; ++r) {
+        const Layer& layer = project_->layers[static_cast<std::size_t>(r)];
         const QRectF hr(0, rowTop(r), kHeaderW, kTrackH);
         p.setPen(QColor(30, 30, 30));
         p.drawLine(hr.bottomLeft(), hr.bottomRight());
-        p.setPen(QColor(220, 220, 220));
-        p.drawText(hr.adjusted(10, 0, -6, 0), Qt::AlignVCenter | Qt::AlignLeft,
-                   QString::fromStdString(project_->layers[static_cast<std::size_t>(r)].name));
+        const QColor fg = layer.visible ? QColor(220, 220, 220) : QColor(120, 120, 120);
+        p.setPen(fg);
+        p.drawText(hr.adjusted(10, 0, -30, 0), Qt::AlignVCenter | Qt::AlignLeft, QString::fromStdString(layer.name));
+        paintEye(&p, QRect(static_cast<int>(kHeaderW) - 26, static_cast<int>(hr.center().y()) - 8, 18, 16),
+                 layer.visible, fg);
+        if (layer.locked)
+            paintLock(&p, QRect(static_cast<int>(kHeaderW) - 46, static_cast<int>(hr.center().y()) - 8, 16, 16), true,
+                      QColor(255, 176, 74));
+    }
+    if (drag_ == Drag::MoveLayer && dragLayerTo_ >= 0) {
+        const double y = rowTop(dragLayerTo_);
+        p.setPen(QPen(QColor(255, 136, 0), 3));
+        p.drawLine(QPointF(0, y), QPointF(w, y));
     }
     p.setPen(QColor(70, 70, 70));
     p.drawLine(QPointF(kHeaderW, 0), QPointF(kHeaderW, height()));
@@ -329,7 +444,17 @@ void TimelineWidget::mousePressEvent(QMouseEvent* e) {
 
     if (pos.x() < kHeaderW) {
         const int row = rowAt(pos.y());
-        if (row >= 0) emit layerClicked(row);
+        if (row < 0) return;
+        if (pos.x() >= kHeaderW - 28) {
+            emit layerVisibilityToggled(row); // olho
+            return;
+        }
+        emit layerClicked(row);
+        if (editable_) {
+            drag_ = Drag::MoveLayer; // arrastar o nome = mudar a ordem
+            dragLayerFrom_ = row;
+            dragLayerTo_ = -1;
+        }
         return;
     }
     if (pos.y() < kRulerH + kSegH) {
@@ -343,9 +468,18 @@ void TimelineWidget::mousePressEvent(QMouseEvent* e) {
     }
     const int row = rowAt(pos.y());
     if (row >= 0) emit layerClicked(row);
+    Timeline* tl = timeline();
+    bool fadeIn = false;
+    if (const int fi = fadeHandleAt(pos, &fadeIn); fi >= 0 && tl) {
+        selectedClipId_ = QString::fromStdString(tl->clips[static_cast<std::size_t>(fi)].id);
+        drag_ = fadeIn ? Drag::FadeIn : Drag::FadeOut;
+        dragClip_ = fi;
+        dragOriginal_ = tl->clips[static_cast<std::size_t>(fi)];
+        update();
+        return;
+    }
     bool edge = false;
     const int ci = clipAt(pos, &edge);
-    Timeline* tl = timeline();
     if (ci < 0 || !tl) {
         selectedClipId_.clear();
         update();
@@ -367,8 +501,20 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent* e) {
     Timeline* tl = timeline();
     if (drag_ == Drag::None) {
         bool edge = false;
+        if (fadeHandleAt(pos, nullptr) >= 0) {
+            setCursor(Qt::SizeHorCursor);
+            return;
+        }
         const bool over = editable_ && clipAt(pos, &edge) >= 0;
         setCursor(over ? (edge ? Qt::SizeHorCursor : Qt::OpenHandCursor) : Qt::ArrowCursor);
+        return;
+    }
+    if (drag_ == Drag::MoveLayer) {
+        const int rows = project_ ? static_cast<int>(project_->layers.size()) : 0;
+        int to = static_cast<int>(std::lround((pos.y() - kRulerH - kSegH) / kTrackH));
+        dragLayerTo_ = std::clamp(to, 0, rows);
+        setCursor(Qt::ClosedHandCursor);
+        update();
         return;
     }
     if (drag_ == Drag::Scrub) {
@@ -381,7 +527,11 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent* e) {
     }
     if (!tl || dragClip_ < 0 || dragClip_ >= static_cast<int>(tl->clips.size())) return;
     Clip& c = tl->clips[static_cast<std::size_t>(dragClip_)];
-    if (drag_ == Drag::MoveClip) {
+    if (drag_ == Drag::FadeIn) {
+        c.fadeIn = std::clamp(xToTime(pos.x()) - c.start, 0.0, c.duration - c.fadeOut);
+    } else if (drag_ == Drag::FadeOut) {
+        c.fadeOut = std::clamp(c.end() - xToTime(pos.x()), 0.0, c.duration - c.fadeIn);
+    } else if (drag_ == Drag::MoveClip) {
         c.start = snap(xToTime(pos.x()) - dragGrabOffset_, dragClip_);
         // Também encaixa o fim do clip.
         const double endSnap = snap(c.start + c.duration, dragClip_);
@@ -400,11 +550,19 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent* e) {
 void TimelineWidget::mouseReleaseEvent(QMouseEvent* e) {
     if (drag_ == Drag::Scrub) {
         emitSeek(xToTime(e->position().x()), true);
-    } else if (drag_ == Drag::MoveClip || drag_ == Drag::ResizeClip) {
+    } else if (drag_ == Drag::MoveLayer) {
+        // Linha de inserção "to" (0..n) -> índice final da layer.
+        if (dragLayerTo_ >= 0 && dragLayerFrom_ >= 0) {
+            int to = dragLayerTo_ > dragLayerFrom_ ? dragLayerTo_ - 1 : dragLayerTo_;
+            if (to != dragLayerFrom_) emit layerMoved(dragLayerFrom_, to);
+        }
+        dragLayerFrom_ = dragLayerTo_ = -1;
+    } else if (drag_ != Drag::None) {
         Timeline* tl = timeline();
         if (tl && dragClip_ >= 0 && dragClip_ < static_cast<int>(tl->clips.size())) {
             const Clip& c = tl->clips[static_cast<std::size_t>(dragClip_)];
-            if (c.start != dragOriginal_.start || c.duration != dragOriginal_.duration || c.layerId != dragOriginal_.layerId)
+            if (c.start != dragOriginal_.start || c.duration != dragOriginal_.duration ||
+                c.layerId != dragOriginal_.layerId || c.fadeIn != dragOriginal_.fadeIn || c.fadeOut != dragOriginal_.fadeOut)
                 emit edited();
         }
     }
@@ -435,6 +593,11 @@ void TimelineWidget::wheelEvent(QWheelEvent* e) {
 }
 
 void TimelineWidget::keyPressEvent(QKeyEvent* e) {
+    // Cortar o clip na cabeça de leitura (como no Millumin: Shift+Cmd+X).
+    if (e->key() == Qt::Key_X && (e->modifiers() & Qt::ControlModifier) && (e->modifiers() & Qt::ShiftModifier)) {
+        cutSelectedClipAtPlayhead();
+        return;
+    }
     if ((e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) && editable_ && !selectedClipId_.isEmpty()) {
         if (Timeline* tl = timeline()) {
             const std::string id = selectedClipId_.toStdString();
@@ -464,8 +627,13 @@ void TimelineWidget::addSegmentAt(double t) {
 
 void TimelineWidget::contextMenuEvent(QContextMenuEvent* e) {
     Timeline* tl = timeline();
-    if (!tl || !editable_) return;
     const QPointF pos = e->pos();
+    if (pos.x() < kHeaderW) {
+        const int row = rowAt(pos.y());
+        if (row >= 0) emit layerContextMenu(row, e->globalPos());
+        return;
+    }
+    if (!tl || !editable_) return;
     QMenu menu(this);
     if (pos.y() >= kRulerH && pos.y() < kRulerH + kSegH && pos.x() >= kHeaderW) {
         const double t = xToTime(pos.x());
@@ -517,6 +685,38 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent* e) {
         if (ci < 0) return;
         selectedClipId_ = QString::fromStdString(tl->clips[static_cast<std::size_t>(ci)].id);
         update();
+        const Clip& clip = tl->clips[static_cast<std::size_t>(ci)];
+        QAction* cut = menu.addAction(tr("Cut at playhead"), this, [this] { cutSelectedClipAtPlayhead(); });
+        cut->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_X));
+        cut->setEnabled(playhead() > clip.start + 0.04 && playhead() < clip.end() - 0.04);
+        menu.addSeparator();
+        menu.addAction(tr("Fade in..."), this, [this, ci] { setClipFade(ci, true); });
+        menu.addAction(tr("Fade out..."), this, [this, ci] { setClipFade(ci, false); });
+        menu.addAction(tr("Remove fades"), this, [this, ci] {
+            if (Timeline* t2 = timeline(); t2 && ci < static_cast<int>(t2->clips.size())) {
+                t2->clips[static_cast<std::size_t>(ci)].fadeIn = 0.0;
+                t2->clips[static_cast<std::size_t>(ci)].fadeOut = 0.0;
+                emit edited();
+                update();
+            }
+        });
+        menu.addSeparator();
+        menu.addAction(tr("Duplicate clip"), this, [this, ci] {
+            Timeline* t2 = timeline();
+            if (!t2 || ci >= static_cast<int>(t2->clips.size())) return;
+            Clip copy = t2->clips[static_cast<std::size_t>(ci)];
+            copy.id = newClipId().toStdString();
+            copy.start = copy.end();
+            t2->clips.push_back(copy);
+            selectedClipId_ = QString::fromStdString(copy.id);
+            emit edited();
+            update();
+        });
+        menu.addAction(tr("Go to clip start"), this, [this, ci] {
+            if (Timeline* t2 = timeline(); t2 && ci < static_cast<int>(t2->clips.size()))
+                emitSeek(t2->clips[static_cast<std::size_t>(ci)].start, true);
+        });
+        menu.addSeparator();
         menu.addAction(tr("Delete clip"), this, [this] {
             if (Timeline* t2 = timeline()) {
                 const std::string id = selectedClipId_.toStdString();

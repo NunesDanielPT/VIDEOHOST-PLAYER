@@ -2,7 +2,9 @@
 
 #include "app_info.h"
 #include "dashboard_table.h"
+#include "layer_header.h"
 #include "library_panel.h"
+#include "outputs_dialog.h"
 #include "media_cache.h"
 #include "preview_widget.h"
 #include "properties_panel.h"
@@ -104,6 +106,7 @@ void MainWindow::buildUi() {
     library_ = new LibraryPanel(media_, this);
     connect(library_, &LibraryPanel::addRequested, this, &MainWindow::addMedia);
     connect(library_, &LibraryPanel::removeRequested, this, &MainWindow::removeMedia);
+    connect(library_, &LibraryPanel::contextMenuRequested, this, &MainWindow::showMediaMenu);
 
     preview_ = new PreviewWidget(this);
     connect(preview_, &PreviewWidget::layerDragged, this, &MainWindow::onLayerDragged);
@@ -145,6 +148,39 @@ void MainWindow::buildUi() {
     editWidgets_ << addLayerBtn << addColBtn;
 
     dashboard_ = new DashboardTable(dashPage);
+    layerHeader_ = new LayerHeader(dashboard_);
+    dashboard_->setVerticalHeader(layerHeader_);
+    connect(layerHeader_, &LayerHeader::visibilityToggled, this, &MainWindow::toggleLayerVisible);
+    connect(layerHeader_, &LayerHeader::lockToggled, this, &MainWindow::toggleLayerLock);
+    connect(layerHeader_, &LayerHeader::contextMenuRequested, this, &MainWindow::showLayerMenu);
+    connect(layerHeader_, &QHeaderView::sectionDoubleClicked, this, [this](int row) {
+        selectLayer(row); // duplo clique no nome = mudar o nome (como no Millumin)
+        if (!showMode_) renameLayer();
+    });
+    // Arrastar layers/colunas: o Qt só muda a ordem visual; aplicamos ao projeto e repomos a vista.
+    connect(layerHeader_, &QHeaderView::sectionMoved, this, [this](int, int oldVisual, int newVisual) {
+        {
+            const QSignalBlocker b(layerHeader_);
+            layerHeader_->moveSection(newVisual, oldVisual);
+        }
+        if (showMode_) return;
+        moveLayer(oldVisual, newVisual);
+    });
+    auto* colHeader = dashboard_->horizontalHeader();
+    colHeader->setSectionsMovable(true);
+    colHeader->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(colHeader, &QHeaderView::sectionMoved, this, [this, colHeader](int, int oldVisual, int newVisual) {
+        {
+            const QSignalBlocker b(colHeader);
+            colHeader->moveSection(newVisual, oldVisual);
+        }
+        if (showMode_) return;
+        moveColumn(oldVisual, newVisual);
+    });
+    connect(colHeader, &QHeaderView::customContextMenuRequested, this, [this, colHeader](const QPoint& pos) {
+        const int c = colHeader->logicalIndexAt(pos);
+        if (c >= 0) showColumnMenu(c, colHeader->mapToGlobal(pos));
+    });
     dashboard_->setToolTip(tr("Drag media from the Library onto a cell. Click a column header to GO."));
     connect(dashboard_, &DashboardTable::mediaDropped, this, &MainWindow::placeMedia);
     connect(dashboard_, &QTableWidget::cellDoubleClicked, this,
@@ -173,6 +209,11 @@ void MainWindow::buildUi() {
             [this](double t, bool) { sendTimeline(protocol::TimelineAction::Seek, t); });
     connect(tw, &TimelineWidget::edited, this, &MainWindow::markChanged);
     connect(tw, &TimelineWidget::layerClicked, this, &MainWindow::selectLayer);
+    connect(tw, &TimelineWidget::layerContextMenu, this, &MainWindow::showLayerMenu);
+    connect(tw, &TimelineWidget::layerVisibilityToggled, this, &MainWindow::toggleLayerVisible);
+    connect(tw, &TimelineWidget::layerMoved, this, [this](int from, int to) {
+        if (!showMode_) moveLayer(from, to);
+    });
 
     bottomTabs_ = new QTabWidget(this);
     bottomTabs_->addTab(dashPage, tr("Dashboard"));
@@ -219,8 +260,9 @@ void MainWindow::buildMenus() {
     editActions_ << edit->addAction(tr("Canvas size..."), this, &MainWindow::setCanvasSize);
 
     auto* outputs = menuBar()->addMenu(tr("&Outputs"));
-    editActions_ << outputs->addAction(tr("Add output..."), this, &MainWindow::addOutput)
-                 << outputs->addAction(tr("Remove last output"), this, &MainWindow::removeOutput);
+    auto* aOutputs = outputs->addAction(tr("Outputs..."), this, &MainWindow::openOutputs);
+    aOutputs->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Semicolon));
+    editActions_ << aOutputs;
 
     auto* show = menuBar()->addMenu(tr("&Show"));
     auto* aGo = show->addAction(tr("GO next"), this, &MainWindow::goNext);
@@ -458,13 +500,7 @@ void MainWindow::addColumn() {
     markChanged();
 }
 
-void MainWindow::removeColumn() {
-    const int col = dashboard_->currentColumn();
-    if (col < 0 || col >= static_cast<int>(project_.columns.size())) return;
-    project_.columns.erase(project_.columns.begin() + col);
-    refreshDashboard();
-    markChanged();
-}
+void MainWindow::removeColumn() { deleteColumn(dashboard_->currentColumn()); }
 
 void MainWindow::renameColumn() {
     const int col = dashboard_->currentColumn();
@@ -523,25 +559,24 @@ void MainWindow::showCellMenu(const QPoint& pos) {
     menu.addAction(tr("Place selected media"), this,
                    [this, idx] { placeMedia(idx.row(), idx.column(), library_->selectedMediaId()); });
     menu.addAction(tr("Clear cell"), this, [this, idx] { clearCell(idx.row(), idx.column()); });
+    const auto& cells = project_.columns[static_cast<std::size_t>(idx.column())].cells;
+    if (idx.row() < static_cast<int>(project_.layers.size())) {
+        auto it = cells.find(project_.layers[static_cast<std::size_t>(idx.row())].id);
+        if (it != cells.end()) {
+            menu.addSeparator();
+            addLoopModeMenu(&menu, qs(it->second));
+        }
+    }
+    menu.addSeparator();
+    menu.addAction(tr("GO this column"), this, [this, idx] { go(idx.column()); });
     menu.exec(dashboard_->viewport()->mapToGlobal(pos));
 }
 
-void MainWindow::addOutput() {
-    bool ok = false;
-    const int monitor = QInputDialog::getInt(this, tr("Add output"),
-                                             tr("Monitor number (0 = main monitor):"), 1, 0, 63, 1, &ok);
-    if (!ok) return;
-    Output o;
-    o.id = ss(nextId(QStringLiteral("O")));
-    o.name = ss(tr("Output %1").arg(project_.outputs.size() + 1));
-    o.monitor = monitor;
-    project_.outputs.push_back(std::move(o));
-    markChanged();
-}
-
-void MainWindow::removeOutput() {
-    if (project_.outputs.empty()) return;
-    project_.outputs.pop_back();
+void MainWindow::openOutputs() {
+    if (showMode_) return;
+    OutputsDialog dlg(project_.outputs, engine_, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    project_.outputs = dlg.outputs();
     markChanged();
 }
 
@@ -557,6 +592,219 @@ void MainWindow::setCanvasSize() {
     project_.canvasHeight = h;
     preview_->setCanvasSize(w, h);
     updateTitle();
+    markChanged();
+}
+
+void MainWindow::addLoopModeMenu(QMenu* menu, const QString& mediaId) {
+    MediaItem* media = nullptr;
+    for (auto& m : project_.media)
+        if (qs(m.id) == mediaId) media = &m;
+    if (!media) return;
+    QMenu* sub = menu->addMenu(tr("At the end of the media"));
+    const std::pair<LoopMode, QString> modes[] = {
+        {LoopMode::Infinite, tr("Loop (infinite)")},
+        {LoopMode::OnceFreeze, tr("Play once and freeze")},
+        {LoopMode::OnceStop, tr("Play once and stop")},
+        {LoopMode::AutoFollow, tr("Play once and GO next column (auto-follow)")},
+    };
+    for (const auto& [mode, label] : modes) {
+        QAction* a = sub->addAction(label);
+        a->setCheckable(true);
+        a->setChecked(media->loopMode == mode);
+        const std::string id = media->id;
+        const LoopMode m = mode;
+        connect(a, &QAction::triggered, this, [this, id, m] {
+            for (auto& x : project_.media)
+                if (x.id == id) x.loopMode = m;
+            markChanged();
+        });
+    }
+}
+
+void MainWindow::showMediaMenu(const QString& mediaId, const QPoint& globalPos) {
+    QMenu menu(this);
+    addLoopModeMenu(&menu, mediaId);
+    menu.addSeparator();
+    for (const auto& m : project_.media)
+        if (qs(m.id) == mediaId) {
+            const QString path = qs(m.path);
+            menu.addAction(tr("Show in Explorer"), this, [path] {
+                QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
+            });
+        }
+    QAction* rm = menu.addAction(tr("Remove from library"), this, [this, mediaId] { removeMedia(mediaId); });
+    rm->setEnabled(!showMode_);
+    menu.exec(globalPos);
+}
+
+void MainWindow::showColumnMenu(int column, const QPoint& globalPos) {
+    if (column < 0 || column >= static_cast<int>(project_.columns.size())) return;
+    dashboard_->setCurrentCell(std::max(0, dashboard_->currentRow()), column);
+    QMenu menu(this);
+    menu.addAction(tr("GO this column"), this, [this, column] { go(column); });
+    menu.addSeparator();
+    QList<QAction*> edit;
+    edit << menu.addAction(tr("Rename column..."), this, &MainWindow::renameColumn)
+         << menu.addAction(tr("Column fade time..."), this, &MainWindow::setColumnFade);
+    menu.addSeparator();
+    edit << menu.addAction(tr("Insert column before"), this, [this, column] { insertColumnAt(column); })
+         << menu.addAction(tr("Insert column after"), this, [this, column] { insertColumnAt(column + 1); })
+         << menu.addAction(tr("Duplicate column"), this, [this, column] { duplicateColumn(column); });
+    menu.addSeparator();
+    edit << menu.addAction(tr("Delete column"), this, [this, column] { deleteColumn(column); });
+    for (QAction* a : edit) a->setEnabled(!showMode_);
+    menu.exec(globalPos);
+}
+
+void MainWindow::showLayerMenu(int row, const QPoint& globalPos) {
+    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
+    selectLayer(row);
+    const Layer& layer = project_.layers[static_cast<std::size_t>(row)];
+    QMenu menu(this);
+    QList<QAction*> edit;
+    edit << menu.addAction(tr("Rename layer..."), this, &MainWindow::renameLayer)
+         << menu.addAction(tr("Duplicate layer"), this, [this, row] { duplicateLayer(row); });
+    menu.addSeparator();
+    edit << menu.addAction(tr("Add layer above"), this, [this, row] { insertLayerAt(row); })
+         << menu.addAction(tr("Add layer below"), this, [this, row] { insertLayerAt(row + 1); });
+    QAction* up = menu.addAction(tr("Move up"), this, [this, row] { moveLayer(row, row - 1); });
+    QAction* down = menu.addAction(tr("Move down"), this, [this, row] { moveLayer(row, row + 1); });
+    up->setEnabled(row > 0 && !showMode_);
+    down->setEnabled(row + 1 < static_cast<int>(project_.layers.size()) && !showMode_);
+    menu.addSeparator();
+    menu.addAction(layer.visible ? tr("Hide layer") : tr("Show layer"), this, [this, row] { toggleLayerVisible(row); });
+    menu.addAction(layer.locked ? tr("Unlock layer") : tr("Lock layer"), this, [this, row] { toggleLayerLock(row); });
+    menu.addAction(tr("Reset position, scale and rotation"), this, [this, row] {
+        if (row >= static_cast<int>(project_.layers.size())) return;
+        LayerProps p;
+        p.opacity = project_.layers[static_cast<std::size_t>(row)].props.opacity;
+        p.blend = project_.layers[static_cast<std::size_t>(row)].props.blend;
+        applyLayerProps(row, p, true);
+    });
+    menu.addSeparator();
+    edit << menu.addAction(tr("Delete layer"), this, &MainWindow::removeLayer);
+    for (QAction* a : edit) a->setEnabled(!showMode_);
+    menu.exec(globalPos);
+}
+
+void MainWindow::insertLayerAt(int index) {
+    if (showMode_) return;
+    index = std::clamp(index, 0, static_cast<int>(project_.layers.size()));
+    Layer l;
+    l.id = ss(nextId(QStringLiteral("L")));
+    l.name = ss(tr("Layer %1").arg(project_.layers.size() + 1));
+    project_.layers.insert(project_.layers.begin() + index, std::move(l));
+    refreshAll();
+    selectLayer(index);
+    markChanged();
+}
+
+void MainWindow::duplicateLayer(int row) {
+    if (showMode_ || row < 0 || row >= static_cast<int>(project_.layers.size())) return;
+    Layer copy = project_.layers[static_cast<std::size_t>(row)];
+    const std::string oldId = copy.id;
+    copy.id = ss(nextId(QStringLiteral("L")));
+    copy.name = ss(tr("%1 copy").arg(qs(copy.name)));
+    // A cópia leva as media do dashboard e os clips da timeline.
+    for (auto& c : project_.columns) {
+        auto it = c.cells.find(oldId);
+        if (it != c.cells.end()) c.cells[copy.id] = it->second;
+    }
+    for (auto& t : project_.timelines) {
+        std::vector<Clip> extra;
+        for (const auto& c : t.clips)
+            if (c.layerId == oldId) {
+                Clip n = c;
+                n.layerId = copy.id;
+                n.id = c.id + "-" + copy.id;
+                extra.push_back(n);
+            }
+        t.clips.insert(t.clips.end(), extra.begin(), extra.end());
+    }
+    project_.layers.insert(project_.layers.begin() + row, std::move(copy));
+    refreshAll();
+    selectLayer(row);
+    markChanged();
+}
+
+void MainWindow::moveLayer(int from, int to) {
+    const int n = static_cast<int>(project_.layers.size());
+    if (from < 0 || from >= n || to < 0 || to >= n || from == to) return;
+    Layer l = std::move(project_.layers[static_cast<std::size_t>(from)]);
+    project_.layers.erase(project_.layers.begin() + from);
+    project_.layers.insert(project_.layers.begin() + to, std::move(l));
+    refreshAll();
+    selectLayer(to);
+    markChanged();
+}
+
+void MainWindow::toggleLayerVisible(int row) {
+    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
+    Layer& l = project_.layers[static_cast<std::size_t>(row)];
+    l.visible = !l.visible;
+    // Ao vivo: também em Show Mode (como o olho do Millumin).
+    protocol::Command c;
+    c.type = protocol::CommandType::SetLayerVisible;
+    c.layer = l.id;
+    c.on = l.visible;
+    engine_->send(c);
+    dirty_ = true;
+    updateTitle();
+    if (!showMode_) pushTimer_.start();
+    refreshDashboard();
+    timelinePanel_->timeline()->update();
+}
+
+void MainWindow::toggleLayerLock(int row) {
+    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
+    Layer& l = project_.layers[static_cast<std::size_t>(row)];
+    l.locked = !l.locked;
+    dirty_ = true;
+    updateTitle();
+    if (!showMode_) pushTimer_.start();
+    refreshDashboard();
+    timelinePanel_->timeline()->update();
+    updateSelectionViews();
+}
+
+void MainWindow::insertColumnAt(int index) {
+    if (showMode_) return;
+    index = std::clamp(index, 0, static_cast<int>(project_.columns.size()));
+    Column c;
+    c.name = ss(tr("Cue %1").arg(project_.columns.size() + 1));
+    project_.columns.insert(project_.columns.begin() + index, std::move(c));
+    if (activeColumn_ >= index) ++activeColumn_;
+    refreshDashboard();
+    markChanged();
+}
+
+void MainWindow::duplicateColumn(int column) {
+    if (showMode_ || column < 0 || column >= static_cast<int>(project_.columns.size())) return;
+    Column copy = project_.columns[static_cast<std::size_t>(column)];
+    copy.name = ss(tr("%1 copy").arg(qs(copy.name)));
+    project_.columns.insert(project_.columns.begin() + column + 1, std::move(copy));
+    if (activeColumn_ > column) ++activeColumn_;
+    refreshDashboard();
+    markChanged();
+}
+
+void MainWindow::moveColumn(int from, int to) {
+    const int n = static_cast<int>(project_.columns.size());
+    if (from < 0 || from >= n || to < 0 || to >= n || from == to) return;
+    Column c = std::move(project_.columns[static_cast<std::size_t>(from)]);
+    project_.columns.erase(project_.columns.begin() + from);
+    project_.columns.insert(project_.columns.begin() + to, std::move(c));
+    if (activeColumn_ == from) activeColumn_ = to;
+    refreshDashboard();
+    markChanged();
+}
+
+void MainWindow::deleteColumn(int column) {
+    if (showMode_ || column < 0 || column >= static_cast<int>(project_.columns.size())) return;
+    project_.columns.erase(project_.columns.begin() + column);
+    if (activeColumn_ == column) activeColumn_ = -1;
+    else if (activeColumn_ > column) --activeColumn_;
+    refreshDashboard();
     markChanged();
 }
 
@@ -618,6 +866,7 @@ void MainWindow::onPropsChanged(const LayerProps& props) { applyLayerProps(selec
 
 void MainWindow::onLayerDragged(double dx, double dy, bool finished) {
     if (selectedLayer_ < 0 || selectedLayer_ >= static_cast<int>(project_.layers.size())) return;
+    if (project_.layers[static_cast<std::size_t>(selectedLayer_)].locked) return; // layer bloqueada
     if (!dragStartProps_) dragStartProps_ = project_.layers[static_cast<std::size_t>(selectedLayer_)].props;
     LayerProps p = *dragStartProps_;
     p.posX += dx;
@@ -794,7 +1043,10 @@ void MainWindow::refreshDashboard() {
 
     for (int c = 0; c < static_cast<int>(project_.columns.size()); ++c) {
         const auto& col = project_.columns[static_cast<std::size_t>(c)];
-        auto* h = new QTableWidgetItem(QStringLiteral("▶ %1  ·  %2 s").arg(qs(col.name)).arg(col.fadeSeconds, 0, 'f', 1));
+        auto* h = new QTableWidgetItem(QStringLiteral("%1  ▶  %2\n%3 s")
+                                           .arg(c + 1, 2, 10, QLatin1Char('0'))
+                                           .arg(qs(col.name))
+                                           .arg(col.fadeSeconds, 0, 'f', 1));
         if (c == activeColumn_) {
             h->setBackground(kActiveColumn);
             h->setForeground(Qt::black);
@@ -821,6 +1073,9 @@ void MainWindow::refreshDashboard() {
             dashboard_->setItem(r, c, item);
         }
     }
+    std::vector<LayerHeader::RowState> states;
+    for (const auto& l : project_.layers) states.push_back({l.visible, l.locked});
+    layerHeader_->setStates(std::move(states));
     if (curRow >= 0 && curCol >= 0 && curRow < dashboard_->rowCount() && curCol < dashboard_->columnCount())
         dashboard_->setCurrentCell(curRow, curCol);
 }

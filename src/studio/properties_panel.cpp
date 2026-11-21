@@ -125,8 +125,11 @@ LayerProps PropertiesPanel::current() const {
 
 void PropertiesPanel::setLayer(const Layer* layer) {
     hasLayer_ = layer != nullptr;
-    title_->setText(layer ? tr("Layer: %1").arg(QString::fromStdString(layer->name)) : tr("No layer selected"));
-    body_->setEnabled(hasLayer_ && editable_);
+    locked_ = layer && layer->locked;
+    QString title = layer ? tr("Layer: %1").arg(QString::fromStdString(layer->name)) : tr("No layer selected");
+    if (locked_) title += QStringLiteral("  ") + tr("(locked)");
+    title_->setText(title);
+    body_->setEnabled(hasLayer_ && editable_ && !locked_);
     if (!layer) return;
     const LayerProps& p = layer->props;
     const QSignalBlocker b1(blend_), b2(opacity_), b3(posX_), b4(posY_), b5(scale_), b6(rotation_);
@@ -140,5 +143,5 @@ void PropertiesPanel::setLayer(const Layer* layer) {
 
 void PropertiesPanel::setEditable(bool editable) {
     editable_ = editable;
-    body_->setEnabled(hasLayer_ && editable_);
+    body_->setEnabled(hasLayer_ && editable_ && !locked_);
 }

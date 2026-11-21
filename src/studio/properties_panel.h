@@ -37,4 +37,5 @@ private:
     QWidget* body_;
     bool editable_ = true;
     bool hasLayer_ = false;
+    bool locked_ = false;
 };

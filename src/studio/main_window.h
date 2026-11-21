@@ -17,6 +17,8 @@
 #include <optional>
 
 class DashboardTable;
+class LayerHeader;
+class QMenu;
 class LibraryPanel;
 class MediaCache;
 class PreviewWidget;
@@ -64,10 +66,24 @@ private:
     void setColumnFade();
     void placeMedia(int row, int column, const QString& mediaId);
     void clearCell(int row, int column);
-    void addOutput();
-    void removeOutput();
+    void openOutputs();
     void setCanvasSize();
     void showCellMenu(const QPoint& pos);
+    void showColumnMenu(int column, const QPoint& globalPos);
+    void showLayerMenu(int row, const QPoint& globalPos);
+    void showMediaMenu(const QString& mediaId, const QPoint& globalPos);
+    void addLoopModeMenu(QMenu* menu, const QString& mediaId);
+
+    // Layers e colunas
+    void insertLayerAt(int index);
+    void duplicateLayer(int row);
+    void moveLayer(int from, int to);
+    void toggleLayerVisible(int row);
+    void toggleLayerLock(int row);
+    void insertColumnAt(int index);
+    void duplicateColumn(int column);
+    void moveColumn(int from, int to);
+    void deleteColumn(int column);
 
     // Seleção e propriedades
     void selectLayer(int row);
@@ -127,6 +143,7 @@ private:
     PropertiesPanel* properties_ = nullptr;
     QTabWidget* bottomTabs_ = nullptr;
     DashboardTable* dashboard_ = nullptr;
+    LayerHeader* layerHeader_ = nullptr;
     TimelinePanel* timelinePanel_ = nullptr;
     QLabel* engineLabel_ = nullptr;
     QLabel* infoLabel_ = nullptr;

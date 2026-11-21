@@ -27,6 +27,10 @@
 <context>
     <name>MainWindow</name>
     <message>
+        <source>%1 copy</source>
+        <translation>%1 cópia</translation>
+    </message>
+    <message>
         <source>%1 fps</source>
         <translation>%1 fps</translation>
     </message>
@@ -87,6 +91,14 @@
         <translation>Adicionar layer</translation>
     </message>
     <message>
+        <source>Add layer above</source>
+        <translation>Adicionar layer acima</translation>
+    </message>
+    <message>
+        <source>Add layer below</source>
+        <translation>Adicionar layer abaixo</translation>
+    </message>
+    <message>
         <source>Add media</source>
         <translation>Adicionar media</translation>
     </message>
@@ -95,12 +107,8 @@
         <translation>Adicionar media...</translation>
     </message>
     <message>
-        <source>Add output</source>
-        <translation>Adicionar saída</translation>
-    </message>
-    <message>
-        <source>Add output...</source>
-        <translation>Adicionar saída...</translation>
+        <source>At the end of the media</source>
+        <translation>No fim da media</translation>
     </message>
     <message>
         <source>Cancel</source>
@@ -163,12 +171,28 @@
         <translation>Dashboard</translation>
     </message>
     <message>
+        <source>Delete column</source>
+        <translation>Apagar coluna</translation>
+    </message>
+    <message>
+        <source>Delete layer</source>
+        <translation>Apagar layer</translation>
+    </message>
+    <message>
         <source>Downloading VTHOST %1...</source>
         <translation>A descarregar o VTHOST %1...</translation>
     </message>
     <message>
         <source>Drag media from the Library onto a cell. Click a column header to GO.</source>
         <translation>Arraste media da Biblioteca para uma célula. Clique no cabeçalho de uma coluna para GO.</translation>
+    </message>
+    <message>
+        <source>Duplicate column</source>
+        <translation>Duplicar coluna</translation>
+    </message>
+    <message>
+        <source>Duplicate layer</source>
+        <translation>Duplicar layer</translation>
     </message>
     <message>
         <source>E&amp;ngine</source>
@@ -211,8 +235,24 @@
         <translation>GO seguinte  [Espaço]</translation>
     </message>
     <message>
+        <source>GO this column</source>
+        <translation>GO nesta coluna</translation>
+    </message>
+    <message>
         <source>Height (px):</source>
         <translation>Altura (px):</translation>
+    </message>
+    <message>
+        <source>Hide layer</source>
+        <translation>Esconder layer</translation>
+    </message>
+    <message>
+        <source>Insert column after</source>
+        <translation>Inserir coluna depois</translation>
+    </message>
+    <message>
+        <source>Insert column before</source>
+        <translation>Inserir coluna antes</translation>
     </message>
     <message>
         <source>Later</source>
@@ -227,8 +267,20 @@
         <translation>Layer %1: %2</translation>
     </message>
     <message>
-        <source>Monitor number (0 = main monitor):</source>
-        <translation>Número do monitor (0 = monitor principal):</translation>
+        <source>Lock layer</source>
+        <translation>Bloquear layer</translation>
+    </message>
+    <message>
+        <source>Loop (infinite)</source>
+        <translation>Loop (infinito)</translation>
+    </message>
+    <message>
+        <source>Move down</source>
+        <translation>Mover para baixo</translation>
+    </message>
+    <message>
+        <source>Move up</source>
+        <translation>Mover para cima</translation>
     </message>
     <message>
         <source>Name:</source>
@@ -247,24 +299,36 @@
         <translation>Abrir projeto</translation>
     </message>
     <message>
-        <source>Output %1</source>
-        <translation>Saída %1</translation>
-    </message>
-    <message>
         <source>Output %1: %2</source>
         <translation>Saída %1: %2</translation>
+    </message>
+    <message>
+        <source>Outputs...</source>
+        <translation>Saídas...</translation>
     </message>
     <message>
         <source>Place selected media</source>
         <translation>Colocar media selecionada</translation>
     </message>
     <message>
+        <source>Play once and GO next column (auto-follow)</source>
+        <translation>Tocar uma vez e GO na coluna seguinte (auto-follow)</translation>
+    </message>
+    <message>
+        <source>Play once and freeze</source>
+        <translation>Tocar uma vez e congelar</translation>
+    </message>
+    <message>
+        <source>Play once and stop</source>
+        <translation>Tocar uma vez e parar</translation>
+    </message>
+    <message>
         <source>Remove column</source>
         <translation>Remover coluna</translation>
     </message>
     <message>
-        <source>Remove last output</source>
-        <translation>Remover última saída</translation>
+        <source>Remove from library</source>
+        <translation>Remover da biblioteca</translation>
     </message>
     <message>
         <source>Remove layer</source>
@@ -285,6 +349,10 @@
     <message>
         <source>Rename layer...</source>
         <translation>Mudar nome da layer...</translation>
+    </message>
+    <message>
+        <source>Reset position, scale and rotation</source>
+        <translation>Repor posição, escala e rotação</translation>
     </message>
     <message>
         <source>SHOW MODE</source>
@@ -317,6 +385,14 @@
     <message>
         <source>Show Mode (lock editing)</source>
         <translation>Modo Espetáculo (bloquear edição)</translation>
+    </message>
+    <message>
+        <source>Show in Explorer</source>
+        <translation>Mostrar no Explorador</translation>
+    </message>
+    <message>
+        <source>Show layer</source>
+        <translation>Mostrar layer</translation>
     </message>
     <message>
         <source>Skip this version</source>
@@ -363,6 +439,10 @@
     <message>
         <source>Turn off Show Mode before updating.</source>
         <translation>Desligue o Modo Espetáculo antes de atualizar.</translation>
+    </message>
+    <message>
+        <source>Unlock layer</source>
+        <translation>Desbloquear layer</translation>
     </message>
     <message>
         <source>Unsaved changes</source>
@@ -414,6 +494,137 @@
     </message>
 </context>
 <context>
+    <name>OutputsDialog</name>
+    <message>
+        <source>%1 (disconnected)</source>
+        <translation>%1 (desligado)</translation>
+    </message>
+    <message>
+        <source>(main screen)</source>
+        <translation>(ecrã principal)</translation>
+    </message>
+    <message>
+        <source>+ Add output</source>
+        <translation>+ Adicionar saída</translation>
+    </message>
+    <message>
+        <source>Blackmagic (SDI / HDMI)</source>
+        <translation>Blackmagic (SDI / HDMI)</translation>
+    </message>
+    <message>
+        <source>Blackmagic DeckLink / UltraStudio / Intensity output is in development. It will need Blackmagic Desktop Video installed. The output is saved in the project and will start working when support arrives in an update.</source>
+        <translation>A saída Blackmagic DeckLink / UltraStudio / Intensity está em desenvolvimento. Vai precisar do Blackmagic Desktop Video instalado. A saída fica guardada no projeto e começa a funcionar quando o suporte chegar numa atualização.</translation>
+    </message>
+    <message>
+        <source>Destination:</source>
+        <translation>Destino:</translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation>Ecrã</translation>
+    </message>
+    <message>
+        <source>Display (fullscreen)</source>
+        <translation>Ecrã (ecrã inteiro)</translation>
+    </message>
+    <message>
+        <source>Enabled</source>
+        <translation>Ativa</translation>
+    </message>
+    <message>
+        <source>Engine offline</source>
+        <translation>Motor desligado</translation>
+    </message>
+    <message>
+        <source>Engine offline: screens detected by Windows (graphics card unknown).</source>
+        <translation>Motor desligado: ecrãs detetados pelo Windows (placa gráfica desconhecida).</translation>
+    </message>
+    <message>
+        <source>Height (px):</source>
+        <translation>Altura (px):</translation>
+    </message>
+    <message>
+        <source>Identify</source>
+        <translation>Identificar</translation>
+    </message>
+    <message>
+        <source>NDI</source>
+        <translation>NDI</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>Nome:</translation>
+    </message>
+    <message>
+        <source>Needs the free NDI Tools (NDI runtime) installed on this computer.</source>
+        <translation>Requer as NDI Tools gratuitas (runtime NDI) instaladas neste computador.</translation>
+    </message>
+    <message>
+        <source>Not applied yet (press OK).</source>
+        <translation>Ainda não aplicada (carregue em OK).</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
+    <message>
+        <source>Output %1</source>
+        <translation>Saída %1</translation>
+    </message>
+    <message>
+        <source>Outputs</source>
+        <translation>Saídas</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>Atualizar</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Remover</translation>
+    </message>
+    <message>
+        <source>Screen number %1 (automatic)</source>
+        <translation>Ecrã número %1 (automático)</translation>
+    </message>
+    <message>
+        <source>Screens detected by the engine.</source>
+        <translation>Ecrãs detetados pelo motor.</translation>
+    </message>
+    <message>
+        <source>Send with alpha (transparency)</source>
+        <translation>Enviar com alfa (transparência)</translation>
+    </message>
+    <message>
+        <source>Source name:</source>
+        <translation>Nome da fonte:</translation>
+    </message>
+    <message>
+        <source>Status:</source>
+        <translation>Estado:</translation>
+    </message>
+    <message>
+        <source>Type:</source>
+        <translation>Tipo:</translation>
+    </message>
+    <message>
+        <source>VTHOST - output name</source>
+        <translation>VTHOST - nome da saída</translation>
+    </message>
+    <message>
+        <source>Warning: this is the main screen, where VTHOST Studio is open. The output will cover the interface.</source>
+        <translation>Atenção: este é o ecrã principal, onde está aberto o VTHOST Studio. A saída vai tapar a interface.</translation>
+    </message>
+    <message>
+        <source>Width (px):</source>
+        <translation>Largura (px):</translation>
+    </message>
+    <message>
+        <source>Window</source>
+        <translation>Janela</translation>
+    </message>
+</context>
+<context>
     <name>PreviewWidget</name>
     <message>
         <source>Canvas</source>
@@ -430,6 +641,10 @@
 </context>
 <context>
     <name>PropertiesPanel</name>
+    <message>
+        <source>(locked)</source>
+        <translation>(bloqueada)</translation>
+    </message>
     <message>
         <source>Coming in a future version.</source>
         <translation>Disponível numa próxima versão.</translation>
@@ -600,12 +815,24 @@
         <translation>Adicionar segmento aqui</translation>
     </message>
     <message>
+        <source>Cut at playhead</source>
+        <translation>Cortar na cabeça de leitura</translation>
+    </message>
+    <message>
         <source>Delete clip</source>
         <translation>Apagar clip</translation>
     </message>
     <message>
         <source>Delete segment</source>
         <translation>Apagar segmento</translation>
+    </message>
+    <message>
+        <source>Duplicate clip</source>
+        <translation>Duplicar clip</translation>
+    </message>
+    <message>
+        <source>Duration (seconds):</source>
+        <translation>Duração (segundos):</translation>
     </message>
     <message>
         <source>Edit segment...</source>
@@ -616,12 +843,36 @@
         <translation>Fim (segundos):</translation>
     </message>
     <message>
+        <source>Fade in</source>
+        <translation>Fade in</translation>
+    </message>
+    <message>
+        <source>Fade in...</source>
+        <translation>Fade in...</translation>
+    </message>
+    <message>
+        <source>Fade out</source>
+        <translation>Fade out</translation>
+    </message>
+    <message>
+        <source>Fade out...</source>
+        <translation>Fade out...</translation>
+    </message>
+    <message>
+        <source>Go to clip start</source>
+        <translation>Ir para o início do clip</translation>
+    </message>
+    <message>
         <source>Loop</source>
         <translation>Loop</translation>
     </message>
     <message>
         <source>Name:</source>
         <translation>Nome:</translation>
+    </message>
+    <message>
+        <source>Remove fades</source>
+        <translation>Remover fades</translation>
     </message>
     <message>
         <source>Segment</source>

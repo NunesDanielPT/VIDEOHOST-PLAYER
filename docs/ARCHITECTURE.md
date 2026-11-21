@@ -32,6 +32,17 @@
 
 **Núcleo** (`src/core`): portátil, sem Windows nem Qt, testado em Linux com ASan/UBSan e em Windows. Projeto (parser tolerante), protocolo, escrita atómica, log, estado do show.
 
+## Saídas
+
+| Tipo | Como funciona |
+|---|---|
+| Ecrã | Janela sem bordas no ecrã escolhido. O ecrã é identificado pelo nome de dispositivo (`\\.\DISPLAY2`), não pela ordem, por isso não salta para outro ecrã se o Windows reordenar. Nome do monitor via DisplayConfig (EDID), placa via DXGI. |
+| Janela | Janela normal redimensionável (testes, monitorização). |
+| NDI | O canvas em resolução total é copiado da GPU de forma assíncrona e enviado numa thread própria com caixa de correio de 1 frame. O runtime NDI (NDI Tools) é carregado em tempo de execução; sem ele, a saída fica em erro e o resto continua. |
+| Blackmagic | Em desenvolvimento (SDK DeckLink). |
+
+O Studio pede a lista de ecrãs ao motor (`list_displays`); se o motor estiver desligado usa os ecrãs vistos pelo Qt.
+
 ## Preview (Workspace)
 
 O motor reduz o canvas para no máximo 960×540, copia-o para a CPU de forma assíncrona (anel de 3 texturas staging, `D3D11_MAP_FLAG_DO_NOT_WAIT`, nunca espera pela GPU) e escreve-o a ~30 fps no bloco partilhado `Local\VTHOST_Preview` (`src/core/include/vthost/core/preview.h`). A sincronização é um seqlock: o motor nunca espera pelo Studio; o Studio descarta cópias apanhadas a meio. É exatamente a imagem que sai para os outputs.

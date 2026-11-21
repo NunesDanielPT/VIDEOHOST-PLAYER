@@ -33,12 +33,16 @@ public:
     double contentSeconds() const;
 
     void addSegmentAt(double t);
+    bool cutSelectedClipAtPlayhead();
 
 signals:
     void seekRequested(double seconds, bool final);
     void edited();
     void layerClicked(int row);
     void viewChanged();
+    void layerContextMenu(int row, const QPoint& globalPos);
+    void layerVisibilityToggled(int row);
+    void layerMoved(int from, int to);
 
 protected:
     void paintEvent(QPaintEvent* e) override;
@@ -54,7 +58,7 @@ protected:
     void dropEvent(QDropEvent* e) override;
 
 private:
-    enum class Drag { None, Scrub, MoveClip, ResizeClip };
+    enum class Drag { None, Scrub, MoveClip, ResizeClip, FadeIn, FadeOut, MoveLayer };
 
     vthost::Timeline* timeline() const;
     double timeToX(double t) const;
@@ -62,6 +66,10 @@ private:
     int rowAt(double y) const;
     double rowTop(int row) const;
     int clipAt(const QPointF& pos, bool* onRightEdge) const;
+    int fadeHandleAt(const QPointF& pos, bool* isFadeIn) const;
+    QRectF clipRect(const vthost::Clip& c, int row) const;
+    int rowOfLayer(const std::string& layerId) const;
+    void setClipFade(int clipIndex, bool fadeIn);
     int segmentAt(double x) const;
     double snap(double t, int ignoreClip) const;
     QString newClipId() const;
@@ -88,4 +96,6 @@ private:
     QString selectedClipId_;
     double dropPreviewTime_ = -1.0;
     int dropPreviewRow_ = -1;
+    int dragLayerFrom_ = -1;
+    int dragLayerTo_ = -1;
 };
