@@ -448,7 +448,7 @@ QWidget* MainWindow::buildTransportBar() {
 void MainWindow::buildUi() {
     playlist_ = new PlaylistView(media_, this);
     connect(playlist_, &QListWidget::currentRowChanged, this, [this](int) { updateSelection(); });
-    connect(playlist_, &PlaylistView::playRequested, this, &MainWindow::playCue);
+    connect(playlist_, &PlaylistView::playRequested, this, [this](int i) { playCue(i); });
     connect(playlist_, &PlaylistView::iconClicked, this, &MainWindow::onIconClicked);
     connect(playlist_, &PlaylistView::filesDropped, this, &MainWindow::addFiles);
     connect(playlist_, &PlaylistView::cueMoved, this, &MainWindow::moveCue);
