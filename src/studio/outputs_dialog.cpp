@@ -23,6 +23,10 @@
 #include <algorithm>
 #include <cmath>
 
+#ifdef Q_OS_WIN
+#include "displays.h" // a mesma deteção que o motor usa
+#endif
+
 using namespace vthost;
 
 namespace {
@@ -64,8 +68,12 @@ private:
     QString text_;
 };
 
-// Ecrãs vistos pelo Qt (quando o motor não está ligado): mesma ordem que o motor usa.
+// Ecrãs quando o motor não está ligado. No Windows usa exatamente o código do
+// motor (mesmos ids "\\.\DISPLAY2", nomes e placa gráfica).
 std::vector<protocol::DisplayInfo> qtDisplays() {
+#ifdef Q_OS_WIN
+    return vthost::enumerateDisplays();
+#else
     std::vector<protocol::DisplayInfo> list;
     const QScreen* primary = QGuiApplication::primaryScreen();
     for (QScreen* s : QGuiApplication::screens()) {
@@ -88,6 +96,7 @@ std::vector<protocol::DisplayInfo> qtDisplays() {
     });
     for (std::size_t i = 0; i < list.size(); ++i) list[i].index = static_cast<int>(i);
     return list;
+#endif
 }
 
 } // namespace
@@ -268,8 +277,7 @@ void OutputsDialog::refreshDisplays() {
 
 void OutputsDialog::setDisplays(std::vector<protocol::DisplayInfo> displays, bool fromEngine) {
     displays_ = std::move(displays);
-    source_->setText(fromEngine ? tr("Screens detected by the engine.")
-                                : tr("Engine offline: screens detected by Windows (graphics card unknown)."));
+    source_->setText(fromEngine ? tr("Screens detected by the engine.") : tr("Screens detected by Windows."));
     showOutput(current_);
 }
 
@@ -316,7 +324,7 @@ void OutputsDialog::showOutput(int index) {
     int sel = -1;
     for (const auto& d : displays_) {
         display_->addItem(displayLabel(d), qs(d.id));
-        if (!o.displayId.empty() && d.id == o.displayId) sel = display_->count() - 1;
+        if (!o.displayId.empty() && (d.id == o.displayId || d.name == o.displayId)) sel = display_->count() - 1;
     }
     if (o.displayId.empty()) {
         // Projeto antigo: só o número do ecrã.
@@ -403,11 +411,16 @@ void OutputsDialog::removeOutput() {
 void OutputsDialog::identify() {
     for (const auto& d : displays_) {
         for (QScreen* s : QGuiApplication::screens()) {
-            if (s->name().toStdString() != d.id) continue;
+            // O Qt pode dar o nome do monitor em vez do id; compara também a posição.
+            const QRect g = s->geometry();
+            const bool samePos = std::abs(g.x() * s->devicePixelRatio() - d.x) < 2 &&
+                                 std::abs(g.y() * s->devicePixelRatio() - d.y) < 2;
+            if (s->name().toStdString() != d.id && s->name().toStdString() != d.name && !samePos) continue;
             auto* w = new IdentifyOverlay(s, QString::number(d.index + 1),
                                           QStringLiteral("%1\n%2×%3").arg(qs(d.name)).arg(d.width).arg(d.height) +
                                               (d.adapter.empty() ? QString() : QStringLiteral("\n") + qs(d.adapter)));
             w->show();
+            break;
         }
     }
 }

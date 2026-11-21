@@ -8,6 +8,7 @@
 #include "media_cache.h"
 #include "preview_widget.h"
 #include "properties_panel.h"
+#include "prefs.h"
 #include "settings_dialog.h"
 #include "timeline_panel.h"
 #include "vthost/core/paths.h"
@@ -94,6 +95,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     restoreGeometry(st.value(QStringLiteral("ui/geometry")).toByteArray());
     mainSplit_->restoreState(st.value(QStringLiteral("ui/mainSplit")).toByteArray());
     topSplit_->restoreState(st.value(QStringLiteral("ui/topSplit")).toByteArray());
+
+    applyPreferences();
+
+    // Arranque: se o motor já estiver a tocar um show, o Studio adota-o (onEngineStatus).
+    // Senão, abre o último projeto e, se pedido, arranca o motor.
+    QTimer::singleShot(1500, this, [this] {
+        if (adoptedEngineProject_ && !projectPath_.isEmpty()) return;
+        const QString last = QSettings().value(QStringLiteral("lastProject")).toString();
+        if (!engine_->hasStatus() && prefs::openLastProject() && !last.isEmpty() && QFileInfo::exists(last) && !dirty_)
+            loadFrom(last);
+        if (!engine_->isConnected() && prefs::autoStartEngine()) startEngine();
+    });
 
     // Verificação automática pouco depois de arrancar (sem incomodar se falhar).
     if (SettingsDialog::checkUpdatesOnStartup())
@@ -240,7 +253,7 @@ void MainWindow::buildMenus() {
     file->addAction(tr("&Save"), QKeySequence::Save, this, [this] { saveProject(); });
     file->addAction(tr("Save &as..."), QKeySequence::SaveAs, this, [this] { saveProjectAs(); });
     file->addSeparator();
-    file->addAction(tr("Settings..."), QKeySequence::Preferences, this, [this] { openSettings(0); });
+    file->addAction(tr("Preferences..."), QKeySequence(Qt::CTRL | Qt::Key_Comma), this, [this] { openSettings(0); });
     file->addSeparator();
     file->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
     editActions_ << aNew << aOpen;
@@ -265,9 +278,13 @@ void MainWindow::buildMenus() {
     editActions_ << aOutputs;
 
     auto* show = menuBar()->addMenu(tr("&Show"));
-    auto* aGo = show->addAction(tr("GO next"), this, &MainWindow::goNext);
+    // Como no Millumin: ESPAÇO = coluna seguinte (Dashboard) ou play/stop (Timeline).
+    auto* aGo = show->addAction(tr("GO next column / Play-stop timeline"), this, &MainWindow::onSpace);
     aGo->setShortcut(Qt::Key_Space);
     aGo->setShortcutContext(Qt::ApplicationShortcut);
+    auto* aPrev = show->addAction(tr("GO previous column"), this, &MainWindow::goPrevious);
+    aPrev->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Space));
+    aPrev->setShortcutContext(Qt::ApplicationShortcut);
     show->addAction(tr("Stop all"), this, &MainWindow::stopAll);
     show->addSeparator();
     showModeAction_ = show->addAction(tr("Show Mode (lock editing)"));
@@ -287,7 +304,7 @@ void MainWindow::buildMenus() {
     auto* help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("Check for updates..."), this, [this] { checkForUpdates(true); });
     help->addSeparator();
-    help->addAction(tr("About VTHOST"), this, [this] { openSettings(1); });
+    help->addAction(tr("About VTHOST"), this, [this] { openSettings(SettingsDialog::kAboutTab); });
 
     auto* tb = addToolBar(tr("Show"));
     tb->setObjectName(QStringLiteral("toolbar"));
@@ -406,6 +423,12 @@ bool MainWindow::saveProjectAs() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    if (prefs::confirmQuit() && !dirty_ &&
+        QMessageBox::question(this, tr("Quit"), tr("Quit VTHOST Studio? The engine and the show keep running.")) !=
+            QMessageBox::Yes) {
+        event->ignore();
+        return;
+    }
     if (!confirmDiscard()) {
         event->ignore();
         return;
@@ -495,6 +518,7 @@ void MainWindow::addColumn() {
     if (showMode_) return;
     Column c;
     c.name = ss(tr("Cue %1").arg(project_.columns.size() + 1));
+    c.fadeSeconds = prefs::defaultColumnFade();
     project_.columns.push_back(std::move(c));
     refreshDashboard();
     markChanged();
@@ -772,6 +796,7 @@ void MainWindow::insertColumnAt(int index) {
     index = std::clamp(index, 0, static_cast<int>(project_.columns.size()));
     Column c;
     c.name = ss(tr("Cue %1").arg(project_.columns.size() + 1));
+    c.fadeSeconds = prefs::defaultColumnFade();
     project_.columns.insert(project_.columns.begin() + index, std::move(c));
     if (activeColumn_ >= index) ++activeColumn_;
     refreshDashboard();
@@ -823,8 +848,10 @@ void MainWindow::selectLayer(int row) {
 void MainWindow::updateSelectionViews() {
     const bool valid = selectedLayer_ >= 0 && selectedLayer_ < static_cast<int>(project_.layers.size());
     const Layer* layer = valid ? &project_.layers[static_cast<std::size_t>(selectedLayer_)] : nullptr;
+    if (prefs::originTopLeft()) properties_->setOrigin(project_.canvasWidth / 2.0, project_.canvasHeight / 2.0);
+    else properties_->setOrigin(0.0, 0.0);
     properties_->setLayer(layer);
-    if (!layer) {
+    if (!layer || !prefs::showLayerOutline()) {
         preview_->setSelection(std::nullopt, 0, 0);
         return;
     }
@@ -887,6 +914,8 @@ void MainWindow::go(int column) {
     protocol::Command c;
     c.type = protocol::CommandType::Go;
     c.column = column;
+    // SHIFT ao lançar = sem transição (corte seco), como no Millumin.
+    c.value = (prefs::shiftSkipsTransitions() && (QApplication::keyboardModifiers() & Qt::ShiftModifier)) ? 0.0 : -1.0;
     engine_->send(c, [this](const protocol::ParsedResponse& r) {
         if (!r.ok) infoLabel_->setText(tr("GO failed: %1").arg(qs(r.error)));
     });
@@ -895,8 +924,51 @@ void MainWindow::go(int column) {
 }
 
 void MainWindow::goNext() {
-    if (project_.columns.empty()) return;
-    go((activeColumn_ + 1) % static_cast<int>(project_.columns.size()));
+    const int n = static_cast<int>(project_.columns.size());
+    if (n == 0) return;
+    int next = activeColumn_ + 1;
+    if (next >= n) {
+        if (!prefs::loopBoard()) {
+            infoLabel_->setText(tr("End of the board."));
+            return;
+        }
+        next = 0;
+    }
+    go(next);
+}
+
+void MainWindow::goPrevious() {
+    const int n = static_cast<int>(project_.columns.size());
+    if (n == 0) return;
+    int prev = activeColumn_ - 1;
+    if (prev < 0) prev = prefs::loopBoard() ? n - 1 : 0;
+    go(prev);
+}
+
+void MainWindow::onSpace() {
+    if (bottomTabs_->currentWidget() == timelinePanel_) {
+        const bool playing = engine_->hasStatus() && engine_->lastStatus().timelinePlaying &&
+                             qs(engine_->lastStatus().timelineId) == timelineId();
+        if (playing) sendTimeline(protocol::TimelineAction::Pause, -1.0);
+        else sendTimeline(protocol::TimelineAction::Play, timelinePanel_->timeline()->playhead());
+        return;
+    }
+    goNext();
+}
+
+void MainWindow::sendEngineSettings() {
+    protocol::Command c;
+    c.type = protocol::CommandType::SetSettings;
+    c.settings = prefs::engineSettings();
+    engine_->send(c);
+}
+
+void MainWindow::applyPreferences() {
+    sendEngineSettings();
+    timelinePanel_->timeline()->setSnapEnabled(prefs::timelineSnap());
+    timelinePanel_->timeline()->setFollowPlayhead(prefs::followPlayhead());
+    refreshDashboard();
+    updateSelectionViews();
 }
 
 void MainWindow::stopAll() {
@@ -909,6 +981,13 @@ void MainWindow::stopAll() {
 }
 
 void MainWindow::setShowMode(bool on) {
+    if (!on && showMode_ && prefs::confirmLeaveShowMode()) {
+        const auto b = QMessageBox::question(this, tr("Show Mode"), tr("Leave Show Mode and unlock editing?"));
+        if (b != QMessageBox::Yes) {
+            showModeAction_->setChecked(true);
+            return;
+        }
+    }
     showMode_ = on;
     showModeAction_->setChecked(on);
     protocol::Command c;
@@ -965,6 +1044,7 @@ void MainWindow::onEngineConnection(bool connected) {
     engineLabel_->setText(connected ? tr("Engine: connected") : tr("Engine: offline"));
     engineLabel_->setStyleSheet(connected ? QStringLiteral("color: #3c3; padding: 0 8px;")
                                           : QStringLiteral("color: #e44; padding: 0 8px;"));
+    if (connected) sendEngineSettings();
     // Ao ligar, decide no primeiro status: adoptar o show que já está a correr ou enviar o nosso.
     if (connected && adoptedEngineProject_) pushTimer_.start();
 }
@@ -1043,10 +1123,8 @@ void MainWindow::refreshDashboard() {
 
     for (int c = 0; c < static_cast<int>(project_.columns.size()); ++c) {
         const auto& col = project_.columns[static_cast<std::size_t>(c)];
-        auto* h = new QTableWidgetItem(QStringLiteral("%1  ▶  %2\n%3 s")
-                                           .arg(c + 1, 2, 10, QLatin1Char('0'))
-                                           .arg(qs(col.name))
-                                           .arg(col.fadeSeconds, 0, 'f', 1));
+        const QString index = prefs::showColumnIndex() ? QStringLiteral("%1  ").arg(c + 1, 2, 10, QLatin1Char('0')) : QString();
+        auto* h = new QTableWidgetItem(QStringLiteral("%1▶  %2\n%3 s").arg(index, qs(col.name)).arg(col.fadeSeconds, 0, 'f', 1));
         if (c == activeColumn_) {
             h->setBackground(kActiveColumn);
             h->setForeground(Qt::black);
@@ -1105,6 +1183,7 @@ void MainWindow::updateEditingEnabled() {
 void MainWindow::openSettings(int tab) {
     SettingsDialog dlg(this, tab);
     connect(&dlg, &SettingsDialog::checkForUpdatesRequested, this, [this] { checkForUpdates(true); });
+    connect(&dlg, &SettingsDialog::preferencesChanged, this, &MainWindow::applyPreferences);
     dlg.exec();
 }
 

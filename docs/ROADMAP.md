@@ -28,6 +28,8 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [x] Modos de fim de media: loop, uma vez e congelar, uma vez e parar, auto-follow
 - [x] Timeline: cortar clip na cabeça de leitura (Ctrl+Shift+X), fade in/out por clip com pegas
 - [x] Logótipo e ícones
+- [x] ESPAÇO como no Millumin (coluna seguinte / play-stop da timeline), ALT+ESPAÇO coluna anterior, SHIFT+GO sem transição
+- [x] Preferências por separadores: Geral, Workspace, Board, Timeline, Motor e saídas, Show Mode, Atualizações, Sobre
 - [ ] Keyframes (animar opacidade/posição/escala/rotação na timeline com curvas)
 - [ ] Transições por layer (crossfade / fade-in-and-out) como no Millumin
 

@@ -5,7 +5,8 @@
 // Pedidos:
 //   {"cmd":"ping"}
 //   {"cmd":"load_project","path":"C:/shows/x.vthost"}
-//   {"cmd":"go","column":2}                 // dispara a coluna (cue) 2
+//   {"cmd":"go","column":2,"fade":-1}       // dispara a coluna 2 (fade -1 = o da coluna; 0 = corte)
+//   {"cmd":"set_settings","vsync":true,"previewFps":30,"priority":"above_normal","loopBoard":false}
 //   {"cmd":"stop_all","fade":1.0}
 //   {"cmd":"set_layer_props","layer":"L1","props":{"opacity":0.5,"blend":"add","x":0,"y":0,"scale":1,"rotation":0}}
 //   {"cmd":"set_layer_visible","layer":"L1","on":false}   // olho da layer, ao vivo
@@ -27,19 +28,29 @@ namespace vthost::protocol {
 
 inline constexpr std::size_t kMaxLineBytes = 1024 * 1024;
 
-enum class CommandType { Ping, LoadProject, Go, StopAll, SetLayerProps, SetLayerVisible, Timeline, SetShowMode, GetStatus, ListDisplays, Shutdown };
+enum class CommandType { Ping, LoadProject, Go, StopAll, SetLayerProps, SetLayerVisible, Timeline, SetShowMode, GetStatus, ListDisplays, SetSettings, Shutdown };
 enum class TimelineAction { Play, Pause, Stop, Seek };
+
+// Preferências do motor (enviadas pelo Studio ao ligar e quando mudam).
+struct EngineSettings {
+    bool vsync = true;
+    int previewFps = 30;                     // 0 = sem preview; 5..60
+    std::string priority = "above_normal";   // "normal" | "above_normal" | "high"
+    bool loopBoard = false;                  // auto-follow na última coluna volta à primeira
+    friend bool operator==(const EngineSettings&, const EngineSettings&) = default;
+};
 
 struct Command {
     CommandType type = CommandType::Ping;
     std::string path;
     std::string layer;
     int column = -1;
-    double value = 0.0; // fade (stop_all) / tempo (timeline; -1 = posição actual)
+    double value = 0.0; // fade (stop_all, go: -1 = o da coluna) / tempo (timeline; -1 = posição actual)
     bool on = false;
     LayerProps props;
     std::string timeline;
     TimelineAction action = TimelineAction::Play;
+    EngineSettings settings;
 };
 
 struct ParsedCommand {

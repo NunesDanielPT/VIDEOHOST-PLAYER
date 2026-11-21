@@ -199,6 +199,10 @@
         <translation>&amp;Motor</translation>
     </message>
     <message>
+        <source>End of the board.</source>
+        <translation>Fim do board.</translation>
+    </message>
+    <message>
         <source>Engine</source>
         <translation>Motor</translation>
     </message>
@@ -227,12 +231,16 @@
         <translation>GO falhou: %1</translation>
     </message>
     <message>
-        <source>GO next</source>
-        <translation>GO seguinte</translation>
-    </message>
-    <message>
         <source>GO next  [Space]</source>
         <translation>GO seguinte  [Espaço]</translation>
+    </message>
+    <message>
+        <source>GO next column / Play-stop timeline</source>
+        <translation>GO coluna seguinte / Play-stop da timeline</translation>
+    </message>
+    <message>
+        <source>GO previous column</source>
+        <translation>GO coluna anterior</translation>
     </message>
     <message>
         <source>GO this column</source>
@@ -265,6 +273,10 @@
     <message>
         <source>Layer %1: %2</source>
         <translation>Layer %1: %2</translation>
+    </message>
+    <message>
+        <source>Leave Show Mode and unlock editing?</source>
+        <translation>Sair do Modo Espetáculo e desbloquear a edição?</translation>
     </message>
     <message>
         <source>Lock layer</source>
@@ -323,6 +335,18 @@
         <translation>Tocar uma vez e parar</translation>
     </message>
     <message>
+        <source>Preferences...</source>
+        <translation>Preferências...</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>Sair</translation>
+    </message>
+    <message>
+        <source>Quit VTHOST Studio? The engine and the show keep running.</source>
+        <translation>Sair do VTHOST Studio? O motor e o espetáculo continuam a correr.</translation>
+    </message>
+    <message>
         <source>Remove column</source>
         <translation>Remover coluna</translation>
     </message>
@@ -375,12 +399,12 @@
         <translation>Selecione primeiro uma media na biblioteca.</translation>
     </message>
     <message>
-        <source>Settings...</source>
-        <translation>Definições...</translation>
-    </message>
-    <message>
         <source>Show</source>
         <translation>Espetáculo</translation>
+    </message>
+    <message>
+        <source>Show Mode</source>
+        <translation>Modo Espetáculo</translation>
     </message>
     <message>
         <source>Show Mode (lock editing)</source>
@@ -536,10 +560,6 @@
         <translation>Motor desligado</translation>
     </message>
     <message>
-        <source>Engine offline: screens detected by Windows (graphics card unknown).</source>
-        <translation>Motor desligado: ecrãs detetados pelo Windows (placa gráfica desconhecida).</translation>
-    </message>
-    <message>
         <source>Height (px):</source>
         <translation>Altura (px):</translation>
     </message>
@@ -586,6 +606,10 @@
     <message>
         <source>Screen number %1 (automatic)</source>
         <translation>Ecrã número %1 (automático)</translation>
+    </message>
+    <message>
+        <source>Screens detected by Windows.</source>
+        <translation>Ecrãs detetados pelo Windows.</translation>
     </message>
     <message>
         <source>Screens detected by the engine.</source>
@@ -717,8 +741,56 @@
 <context>
     <name>SettingsDialog</name>
     <message>
+        <source>10 bits HDR (coming soon)</source>
+        <translation>10 bits HDR (brevemente)</translation>
+    </message>
+    <message>
+        <source>15 fps (lighter)</source>
+        <translation>15 fps (mais leve)</translation>
+    </message>
+    <message>
+        <source>30 fps</source>
+        <translation>30 fps</translation>
+    </message>
+    <message>
+        <source>60 fps</source>
+        <translation>60 fps</translation>
+    </message>
+    <message>
+        <source>8 bits</source>
+        <translation>8 bits</translation>
+    </message>
+    <message>
         <source>About</source>
         <translation>Sobre</translation>
+    </message>
+    <message>
+        <source>Above normal (recommended)</source>
+        <translation>Acima do normal (recomendado)</translation>
+    </message>
+    <message>
+        <source>Anti-aliasing:</source>
+        <translation>Anti-aliasing:</translation>
+    </message>
+    <message>
+        <source>Ask before quitting</source>
+        <translation>Perguntar antes de sair</translation>
+    </message>
+    <message>
+        <source>Ask for confirmation before leaving Show Mode</source>
+        <translation>Pedir confirmação antes de sair do Modo Espetáculo</translation>
+    </message>
+    <message>
+        <source>At the end of the board:</source>
+        <translation>No fim do board:</translation>
+    </message>
+    <message>
+        <source>Board</source>
+        <translation>Board</translation>
+    </message>
+    <message>
+        <source>Center of the canvas</source>
+        <translation>Centro do canvas</translation>
     </message>
     <message>
         <source>Check for updates now</source>
@@ -729,12 +801,56 @@
         <translation>Procurar atualizações ao abrir o VTHOST Studio</translation>
     </message>
     <message>
+        <source>Closing VTHOST Studio never stops the engine: the show keeps running.</source>
+        <translation>Fechar o VTHOST Studio nunca pára o motor: o espetáculo continua.</translation>
+    </message>
+    <message>
+        <source>Color depth:</source>
+        <translation>Profundidade de cor:</translation>
+    </message>
+    <message>
         <source>Created by %1</source>
         <translation>Criado por %1</translation>
     </message>
     <message>
+        <source>Default transition for new columns:</source>
+        <translation>Transição por omissão das colunas novas:</translation>
+    </message>
+    <message>
+        <source>Duration of images dropped on the timeline:</source>
+        <translation>Duração das imagens largadas na timeline:</translation>
+    </message>
+    <message>
+        <source>Engine &amp;&amp; outputs</source>
+        <translation>Motor &amp;&amp; saídas</translation>
+    </message>
+    <message>
+        <source>Engine priority:</source>
+        <translation>Prioridade do motor:</translation>
+    </message>
+    <message>
+        <source>Follow the playhead while playing</source>
+        <translation>Seguir a cabeça de leitura durante a reprodução</translation>
+    </message>
+    <message>
         <source>General</source>
         <translation>Geral</translation>
+    </message>
+    <message>
+        <source>Go back to the first column</source>
+        <translation>Voltar à primeira coluna</translation>
+    </message>
+    <message>
+        <source>High</source>
+        <translation>Alta</translation>
+    </message>
+    <message>
+        <source>Hold SHIFT to skip transitions</source>
+        <translation>Manter SHIFT para saltar as transições</translation>
+    </message>
+    <message>
+        <source>In Show Mode editing is locked, the engine cannot be stopped and updates are not installed. Live controls (GO, opacity, visibility, properties) keep working.</source>
+        <translation>No Modo Espetáculo a edição fica bloqueada, o motor não pode ser parado e não são instaladas atualizações. Os controlos ao vivo (GO, opacidade, visibilidade, propriedades) continuam a funcionar.</translation>
     </message>
     <message>
         <source>Language</source>
@@ -745,28 +861,92 @@
         <translation>Idioma:</translation>
     </message>
     <message>
+        <source>Linear filtering</source>
+        <translation>Filtragem linear</translation>
+    </message>
+    <message>
         <source>Media server and video player for live shows.</source>
         <translation>Media server e player de vídeo para espetáculos ao vivo.</translation>
+    </message>
+    <message>
+        <source>Normal</source>
+        <translation>Normal</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Desligado</translation>
+    </message>
+    <message>
+        <source>Open the last project at startup</source>
+        <translation>Abrir o último projeto ao arrancar</translation>
+    </message>
+    <message>
+        <source>Preferences</source>
+        <translation>Preferências</translation>
     </message>
     <message>
         <source>Project</source>
         <translation>Projeto</translation>
     </message>
     <message>
-        <source>Settings</source>
-        <translation>Definições</translation>
+        <source>SPACE launches the next column, ALT+SPACE the previous one.</source>
+        <translation>ESPAÇO lança a coluna seguinte, ALT+ESPAÇO a anterior.</translation>
+    </message>
+    <message>
+        <source>SPACE plays or stops the timeline. CTRL+SHIFT+X cuts the selected media.</source>
+        <translation>ESPAÇO reproduz ou pára a timeline. CTRL+SHIFT+X corta a media selecionada.</translation>
+    </message>
+    <message>
+        <source>Show Mode</source>
+        <translation>Modo Espetáculo</translation>
+    </message>
+    <message>
+        <source>Show the column index</source>
+        <translation>Mostrar o número das colunas</translation>
+    </message>
+    <message>
+        <source>Show the outline of the selected layer</source>
+        <translation>Mostrar o contorno da layer selecionada</translation>
+    </message>
+    <message>
+        <source>Snap media to useful timings (hold SHIFT to invert)</source>
+        <translation>Encaixar as media em tempos úteis (SHIFT inverte)</translation>
+    </message>
+    <message>
+        <source>Start the engine when VTHOST Studio opens</source>
+        <translation>Iniciar o motor ao abrir o VTHOST Studio</translation>
+    </message>
+    <message>
+        <source>Stay on the last column</source>
+        <translation>Ficar na última coluna</translation>
+    </message>
+    <message>
+        <source>Synchronize with the screen refresh (V-Sync)</source>
+        <translation>Sincronizar com a frequência do ecrã (V-Sync)</translation>
     </message>
     <message>
         <source>The language will change the next time VTHOST Studio starts.</source>
         <translation>O idioma muda da próxima vez que o VTHOST Studio arrancar.</translation>
     </message>
     <message>
-        <source>Updates are never installed while Show Mode is on.</source>
-        <translation>As atualizações nunca são instaladas com o Modo Espetáculo ligado.</translation>
+        <source>The mouse cursor is always hidden on fullscreen outputs, and Windows sleep and screensaver are blocked while the engine runs.</source>
+        <translation>O cursor do rato fica sempre escondido nas saídas em ecrã inteiro, e a suspensão e o protetor de ecrã do Windows ficam bloqueados enquanto o motor corre.</translation>
     </message>
     <message>
-        <source>Updates:</source>
-        <translation>Atualizações:</translation>
+        <source>Timeline</source>
+        <translation>Timeline</translation>
+    </message>
+    <message>
+        <source>Top-left corner</source>
+        <translation>Canto superior esquerdo</translation>
+    </message>
+    <message>
+        <source>Updates</source>
+        <translation>Atualizações</translation>
+    </message>
+    <message>
+        <source>Updates are never installed while Show Mode is on.</source>
+        <translation>As atualizações nunca são instaladas com o Modo Espetáculo ligado.</translation>
     </message>
     <message>
         <source>Uses %1 (LGPL), %2 (LGPL) and %3 (MIT).</source>
@@ -775,6 +955,18 @@
     <message>
         <source>Version %1</source>
         <translation>Versão %1</translation>
+    </message>
+    <message>
+        <source>Workspace</source>
+        <translation>Workspace</translation>
+    </message>
+    <message>
+        <source>Workspace origin:</source>
+        <translation>Origem do Workspace:</translation>
+    </message>
+    <message>
+        <source>Workspace preview frame rate:</source>
+        <translation>Fotogramas por segundo do preview do Workspace:</translation>
     </message>
     <message>
         <source>© %1 %2. All rights reserved.</source>

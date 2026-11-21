@@ -3,10 +3,12 @@
 #include "layer_header.h"
 #include "library_panel.h"
 #include "media_cache.h"
+#include "prefs.h"
 
 #include <QContextMenuEvent>
 #include <QDragEnterEvent>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMenu>
@@ -52,7 +54,8 @@ TimelineWidget::TimelineWidget(MediaCache* cache, QWidget* parent) : QWidget(par
     connect(&repaint_, &QTimer::timeout, this, [this] {
         // Acompanha a cabeça de leitura se sair do ecrã.
         const double t = playhead();
-        if (t > scroll_ + visibleSeconds() * 0.95 || t < scroll_) setScrollSeconds(std::max(0.0, t - visibleSeconds() * 0.1));
+        if (follow_ && (t > scroll_ + visibleSeconds() * 0.95 || t < scroll_))
+            setScrollSeconds(std::max(0.0, t - visibleSeconds() * 0.1));
         update();
     });
     connect(cache_, &MediaCache::updated, this, [this](const QString&) { update(); });
@@ -227,6 +230,9 @@ double TimelineWidget::snap(double t, int ignoreClip) const {
     const Timeline* tl = timeline();
     const double tol = kSnapPx / pxPerSec_;
     double best = std::round(t * 100.0) / 100.0;
+    // Como no Millumin, SHIFT inverte o encaixe (liga se estiver desligado e vice-versa).
+    const bool shift = (QGuiApplication::keyboardModifiers() & Qt::ShiftModifier) != 0;
+    if (snapEnabled_ == shift) return std::max(0.0, best);
     double bestDist = tol;
     auto consider = [&](double cand) {
         const double d = std::abs(cand - t);
@@ -773,7 +779,7 @@ void TimelineWidget::dropEvent(QDropEvent* e) {
     c.layerId = project_->layers[static_cast<std::size_t>(row)].id;
     c.mediaId = mediaId;
     c.start = snap(xToTime(pos.x()), -1);
-    c.duration = cache_->suggestedClipDuration(QString::fromStdString(m->path));
+    c.duration = cache_->suggestedClipDuration(QString::fromStdString(m->path), prefs::imageClipDuration());
     tl->clips.push_back(c);
     selectedClipId_ = QString::fromStdString(c.id);
     e->acceptProposedAction();

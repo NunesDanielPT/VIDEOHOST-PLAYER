@@ -147,6 +147,12 @@ bool findDisplay(const std::vector<protocol::DisplayInfo>& displays, const std::
                 out = d;
                 return true;
             }
+        // Projetos feitos noutra versão podem guardar o nome do monitor em vez do id.
+        for (const auto& d : displays)
+            if (!d.name.empty() && d.name == id) {
+                out = d;
+                return true;
+            }
         if (!allowIndexFallback) return false;
     }
     if (index >= 0 && index < static_cast<int>(displays.size())) {

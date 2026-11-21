@@ -18,6 +18,7 @@ qt_add_executable(vthost-studio WIN32
     update_checker.cpp
     update_checker.h
     app_info.h
+    prefs.h
     dashboard_table.cpp
     dashboard_table.h
     layer_header.cpp
@@ -40,6 +41,8 @@ qt_add_executable(vthost-studio WIN32
 target_link_libraries(vthost-studio PRIVATE vthost_core Qt6::Widgets Qt6::Network)
 if(WIN32)
     target_sources(vthost-studio PRIVATE ${VTHOST_APP_RC})
+    # Mesma deteção de ecrãs que o motor (ids iguais: "\\.\DISPLAY2").
+    target_link_libraries(vthost-studio PRIVATE vthost_winutil)
 endif()
 
 # Logótipo (ícone da janela e Definições → Sobre).

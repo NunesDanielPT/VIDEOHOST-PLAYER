@@ -45,7 +45,8 @@ private:
 
     std::string handle(const std::string& line);
     bool loadProject(const std::string& path, std::string* error);
-    bool go(int column, std::string* error);
+    bool go(int column, std::string* error, double fadeOverride = -1.0);
+    void applySettings(const protocol::EngineSettings& s);
     void stopAll(double fade);
 
     // Timeline
@@ -80,6 +81,8 @@ private:
     std::map<std::string, LayerProps> layerProps_;
     std::vector<std::string> warnings_;
     bool showMode_ = false;
+    protocol::EngineSettings settings_;
+    Clock::time_point lastPreview_{};
     int activeColumn_ = -1;
     bool running_ = true;
     int exitCode_ = kExitRequested;

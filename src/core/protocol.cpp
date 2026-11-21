@@ -58,6 +58,7 @@ ParsedCommand parseCommand(const std::string& line) {
                 return r;
             }
             c.column = static_cast<int>(*col);
+            c.value = std::clamp(num(j, "fade").value_or(-1.0), -1.0, 60.0);
         } else if (cmd == "stop_all") {
             c.type = CommandType::StopAll;
             c.value = std::clamp(num(j, "fade").value_or(1.0), 0.0, 60.0);
@@ -108,6 +109,18 @@ ParsedCommand parseCommand(const std::string& line) {
             c.on = it != j.end() && it->is_boolean() && it->get<bool>();
         } else if (cmd == "get_status") {
             c.type = CommandType::GetStatus;
+        } else if (cmd == "set_settings") {
+            c.type = CommandType::SetSettings;
+            auto b = [&](const char* k, bool def) {
+                auto it = j.find(k);
+                return (it != j.end() && it->is_boolean()) ? it->get<bool>() : def;
+            };
+            c.settings.vsync = b("vsync", true);
+            c.settings.loopBoard = b("loopBoard", false);
+            const double fps = num(j, "previewFps").value_or(30.0);
+            c.settings.previewFps = fps <= 0.0 ? 0 : static_cast<int>(std::clamp(fps, 5.0, 60.0));
+            const std::string pr = str(j, "priority");
+            c.settings.priority = (pr == "normal" || pr == "high") ? pr : "above_normal";
         } else if (cmd == "list_displays") {
             c.type = CommandType::ListDisplays;
         } else if (cmd == "shutdown") {
@@ -130,7 +143,14 @@ std::string serializeCommand(const Command& c) {
     switch (c.type) {
     case CommandType::Ping: j["cmd"] = "ping"; break;
     case CommandType::LoadProject: j = {{"cmd", "load_project"}, {"path", c.path}}; break;
-    case CommandType::Go: j = {{"cmd", "go"}, {"column", c.column}}; break;
+    case CommandType::Go: j = {{"cmd", "go"}, {"column", c.column}, {"fade", c.value}}; break;
+    case CommandType::SetSettings:
+        j = {{"cmd", "set_settings"},
+             {"vsync", c.settings.vsync},
+             {"previewFps", c.settings.previewFps},
+             {"priority", c.settings.priority},
+             {"loopBoard", c.settings.loopBoard}};
+        break;
     case CommandType::StopAll: j = {{"cmd", "stop_all"}, {"fade", c.value}}; break;
     case CommandType::SetLayerProps:
         j = {{"cmd", "set_layer_props"},

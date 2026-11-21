@@ -24,6 +24,8 @@ public:
     void setPlayhead(double seconds, bool playing);
     double playhead() const;
     void setEditable(bool editable) { editable_ = editable; }
+    void setSnapEnabled(bool on) { snapEnabled_ = on; }
+    void setFollowPlayhead(bool on) { follow_ = on; }
 
     double zoom() const { return pxPerSec_; }
     void setZoom(double pxPerSec);
@@ -79,6 +81,8 @@ private:
     vthost::Project* project_ = nullptr;
     QString timelineId_;
     bool editable_ = true;
+    bool snapEnabled_ = true;
+    bool follow_ = true;
 
     double pxPerSec_ = 40.0;
     double scroll_ = 0.0;

@@ -78,7 +78,7 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     for (QDoubleSpinBox* s : {opacity_, posX_, posY_, scale_, rotation_})
         connect(s, &QDoubleSpinBox::valueChanged, this, emitChange);
     connect(reset_, &QPushButton::clicked, this, [this] {
-        LayerProps def;
+        LayerProps def; // posição 0,0 = centrado, qualquer que seja a origem mostrada
         def.opacity = opacity_->value() / 100.0; // o reset não mexe na opacidade nem no blend
         def.blend = static_cast<BlendMode>(blend_->currentData().toInt());
         if (hasLayer_ && editable_) emit propsChanged(def);
@@ -115,8 +115,8 @@ LayerProps PropertiesPanel::current() const {
     LayerProps p;
     p.blend = static_cast<BlendMode>(blend_->currentData().toInt());
     p.opacity = opacity_->value() / 100.0;
-    p.posX = posX_->value();
-    p.posY = posY_->value();
+    p.posX = posX_->value() - originX_;
+    p.posY = posY_->value() - originY_;
     p.scale = scale_->value() / 100.0;
     p.rotation = rotation_->value();
     p.clamp();
@@ -135,10 +135,15 @@ void PropertiesPanel::setLayer(const Layer* layer) {
     const QSignalBlocker b1(blend_), b2(opacity_), b3(posX_), b4(posY_), b5(scale_), b6(rotation_);
     blend_->setCurrentIndex(qMax(0, blend_->findData(static_cast<int>(p.blend))));
     opacity_->setValue(p.opacity * 100.0);
-    posX_->setValue(p.posX);
-    posY_->setValue(p.posY);
+    posX_->setValue(p.posX + originX_);
+    posY_->setValue(p.posY + originY_);
     scale_->setValue(p.scale * 100.0);
     rotation_->setValue(p.rotation);
+}
+
+void PropertiesPanel::setOrigin(double offsetX, double offsetY) {
+    originX_ = offsetX;
+    originY_ = offsetY;
 }
 
 void PropertiesPanel::setEditable(bool editable) {

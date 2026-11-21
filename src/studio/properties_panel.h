@@ -18,6 +18,9 @@ public:
     // Sem layer (nullptr): painel desativado.
     void setLayer(const vthost::Layer* layer);
     void setEditable(bool editable);
+    // Origem do Workspace: (0,0) no centro (omissão) ou no canto superior esquerdo.
+    // Só muda os números mostrados; o projeto guarda sempre relativo ao centro.
+    void setOrigin(double offsetX, double offsetY);
 
 signals:
     void propsChanged(const vthost::LayerProps& props);
@@ -38,4 +41,6 @@ private:
     bool editable_ = true;
     bool hasLayer_ = false;
     bool locked_ = false;
+    double originX_ = 0.0;
+    double originY_ = 0.0;
 };

@@ -148,27 +148,28 @@ void EngineApp::syncOutputs() {
     outputConfig_ = project_.outputs;
 }
 
-bool EngineApp::go(int column, std::string* error) {
+bool EngineApp::go(int column, std::string* error, double fadeOverride) {
     if (column < 0 || column >= static_cast<int>(project_.columns.size())) {
         if (error) *error = "coluna inexistente";
         return false;
     }
     leaveTimeline(); // o dashboard volta a mandar nas layers
     const Column& col = project_.columns[static_cast<std::size_t>(column)];
+    const double fade = fadeOverride >= 0.0 ? fadeOverride : col.fadeSeconds; // Shift+GO = corte seco
     for (const auto& layer : project_.layers) {
         auto& player = players_[layer.id];
         if (!player) player = std::make_unique<LayerPlayer>(layer.id);
         auto cell = col.cells.find(layer.id);
         if (cell == col.cells.end()) {
             // Célula vazia: a coluna define o estado completo, por isso a layer apaga-se.
-            player->stop(col.fadeSeconds);
+            player->stop(fade);
             continue;
         }
         const MediaItem* media = project_.findMedia(cell->second);
         if (!media) continue;
         // Já está a tocar: não reinicia (exceto se já acabou, ex. "once").
         if (player->mediaId() == media->id && player->tag().empty() && !player->ended()) continue;
-        player->play(media->id, media->path, media->loops(), col.fadeSeconds);
+        player->play(media->id, media->path, media->loops(), fade);
     }
     activeColumn_ = column;
     log::info("GO coluna " + std::to_string(column) + " (" + col.name + ")");
@@ -260,7 +261,10 @@ std::string EngineApp::handle(const std::string& line) {
         if (showMode_) return errorResponse("Show Mode activo: desligue-o para alterar o projecto");
         return loadProject(c.path, &err) ? okResponse() : errorResponse(err);
     case CommandType::Go:
-        return go(c.column, &err) ? okResponse() : errorResponse(err);
+        return go(c.column, &err, c.value) ? okResponse() : errorResponse(err);
+    case CommandType::SetSettings:
+        applySettings(c.settings);
+        return okResponse();
     case CommandType::StopAll:
         stopAll(c.value);
         return okResponse();
@@ -362,6 +366,19 @@ protocol::EngineStatus EngineApp::buildStatus() const {
     s.warnings = warnings_;
     if (renderer_.usingSoftwareFallback()) s.warnings.push_back("GPU indisponível: a usar renderização por software");
     return s;
+}
+
+void EngineApp::applySettings(const protocol::EngineSettings& s) {
+    if (s.priority != settings_.priority || !(s == settings_)) {
+        DWORD cls = ABOVE_NORMAL_PRIORITY_CLASS;
+        if (s.priority == "normal") cls = NORMAL_PRIORITY_CLASS;
+        else if (s.priority == "high") cls = HIGH_PRIORITY_CLASS;
+        SetPriorityClass(GetCurrentProcess(), cls);
+        log::info("preferências: vsync=" + std::string(s.vsync ? "on" : "off") + " preview=" +
+                  std::to_string(s.previewFps) + "fps prioridade=" + s.priority +
+                  " loopBoard=" + (s.loopBoard ? "on" : "off"));
+    }
+    settings_ = s;
 }
 
 // ---------------------------------------------------------------- timeline
@@ -538,10 +555,15 @@ void EngineApp::handleMediaEnds() {
         if (m->loopMode == LoopMode::OnceStop) it->second->stop(0.0);
         else if (m->loopMode == LoopMode::AutoFollow) follow = true;
     }
-    if (follow && activeColumn_ >= 0 && activeColumn_ + 1 < static_cast<int>(project_.columns.size())) {
-        std::string err;
-        log::info("auto-follow: coluna seguinte");
-        go(activeColumn_ + 1, &err);
+    const int n = static_cast<int>(project_.columns.size());
+    if (follow && activeColumn_ >= 0 && n > 0) {
+        int next = activeColumn_ + 1;
+        if (next >= n) next = settings_.loopBoard ? 0 : -1; // fim do board: pára ou volta ao início
+        if (next >= 0 && next != activeColumn_) {
+            std::string err;
+            log::info("auto-follow: coluna " + std::to_string(next));
+            go(next, &err);
+        }
     }
 }
 
@@ -570,16 +592,20 @@ void EngineApp::renderFrame() {
             for (auto& n : ndi_) n->submit(d, pitch, w, h, fps_);
         });
 
-    // Preview para o Studio a ~30 fps (um frame sim, outro não).
-    if (previewBlock_ && (++previewFrames_ & 1) == 0)
+    // Preview para o Studio ao ritmo escolhido nas preferências.
+    const auto now = Clock::now();
+    if (previewBlock_ && settings_.previewFps > 0 &&
+        now - lastPreview_ >= std::chrono::duration<double>(1.0 / settings_.previewFps)) {
+        lastPreview_ = now;
         renderer_.capturePreview([this](const std::uint8_t* d, int pitch, int w, int h) { writePreview(d, pitch, w, h); });
+    }
 
     bool first = true;
     for (auto& o : outputs_) {
-        o->present(first); // vsync só no primeiro, para não somar esperas
+        o->present(first && settings_.vsync); // vsync só no primeiro, para não somar esperas
         first = false;
     }
-    if (outputs_.empty()) Sleep(16);
+    if (outputs_.empty() || !settings_.vsync) Sleep(outputs_.empty() ? 16 : 1);
 }
 
 int EngineApp::run(const Options& options) {

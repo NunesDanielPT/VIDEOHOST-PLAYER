@@ -171,8 +171,8 @@ void MediaCache::finished(const QString& path, const MediaInfo& info) {
     emit updated(path);
 }
 
-double MediaCache::suggestedClipDuration(const QString& path) {
+double MediaCache::suggestedClipDuration(const QString& path, double imageSeconds) {
     const MediaInfo i = info(path);
     if (i.ready && i.ok && !i.still && i.duration > 0.1) return i.duration;
-    return 10.0;
+    return imageSeconds > 0.0 ? imageSeconds : 10.0;
 }

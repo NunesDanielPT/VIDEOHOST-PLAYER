@@ -95,6 +95,10 @@ private:
     // Show
     void go(int column);
     void goNext();
+    void goPrevious();
+    void onSpace();            // ESPAÇO: Dashboard = coluna seguinte; Timeline = play/stop
+    void applyPreferences();
+    void sendEngineSettings();
     void stopAll();
     void setShowMode(bool on);
 

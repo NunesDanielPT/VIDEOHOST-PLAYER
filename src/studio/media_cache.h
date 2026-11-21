@@ -29,7 +29,7 @@ public:
     MediaInfo info(const QString& path);
 
     // Duração sugerida para um clip novo na timeline.
-    double suggestedClipDuration(const QString& path);
+    double suggestedClipDuration(const QString& path, double imageSeconds = 10.0);
 
 signals:
     void updated(const QString& path);

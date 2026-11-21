@@ -8,7 +8,6 @@ add_executable(vthost-engine WIN32
     video_decoder.cpp
     layer_player.cpp
     ipc_server.cpp
-    displays.cpp
     ndi_output.cpp
 )
 target_link_libraries(vthost-engine PRIVATE

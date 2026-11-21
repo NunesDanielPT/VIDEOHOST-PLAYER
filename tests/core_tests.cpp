@@ -149,7 +149,19 @@ static void testFuzzNeverThrows() {
 static void testProtocol() {
     using namespace protocol;
     auto c = parseCommand(R"({"cmd":"go","column":3})");
-    CHECK(c.command && c.command->type == CommandType::Go && c.command->column == 3);
+    CHECK(c.command && c.command->type == CommandType::Go && c.command->column == 3 && c.command->value == -1.0);
+    auto cut = parseCommand(R"({"cmd":"go","column":1,"fade":0})");
+    CHECK(cut.command && cut.command->value == 0.0);
+    Command st;
+    st.type = CommandType::SetSettings;
+    st.settings.vsync = false;
+    st.settings.previewFps = 15;
+    st.settings.priority = "high";
+    st.settings.loopBoard = true;
+    auto sb = parseCommand(serializeCommand(st));
+    CHECK(sb.command && sb.command->type == CommandType::SetSettings && sb.command->settings == st.settings);
+    auto bad = parseCommand(R"({"cmd":"set_settings","previewFps":1000,"priority":"realtime"})");
+    CHECK(bad.command && bad.command->settings.previewFps == 60 && bad.command->settings.priority == "above_normal");
     CHECK(!parseCommand(R"({"cmd":"go","column":-1})").command);
     CHECK(!parseCommand(R"({"cmd":"go"})").command);
     CHECK(!parseCommand(R"({"cmd":"rm -rf"})").command);
