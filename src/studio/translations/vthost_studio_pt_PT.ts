@@ -198,6 +198,10 @@
         <translation>Posição Y:</translation>
     </message>
     <message>
+        <source>Position in the playlist: type a number to move the cue there. Text (e.g. INTRO) is kept as a label.</source>
+        <translation>Posição na playlist: escreva um número para mover a cue para esse lugar. Texto (ex. INTRO) fica como etiqueta.</translation>
+    </message>
+    <message>
         <source>Resize mode:</source>
         <translation>Ajuste:</translation>
     </message>
@@ -269,10 +273,6 @@
         <translation>%1 dB</translation>
     </message>
     <message>
-        <source>%1 fps</source>
-        <translation>%1 fps</translation>
-    </message>
-    <message>
         <source>&amp;Edit</source>
         <translation>&amp;Editar</translation>
     </message>
@@ -341,6 +341,10 @@
 %1</source>
         <translation>Qualquer pessoa na mesma rede pode abrir este endereço no browser:
 %1</translation>
+    </message>
+    <message>
+        <source>Audio level (L / R)</source>
+        <translation>Nível de som (L / R)</translation>
     </message>
     <message>
         <source>Audio...</source>
@@ -541,6 +545,10 @@
     <message>
         <source>Open project</source>
         <translation>Abrir projeto</translation>
+    </message>
+    <message>
+        <source>Output %1 fps</source>
+        <translation>Saída %1 fps</translation>
     </message>
     <message>
         <source>Output %1: %2</source>
@@ -912,6 +920,14 @@
     <message>
         <source>No signal from the engine</source>
         <translation>Sem sinal do motor</translation>
+    </message>
+    <message>
+        <source>output %1 fps</source>
+        <translation>saída %1 fps</translation>
+    </message>
+    <message>
+        <source>video %1 fps</source>
+        <translation>vídeo %1 fps</translation>
     </message>
 </context>
 <context>

@@ -15,7 +15,12 @@ public:
     ~PreviewWidget() override;
 
     void setCanvasSize(int w, int h);
-    void setFps(double fps) { fps_ = fps; }
+    void setFps(double fps) { fps_ = fps; }  // ritmo da saída (motor, segue o ecrã)
+    void setMediaFps(double fps) {           // fps do vídeo no ar (0 = nada/imagem fixa)
+        if (fps == mediaFps_) return;
+        mediaFps_ = fps;
+        update();
+    }
     // Textos dos cantos ("" = escondido) e cor do tempo que falta.
     void setTimes(const QString& elapsed, const QString& remaining, const QColor& remainingColor);
 
@@ -43,6 +48,7 @@ private:
     int canvasW_ = 1920;
     int canvasH_ = 1080;
     double fps_ = 0.0;
+    double mediaFps_ = 0.0;
     QString elapsed_;
     QString remaining_;
     QColor remainingColor_ = Qt::white;

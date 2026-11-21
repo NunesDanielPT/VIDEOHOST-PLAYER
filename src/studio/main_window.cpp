@@ -57,33 +57,87 @@ constexpr std::size_t kMaxUndo = 100;
 const QColor kBlue(42, 160, 255);
 
 // Medidor de nível (L/R) da barra de transporte.
+// VUs L/R ao lado do preview: escala em dB (-60..0), marcas discretas e pico
+// que desce devagar. O estado do motor chega 4×/s; a queda é animada aqui.
 class LevelMeter : public QWidget {
 public:
-    explicit LevelMeter(QWidget* parent) : QWidget(parent) { setFixedSize(14, 34); }
+    explicit LevelMeter(QWidget* parent) : QWidget(parent) {
+        setFixedWidth(30);
+        setMinimumHeight(80);
+        timer_.setInterval(40);
+        QObject::connect(&timer_, &QTimer::timeout, this, [this] { tick(); });
+        timer_.start();
+    }
     void setLevels(double l, double r) {
-        l_ = std::clamp(l, 0.0, 1.0);
-        r_ = std::clamp(r, 0.0, 1.0);
-        update();
+        target_[0] = toFraction(l);
+        target_[1] = toFraction(r);
     }
 
 protected:
     void paintEvent(QPaintEvent*) override {
         QPainter p(this);
-        p.fillRect(rect(), QColor(20, 20, 20));
-        auto bar = [&](int x, double v) {
-            // Escala em dB (-60..0) para o medidor mexer como os de som.
-            const double db = v > 0.0 ? 20.0 * std::log10(v) : -60.0;
-            const double f = std::clamp((db + 60.0) / 60.0, 0.0, 1.0);
-            const int h = static_cast<int>(f * (height() - 2));
-            const QColor c = db > -3.0 ? QColor(230, 60, 50) : db > -12.0 ? QColor(240, 190, 30) : QColor(70, 200, 80);
-            p.fillRect(QRect(x, height() - 1 - h, 5, h), c);
-        };
-        bar(1, l_);
-        bar(8, r_);
+        p.fillRect(rect(), QColor(24, 24, 24));
+        QFont f = font();
+        f.setPixelSize(9);
+        p.setFont(f);
+        const int bottomPad = 14;
+        const int top = 4;
+        const int h = height() - top - bottomPad;
+        // Marcas de dB (discretas).
+        p.setPen(QColor(70, 70, 70));
+        for (int db : {0, -6, -12, -24, -48}) {
+            const int y = top + static_cast<int>((1.0 - (db + 60.0) / 60.0) * h);
+            p.drawLine(0, y, 2, y);
+            p.drawLine(width() - 3, y, width() - 1, y);
+        }
+        for (int ch = 0; ch < 2; ++ch) {
+            const int x = 5 + ch * 11;
+            const QRect track(x, top, 9, h);
+            p.fillRect(track, QColor(34, 34, 34));
+            const int lh = static_cast<int>(shown_[ch] * h);
+            // Verde até -12, amarelo até -3, vermelho acima (cores suaves).
+            for (int y = 0; y < lh; y += 2) {
+                const double fr = static_cast<double>(y) / h;
+                const double db = fr * 60.0 - 60.0;
+                const QColor c = db > -3.0 ? QColor(210, 70, 60) : db > -12.0 ? QColor(210, 175, 50) : QColor(60, 170, 80);
+                p.fillRect(QRect(x, top + h - y - 1, 9, 1), c);
+            }
+            const int py = top + h - static_cast<int>(peak_[ch] * h);
+            if (peak_[ch] > 0.01) p.fillRect(QRect(x, py, 9, 1), QColor(220, 220, 220));
+            p.setPen(QColor(110, 110, 110));
+            p.drawText(QRect(x - 1, height() - bottomPad, 11, bottomPad), Qt::AlignCenter, ch == 0 ? QStringLiteral("L") : QStringLiteral("R"));
+        }
     }
 
 private:
-    double l_ = 0.0, r_ = 0.0;
+    static double toFraction(double v) {
+        const double db = v > 0.0 ? 20.0 * std::log10(v) : -60.0;
+        return std::clamp((db + 60.0) / 60.0, 0.0, 1.0);
+    }
+    void tick() {
+        bool changed = false;
+        for (int ch = 0; ch < 2; ++ch) {
+            const double next = std::max(target_[ch], shown_[ch] - 0.025); // ~25 dB/s a descer
+            if (next != shown_[ch]) changed = true;
+            shown_[ch] = next;
+            if (shown_[ch] >= peak_[ch]) {
+                peak_[ch] = shown_[ch];
+                peakHold_[ch] = 30; // ~1,2 s
+            } else if (peakHold_[ch] > 0) {
+                --peakHold_[ch];
+            } else if (peak_[ch] > 0.0) {
+                peak_[ch] = std::max(0.0, peak_[ch] - 0.01);
+                changed = true;
+            }
+        }
+        if (changed) update();
+    }
+
+    QTimer timer_;
+    double target_[2] = {0.0, 0.0};
+    double shown_[2] = {0.0, 0.0};
+    double peak_[2] = {0.0, 0.0};
+    int peakHold_[2] = {0, 0};
 };
 
 QIcon cueIcon(CueIcon kind) {
@@ -344,9 +398,6 @@ QWidget* MainWindow::buildTransportBar() {
     connect(master_, &QSlider::valueChanged, this, [this](int v) { setMasterVolume(v / 10.0); });
     l->addWidget(master_);
     l->addWidget(masterLabel_);
-    auto* meter = new LevelMeter(bar);
-    meter_ = meter;
-    l->addWidget(meter);
     l->addSpacing(10);
     testBtn_ = new QToolButton(bar);
     testBtn_->setText(tr("Test card"));
@@ -409,8 +460,18 @@ void MainWindow::buildUi() {
         updateSelection();
     });
 
+    // Preview com os VUs (L/R) ao lado, discretos.
+    auto* previewBox = new QWidget(this);
+    auto* pb = new QHBoxLayout(previewBox);
+    pb->setContentsMargins(0, 0, 0, 0);
+    pb->setSpacing(2);
+    pb->addWidget(preview_, 1);
+    meter_ = new LevelMeter(previewBox);
+    meter_->setToolTip(tr("Audio level (L / R)"));
+    pb->addWidget(meter_);
+
     centerSplit_ = new QSplitter(Qt::Vertical, this);
-    centerSplit_->addWidget(preview_);
+    centerSplit_->addWidget(previewBox);
     centerSplit_->addWidget(waveform_);
     centerSplit_->setStretchFactor(0, 4);
     centerSplit_->setStretchFactor(1, 1);
@@ -559,6 +620,12 @@ void MainWindow::pushToEngine() {
 
 void MainWindow::setProject(Project p, const QString& path) {
     project_ = std::move(p);
+    // IDs numéricos antigos (escritos à mão) passam a ser a posição na playlist.
+    for (auto& q : project_.cues) {
+        bool numeric = false;
+        qs(q.label).trimmed().toInt(&numeric);
+        if (numeric) q.label.clear();
+    }
     projectPath_ = path;
     dirty_ = false;
     if (!path.isEmpty()) QSettings().setValue(QStringLiteral("lastProject"), path);
@@ -724,9 +791,22 @@ void MainWindow::onCueEdited(const Cue& cue) {
     if (showMode_) return;
     const int i = project_.cueIndex(cue.id);
     if (i < 0) return;
-    project_.cues[static_cast<std::size_t>(i)] = cue;
+    Cue c = cue;
+    // O ID é a posição na playlist: escrever um número move a cue para esse lugar
+    // (as outras renumeram-se sozinhas). Texto (ex. "INTRO") fica como etiqueta.
+    bool numeric = false;
+    const int wanted = qs(c.label).trimmed().toInt(&numeric);
+    if (numeric) c.label.clear();
+    project_.cues[static_cast<std::size_t>(i)] = c;
+    const int n = static_cast<int>(project_.cues.size());
+    if (numeric && wanted >= 1 && std::clamp(wanted - 1, 0, n - 1) != i) {
+        moveCue(i, std::clamp(wanted - 1, 0, n - 1));
+        updateSelection();
+        return;
+    }
     playlist_->refresh();
-    waveform_->setInOut(cue.inPoint, cue.outPoint);
+    waveform_->setInOut(c.inPoint, c.outPoint);
+    if (numeric) updateSelection(); // o campo ID mostra outra vez o número da posição
     markChanged();
 }
 
@@ -1045,6 +1125,7 @@ void MainWindow::onEngineConnection(bool connected) {
         countdown_ = Countdown{};
         playingCue_ = -1;
         if (playlist_) playlist_->setPlaying(-1, 0.0, QString());
+        if (meter_) static_cast<LevelMeter*>(meter_)->setLevels(0.0, 0.0);
     }
     if (connected) sendEngineSettings();
     // Ao ligar, decide no primeiro status: adoptar o show que já está a correr ou enviar o nosso.
@@ -1102,6 +1183,9 @@ void MainWindow::onEngineStatus() {
     }
     static_cast<LevelMeter*>(meter_)->setLevels(s.levelL, s.levelR);
     preview_->setFps(s.fps);
+    preview_->setMediaFps(playingCue_ >= 0 && playingCue_ < static_cast<int>(project_.cues.size())
+                              ? media_->info(qs(project_.cues[static_cast<std::size_t>(playingCue_)].path)).fps
+                              : 0.0);
 
     QStringList problems;
     for (const auto& o : s.outputs)
@@ -1110,7 +1194,7 @@ void MainWindow::onEngineStatus() {
     if (!s.audioError.empty()) problems << tr("Audio: %1").arg(qs(s.audioError));
     for (const auto& w : s.warnings) problems << qs(w);
 
-    QString info = tr("%1 fps").arg(s.fps, 0, 'f', 1);
+    QString info = tr("Output %1 fps").arg(s.fps, 0, 'f', 1);
     if (s.audioOk) info += QStringLiteral("  |  🔊 ") + qs(s.audioDevice);
     if (s.recovered) info += QStringLiteral("  |  ") + tr("Engine was restarted and the show resumed");
     if (!problems.isEmpty()) info += QStringLiteral("  |  ⚠ ") + problems.join(QStringLiteral("; "));

@@ -103,7 +103,12 @@ InspectorPanel::InspectorPanel(QWidget* parent) : QWidget(parent) {
         label_->setMaxLength(32);
         label_->setPlaceholderText(tr("number"));
         label_->setMaximumWidth(90);
-        connect(label_, &QLineEdit::editingFinished, this, &InspectorPanel::emitChange);
+        label_->setToolTip(tr("Position in the playlist: type a number to move the cue there. Text (e.g. INTRO) is kept as a label."));
+        connect(label_, &QLineEdit::editingFinished, this, [this] {
+            labelEdited_ = true; // só este campo pode mudar a posição da cue
+            emitChange();
+            labelEdited_ = false;
+        });
         idRow->addWidget(label_);
         idRow->addSpacing(8);
         for (const char* c : kColorNames) {
@@ -314,7 +319,7 @@ void InspectorPanel::setCue(const Cue* cue, int index, const Project* project, c
         name_->setPlaceholderText(QFileInfo(qs(cue->path)).fileName());
         name_->setText(qs(cue->name));
     }
-    if (!sameCue || !label_->hasFocus()) label_->setText(qs(cue->label));
+    if (!sameCue || !label_->hasFocus()) label_->setText(cue->label.empty() ? QString::number(index + 1) : qs(cue->label));
     for (auto* b : colors_) {
         const QSignalBlocker bl(b);
         b->setChecked(b->property("color").toString() == qs(cue->color));
@@ -405,7 +410,7 @@ void InspectorPanel::emitChange() {
     if (loading_ || !hasCue_ || !editable_) return;
     Cue c = cue_;
     c.name = ss(name_->text().trimmed());
-    c.label = ss(label_->text().trimmed());
+    if (labelEdited_) c.label = ss(label_->text().trimmed()); // senão fica o que a cue já tem
     for (auto* b : colors_)
         if (b->isChecked()) c.color = ss(b->property("color").toString());
     c.notes = ss(notes_->toPlainText());

@@ -154,7 +154,8 @@ void PreviewWidget::paintEvent(QPaintEvent*) {
     small.setPixelSize(11);
     p.setFont(small);
     p.setPen(QColor(150, 150, 150));
-    const QString info = QStringLiteral("%1 × %2").arg(canvasW_).arg(canvasH_) +
-                         (live_ ? QStringLiteral("  ·  %1 fps").arg(fps_, 0, 'f', 1) : QString());
+    QString info = QStringLiteral("%1 × %2").arg(canvasW_).arg(canvasH_);
+    if (live_) info += QStringLiteral("  ·  ") + tr("output %1 fps").arg(fps_, 0, 'f', 1);
+    if (live_ && mediaFps_ > 0.0) info += QStringLiteral("  ·  ") + tr("video %1 fps").arg(mediaFps_, 0, 'f', mediaFps_ == std::floor(mediaFps_) ? 0 : 2);
     p.drawText(QRectF(0, height() - 18, width() - 8, 16), Qt::AlignRight | Qt::AlignVCenter, info);
 }

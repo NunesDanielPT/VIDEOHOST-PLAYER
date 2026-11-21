@@ -42,6 +42,7 @@ private:
     void updateEnabled();
 
     vthost::Cue cue_;
+    bool labelEdited_ = false;
     bool hasCue_ = false;
     bool loading_ = false;
     bool editable_ = true;
