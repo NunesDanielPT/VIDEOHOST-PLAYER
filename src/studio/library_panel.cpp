@@ -26,9 +26,9 @@ protected:
     QStringList mimeTypes() const override { return {QString::fromLatin1(kMediaMime)}; }
     QMimeData* mimeData(const QList<QListWidgetItem*>& items) const override {
         if (items.isEmpty()) return nullptr;
-        auto* data = new QMimeData;
-        data->setData(QString::fromLatin1(kMediaMime), items.first()->data(Qt::UserRole).toString().toUtf8());
-        return data;
+        auto* mime = new QMimeData;
+        mime->setData(QString::fromLatin1(kMediaMime), items.first()->data(Qt::UserRole).toString().toUtf8());
+        return mime;
     }
 };
 

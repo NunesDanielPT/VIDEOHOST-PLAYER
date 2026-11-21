@@ -69,9 +69,9 @@ const Clip* Timeline::clipAt(const std::string& layerId, double time) const {
     return best;
 }
 
-const Clip* Timeline::findClip(const std::string& id) const {
+const Clip* Timeline::findClip(const std::string& clipId) const {
     for (const auto& c : clips)
-        if (c.id == id) return &c;
+        if (c.id == clipId) return &c;
     return nullptr;
 }
 

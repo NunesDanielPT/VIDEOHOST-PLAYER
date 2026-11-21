@@ -93,7 +93,7 @@ struct Timeline {
 
     double duration() const; // fim do último clip/segmento (mínimo 60 s)
     const Clip* clipAt(const std::string& layerId, double time) const;
-    const Clip* findClip(const std::string& id) const;
+    const Clip* findClip(const std::string& clipId) const;
 };
 
 inline constexpr double kMaxTimelineSeconds = 24.0 * 3600.0;
