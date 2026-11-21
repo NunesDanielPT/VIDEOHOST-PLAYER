@@ -56,6 +56,10 @@ void OutputMapping::sanitize() {
     blendSmoothness = std::clamp(fin(blendSmoothness, 2.0), 0.5, 8.0);
     blendGamma = std::clamp(fin(blendGamma, 2.2), 1.0, 4.0);
     brightness = std::clamp(fin(brightness, 1.0), 0.0, 2.0);
+    contrast = std::clamp(fin(contrast, 1.0), 0.0, 2.0);
+    gainR = std::clamp(fin(gainR, 1.0), 0.0, 2.0);
+    gainG = std::clamp(fin(gainG, 1.0), 0.0, 2.0);
+    gainB = std::clamp(fin(gainB, 1.0), 0.0, 2.0);
 }
 
 namespace {

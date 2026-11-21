@@ -2,6 +2,13 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="pt_PT" sourcelanguage="en">
 <context>
+    <name>CompGrid</name>
+    <message>
+        <source>No composition</source>
+        <translation>Sem composição</translation>
+    </message>
+</context>
+<context>
     <name>CountdownServer</name>
     <message>
         <source>Invalid network address: %1</source>
@@ -29,6 +36,413 @@
     <message>
         <source>VTHOST - Countdown</source>
         <translation>VTHOST - Countdown</translation>
+    </message>
+</context>
+<context>
+    <name>CuePlayerPage</name>
+    <message>
+        <source> (copy)</source>
+        <translation> (cópia)</translation>
+    </message>
+    <message>
+        <source> dB</source>
+        <translation> dB</translation>
+    </message>
+    <message>
+        <source> px</source>
+        <translation> px</translation>
+    </message>
+    <message>
+        <source> s</source>
+        <translation> s</translation>
+    </message>
+    <message>
+        <source>%1×%2 · %3 fps · %4</source>
+        <translation>%1×%2 · %3 fps · %4</translation>
+    </message>
+    <message>
+        <source>(file name)</source>
+        <translation>(nome do ficheiro)</translation>
+    </message>
+    <message>
+        <source>+ Column</source>
+        <translation>+ Coluna</translation>
+    </message>
+    <message>
+        <source>+ Layer</source>
+        <translation>+ Layer</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Adicionar</translation>
+    </message>
+    <message>
+        <source>Add layer above</source>
+        <translation>Adicionar layer acima</translation>
+    </message>
+    <message>
+        <source>Add layer below</source>
+        <translation>Adicionar layer abaixo</translation>
+    </message>
+    <message>
+        <source>Add media…</source>
+        <translation>Adicionar media…</translation>
+    </message>
+    <message>
+        <source>Advanced output: screens and slices</source>
+        <translation>Output avançado: screens e slices</translation>
+    </message>
+    <message>
+        <source>Analysing…</source>
+        <translation>A analisar…</translation>
+    </message>
+    <message>
+        <source>At the end:</source>
+        <translation>No fim:</translation>
+    </message>
+    <message>
+        <source>Audio (A)</source>
+        <translation>Som (A)</translation>
+    </message>
+    <message>
+        <source>Blend:</source>
+        <translation>Mistura:</translation>
+    </message>
+    <message>
+        <source>Bypass (B)</source>
+        <translation>Bypass (B)</translation>
+    </message>
+    <message>
+        <source>Cannot read: %1</source>
+        <translation>Não é possível ler: %1</translation>
+    </message>
+    <message>
+        <source>Choose media</source>
+        <translation>Escolher media</translation>
+    </message>
+    <message>
+        <source>Clear (stop the layer)</source>
+        <translation>Limpar (parar a layer)</translation>
+    </message>
+    <message>
+        <source>Clear all</source>
+        <translation>Limpar tudo</translation>
+    </message>
+    <message>
+        <source>Clear layer</source>
+        <translation>Limpar layer</translation>
+    </message>
+    <message>
+        <source>Clip</source>
+        <translation>Clip</translation>
+    </message>
+    <message>
+        <source>Column %1</source>
+        <translation>Coluna %1</translation>
+    </message>
+    <message>
+        <source>Composition</source>
+        <translation>Composição</translation>
+    </message>
+    <message>
+        <source>Composition %1</source>
+        <translation>Composição %1</translation>
+    </message>
+    <message>
+        <source>Composition opacity (live)</source>
+        <translation>Opacidade da composição (ao vivo)</translation>
+    </message>
+    <message>
+        <source>Composition options</source>
+        <translation>Opções da composição</translation>
+    </message>
+    <message>
+        <source>Composition:</source>
+        <translation>Composição:</translation>
+    </message>
+    <message>
+        <source>Could not launch the clip: %1</source>
+        <translation>Não foi possível lançar o clip: %1</translation>
+    </message>
+    <message>
+        <source>Could not launch the column: %1</source>
+        <translation>Não foi possível lançar a coluna: %1</translation>
+    </message>
+    <message>
+        <source>Ctrl+click a clip to see it here before launching it</source>
+        <translation>Ctrl+clique num clip para o ver aqui antes de o lançar</translation>
+    </message>
+    <message>
+        <source>Delete "%1"? Slices that show it will go black.</source>
+        <translation>Apagar "%1"? Os slices que a mostram ficam a preto.</translation>
+    </message>
+    <message>
+        <source>Delete column</source>
+        <translation>Apagar coluna</translation>
+    </message>
+    <message>
+        <source>Delete composition</source>
+        <translation>Apagar composição</translation>
+    </message>
+    <message>
+        <source>Delete layer</source>
+        <translation>Apagar layer</translation>
+    </message>
+    <message>
+        <source>Delete this column and its clips?</source>
+        <translation>Apagar esta coluna e os seus clips?</translation>
+    </message>
+    <message>
+        <source>Delete this layer and its clips?</source>
+        <translation>Apagar esta layer e os seus clips?</translation>
+    </message>
+    <message>
+        <source>Dissolve when a new clip is launched or the layer is cleared</source>
+        <translation>Dissolve quando se lança outro clip ou se limpa a layer</translation>
+    </message>
+    <message>
+        <source>Duplicate</source>
+        <translation>Duplicar</translation>
+    </message>
+    <message>
+        <source>File:</source>
+        <translation>Ficheiro:</translation>
+    </message>
+    <message>
+        <source>Fill</source>
+        <translation>Preencher</translation>
+    </message>
+    <message>
+        <source>Fit</source>
+        <translation>Ajustar</translation>
+    </message>
+    <message>
+        <source>Fit:</source>
+        <translation>Ajuste:</translation>
+    </message>
+    <message>
+        <source>Flip horizontally</source>
+        <translation>Espelhar na horizontal</translation>
+    </message>
+    <message>
+        <source>Flip vertically</source>
+        <translation>Espelhar na vertical</translation>
+    </message>
+    <message>
+        <source>Hold last frame</source>
+        <translation>Manter a última imagem</translation>
+    </message>
+    <message>
+        <source>Image %1×%2</source>
+        <translation>Imagem %1×%2</translation>
+    </message>
+    <message>
+        <source>In:</source>
+        <translation>In:</translation>
+    </message>
+    <message>
+        <source>Insert column after</source>
+        <translation>Inserir coluna depois</translation>
+    </message>
+    <message>
+        <source>Insert column before</source>
+        <translation>Inserir coluna antes</translation>
+    </message>
+    <message>
+        <source>Launch</source>
+        <translation>Lançar</translation>
+    </message>
+    <message>
+        <source>Launch column</source>
+        <translation>Lançar coluna</translation>
+    </message>
+    <message>
+        <source>Layer</source>
+        <translation>Layer</translation>
+    </message>
+    <message>
+        <source>Layer %1</source>
+        <translation>Layer %1</translation>
+    </message>
+    <message>
+        <source>Loop</source>
+        <translation>Loop</translation>
+    </message>
+    <message>
+        <source>Master:</source>
+        <translation>Master:</translation>
+    </message>
+    <message>
+        <source>Measured: %1 LUFS, peak %2 dBFS</source>
+        <translation>Medido: %1 LUFS, pico %2 dBFS</translation>
+    </message>
+    <message>
+        <source>Measuring loudness…</source>
+        <translation>A medir o loudness…</translation>
+    </message>
+    <message>
+        <source>Media (%1);;All files (*)</source>
+        <translation>Media (%1);;Todos os ficheiros (*)</translation>
+    </message>
+    <message>
+        <source>Multiply</source>
+        <translation>Multiplicar</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>Nome:</translation>
+    </message>
+    <message>
+        <source>Native size</source>
+        <translation>Tamanho nativo</translation>
+    </message>
+    <message>
+        <source>New composition</source>
+        <translation>Nova composição</translation>
+    </message>
+    <message>
+        <source>No audio</source>
+        <translation>Sem som</translation>
+    </message>
+    <message>
+        <source>Normal</source>
+        <translation>Normal</translation>
+    </message>
+    <message>
+        <source>Normalize loudness</source>
+        <translation>Normalizar loudness</translation>
+    </message>
+    <message>
+        <source>Opacity:</source>
+        <translation>Opacidade:</translation>
+    </message>
+    <message>
+        <source>Out:</source>
+        <translation>Out:</translation>
+    </message>
+    <message>
+        <source>Outputs…</source>
+        <translation>Outputs…</translation>
+    </message>
+    <message>
+        <source>PREVIEW</source>
+        <translation>PREVIEW</translation>
+    </message>
+    <message>
+        <source>PREVIEW — %1</source>
+        <translation>PREVIEW — %1</translation>
+    </message>
+    <message>
+        <source>PROGRAM</source>
+        <translation>PROGRAM</translation>
+    </message>
+    <message>
+        <source>PROGRAM — %1</source>
+        <translation>PROGRAM — %1</translation>
+    </message>
+    <message>
+        <source>Playback speed:</source>
+        <translation>Velocidade:</translation>
+    </message>
+    <message>
+        <source>Position X / Y:</source>
+        <translation>Posição X / Y:</translation>
+    </message>
+    <message>
+        <source>Presets…</source>
+        <translation>Predefinições…</translation>
+    </message>
+    <message>
+        <source>Remove clip</source>
+        <translation>Remover clip</translation>
+    </message>
+    <message>
+        <source>Rename column</source>
+        <translation>Mudar o nome da coluna</translation>
+    </message>
+    <message>
+        <source>Rename composition</source>
+        <translation>Mudar o nome da composição</translation>
+    </message>
+    <message>
+        <source>Rename layer</source>
+        <translation>Mudar o nome da layer</translation>
+    </message>
+    <message>
+        <source>Rename…</source>
+        <translation>Mudar o nome…</translation>
+    </message>
+    <message>
+        <source>Replace file…</source>
+        <translation>Substituir ficheiro…</translation>
+    </message>
+    <message>
+        <source>Replace…</source>
+        <translation>Substituir…</translation>
+    </message>
+    <message>
+        <source>Reset transform</source>
+        <translation>Repor transformação</translation>
+    </message>
+    <message>
+        <source>Resolution:</source>
+        <translation>Resolução:</translation>
+    </message>
+    <message>
+        <source>Rotation:</source>
+        <translation>Rotação:</translation>
+    </message>
+    <message>
+        <source>Scale:</source>
+        <translation>Escala:</translation>
+    </message>
+    <message>
+        <source>Screen</source>
+        <translation>Screen</translation>
+    </message>
+    <message>
+        <source>Select a clip in the grid, or drop media files on a cell.</source>
+        <translation>Escolha um clip na grelha ou largue ficheiros de media numa célula.</translation>
+    </message>
+    <message>
+        <source>Select a layer in the grid.</source>
+        <translation>Escolha uma layer na grelha.</translation>
+    </message>
+    <message>
+        <source>Solo (S)</source>
+        <translation>Solo (S)</translation>
+    </message>
+    <message>
+        <source>Stop every layer of this composition (with the layer transitions)</source>
+        <translation>Pára todas as layers desta composição (com as transições das layers)</translation>
+    </message>
+    <message>
+        <source>Stretch</source>
+        <translation>Esticar</translation>
+    </message>
+    <message>
+        <source>The composition is a canvas of its own: layers are drawn on it from the bottom up. In Outputs… each slice chooses what it shows: the MEDIAPLAYER, a composition or one layer.</source>
+        <translation>A composição é um canvas próprio: as layers são desenhadas nele de baixo para cima. Em Outputs… cada slice escolhe o que mostra: o MEDIAPLAYER, uma composição ou uma só layer.</translation>
+    </message>
+    <message>
+        <source>Transition:</source>
+        <translation>Transição:</translation>
+    </message>
+    <message>
+        <source>Video (V)</source>
+        <translation>Imagem (V)</translation>
+    </message>
+    <message>
+        <source>Volume:</source>
+        <translation>Volume:</translation>
+    </message>
+    <message>
+        <source>cut</source>
+        <translation>corte</translation>
+    </message>
+    <message>
+        <source>end</source>
+        <translation>fim</translation>
     </message>
 </context>
 <context>
@@ -313,8 +727,16 @@
         <translation>&amp;Guardar</translation>
     </message>
     <message>
+        <source>&amp;Settings</source>
+        <translation>&amp;Definições</translation>
+    </message>
+    <message>
         <source>&amp;Undo</source>
         <translation>&amp;Desfazer</translation>
+    </message>
+    <message>
+        <source>&amp;Window</source>
+        <translation>&amp;Janela</translation>
     </message>
     <message>
         <source>About VTHOST</source>
@@ -333,6 +755,10 @@
 %1</source>
         <translation>Qualquer pessoa na mesma rede pode abrir este endereço no browser:
 %1</translation>
+    </message>
+    <message>
+        <source>Audio...</source>
+        <translation>Áudio...</translation>
     </message>
     <message>
         <source>Audio: %1</source>
@@ -403,6 +829,10 @@
         <translation>Janela de countdown</translation>
     </message>
     <message>
+        <source>Countdown...</source>
+        <translation>Countdown...</translation>
+    </message>
+    <message>
         <source>Countdown: %1</source>
         <translation>Countdown: %1</translation>
     </message>
@@ -411,8 +841,8 @@
         <translation>Preparar (pronta, em pausa no 1.º frame)</translation>
     </message>
     <message>
-        <source>Cue player: in development</source>
-        <translation>Cue player: em desenvolvimento</translation>
+        <source>Cue player: layers and columns of clips, preview and program, advanced output (like Resolume)</source>
+        <translation>Cue player: layers e colunas de clips, preview e program, output avançado (como no Resolume)</translation>
     </message>
     <message>
         <source>Delete</source>
@@ -475,10 +905,6 @@
         <translation>Se o Windows perguntar, permita o VTHOST Studio em redes privadas. Duplo clique na página para ecrã inteiro.</translation>
     </message>
     <message>
-        <source>In development: a different workspace will arrive here in a next version.</source>
-        <translation>Em desenvolvimento: um workspace diferente vai chegar aqui numa próxima versão.</translation>
-    </message>
-    <message>
         <source>Jump to the last %1 seconds of the cue</source>
         <translation>Saltar para os últimos %1 segundos da cue</translation>
     </message>
@@ -505,6 +931,10 @@
     <message>
         <source>Media player: playlist of videos with preview, waveform and inspector</source>
         <translation>Media player: playlist de vídeos com preview, forma de onda e inspector</translation>
+    </message>
+    <message>
+        <source>Network...</source>
+        <translation>Rede...</translation>
     </message>
     <message>
         <source>Next cue</source>
@@ -625,6 +1055,10 @@
     <message>
         <source>Save project</source>
         <translation>Guardar projeto</translation>
+    </message>
+    <message>
+        <source>Shortcuts...</source>
+        <translation>Atalhos...</translation>
     </message>
     <message>
         <source>Show Mode</source>
@@ -748,12 +1182,28 @@
 <context>
     <name>OutputsDialog</name>
     <message>
+        <source> (copy)</source>
+        <translation> (cópia)</translation>
+    </message>
+    <message>
+        <source> px</source>
+        <translation> px</translation>
+    </message>
+    <message>
         <source>%1 (not connected)</source>
         <translation>%1 (desligado)</translation>
     </message>
     <message>
+        <source>%1 › %2</source>
+        <translation>%1 › %2</translation>
+    </message>
+    <message>
         <source>(main screen)</source>
         <translation>(ecrã principal)</translation>
+    </message>
+    <message>
+        <source>(missing source)</source>
+        <translation>(fonte inexistente)</translation>
     </message>
     <message>
         <source>+ NDI</source>
@@ -764,12 +1214,80 @@
         <translation>+ Ecrã</translation>
     </message>
     <message>
+        <source>+ Slice</source>
+        <translation>+ Slice</translation>
+    </message>
+    <message>
         <source>+ Window</source>
         <translation>+ Janela</translation>
     </message>
     <message>
+        <source>1:1 pixels: the slice gets the size of its input selection</source>
+        <translation>Píxeis 1:1: o slice fica com o tamanho do recorte da fonte</translation>
+    </message>
+    <message>
+        <source>Add a screen to send the image to a display, a window or the network.</source>
+        <translation>Adicione um screen para enviar a imagem para um ecrã, uma janela ou a rede.</translation>
+    </message>
+    <message>
+        <source>Add a slice to the selected screen</source>
+        <translation>Adiciona um slice ao screen selecionado</translation>
+    </message>
+    <message>
+        <source>Advanced Output</source>
+        <translation>Output avançado</translation>
+    </message>
+    <message>
+        <source>Blue:</source>
+        <translation>Azul:</translation>
+    </message>
+    <message>
+        <source>Brightness:</source>
+        <translation>Brilho:</translation>
+    </message>
+    <message>
+        <source>Centre X / Y:</source>
+        <translation>Centro X / Y:</translation>
+    </message>
+    <message>
+        <source>Colour</source>
+        <translation>Cor</translation>
+    </message>
+    <message>
+        <source>Composition: %1</source>
+        <translation>Composição: %1</translation>
+    </message>
+    <message>
+        <source>Contrast:</source>
+        <translation>Contraste:</translation>
+    </message>
+    <message>
+        <source>Corner pin: drag each corner</source>
+        <translation>Corner pin: arraste cada canto</translation>
+    </message>
+    <message>
+        <source>Corners</source>
+        <translation>Cantos</translation>
+    </message>
+    <message>
         <source>Custom</source>
         <translation>Personalizada</translation>
+    </message>
+    <message>
+        <source>Drag to move, drag the corners to resize</source>
+        <translation>Arraste para mover, arraste os cantos para redimensionar</translation>
+    </message>
+    <message>
+        <source>Duplicate</source>
+        <translation>Duplicar</translation>
+    </message>
+    <message>
+        <source>Edit points</source>
+        <translation>Pontos de edição</translation>
+    </message>
+    <message>
+        <source>Edit points (divisions):</source>
+        <translation>Pontos de edição (divisões):</translation>
     </message>
     <message>
         <source>Enabled</source>
@@ -780,8 +1298,52 @@
         <translation>Motor parado.</translation>
     </message>
     <message>
+        <source>Fill screen</source>
+        <translation>Encher o screen</translation>
+    </message>
+    <message>
+        <source>Flip H</source>
+        <translation>Espelho H</translation>
+    </message>
+    <message>
+        <source>Flip V</source>
+        <translation>Espelho V</translation>
+    </message>
+    <message>
+        <source>Gamma:</source>
+        <translation>Gama:</translation>
+    </message>
+    <message>
+        <source>Green:</source>
+        <translation>Verde:</translation>
+    </message>
+    <message>
         <source>Identify screens</source>
         <translation>Identificar ecrãs</translation>
+    </message>
+    <message>
+        <source>Input Selection</source>
+        <translation>Input Selection</translation>
+    </message>
+    <message>
+        <source>Keep the source proportions</source>
+        <translation>Manter as proporções da fonte</translation>
+    </message>
+    <message>
+        <source>Left / Right:</source>
+        <translation>Esquerda / Direita:</translation>
+    </message>
+    <message>
+        <source>MEDIAPLAYER resolution:</source>
+        <translation>Resolução do MEDIAPLAYER:</translation>
+    </message>
+    <message>
+        <source>Match the screen</source>
+        <translation>Igual ao ecrã</translation>
+    </message>
+    <message>
+        <source>Mesh: drag the points (set the number of points on the right)</source>
+        <translation>Malha: arraste os pontos (o número de pontos escolhe-se à direita)</translation>
     </message>
     <message>
         <source>NDI (network)</source>
@@ -808,24 +1370,44 @@
         <translation>OK</translation>
     </message>
     <message>
+        <source>Off</source>
+        <translation>Desligado</translation>
+    </message>
+    <message>
         <source>Output %1</source>
         <translation>Saída %1</translation>
     </message>
     <message>
-        <source>Outputs</source>
-        <translation>Saídas</translation>
+        <source>Output Transformation</source>
+        <translation>Output Transformation</translation>
+    </message>
+    <message>
+        <source>Power:</source>
+        <translation>Potência:</translation>
+    </message>
+    <message>
+        <source>Red:</source>
+        <translation>Vermelho:</translation>
     </message>
     <message>
         <source>Remove</source>
         <translation>Remover</translation>
     </message>
     <message>
-        <source>Resolution:</source>
-        <translation>Resolução:</translation>
+        <source>Reset corners and points</source>
+        <translation>Repor cantos e pontos</translation>
+    </message>
+    <message>
+        <source>Rotation:</source>
+        <translation>Rotação:</translation>
     </message>
     <message>
         <source>Screen (full screen)</source>
         <translation>Ecrã (ecrã inteiro)</translation>
+    </message>
+    <message>
+        <source>Screen resolution:</source>
+        <translation>Resolução do screen:</translation>
     </message>
     <message>
         <source>Screen:</source>
@@ -844,12 +1426,52 @@
         <translation>Enviar com transparência (alpha)</translation>
     </message>
     <message>
+        <source>Shift: snap to 10 px · Alt: fine</source>
+        <translation>Shift: saltos de 10 px · Alt: fino</translation>
+    </message>
+    <message>
+        <source>Size of the input</source>
+        <translation>Tamanho do recorte</translation>
+    </message>
+    <message>
+        <source>Slice %1</source>
+        <translation>Slice %1</translation>
+    </message>
+    <message>
+        <source>Slice positions are in pixels of this resolution.</source>
+        <translation>As posições dos slices estão em píxeis desta resolução.</translation>
+    </message>
+    <message>
+        <source>Soft Edge</source>
+        <translation>Soft Edge</translation>
+    </message>
+    <message>
+        <source>Soft edge (projector blending)</source>
+        <translation>Soft edge (blending de projetores)</translation>
+    </message>
+    <message>
+        <source>Source:</source>
+        <translation>Fonte:</translation>
+    </message>
+    <message>
         <source>State:</source>
         <translation>Estado:</translation>
     </message>
     <message>
+        <source>Top / Bottom:</source>
+        <translation>Cima / Baixo:</translation>
+    </message>
+    <message>
+        <source>Transform</source>
+        <translation>Transformar</translation>
+    </message>
+    <message>
         <source>Type:</source>
         <translation>Tipo:</translation>
+    </message>
+    <message>
+        <source>Use the resolution of the chosen display or window</source>
+        <translation>Usa a resolução do ecrã ou janela escolhida</translation>
     </message>
     <message>
         <source>VTHOST - &lt;output name&gt;</source>
@@ -860,6 +1482,18 @@
         <translation>À espera do motor...</translation>
     </message>
     <message>
+        <source>What this slice shows: the MEDIAPLAYER, a whole composition or one layer</source>
+        <translation>O que este slice mostra: o MEDIAPLAYER, uma composição inteira ou uma só layer</translation>
+    </message>
+    <message>
+        <source>Whole source</source>
+        <translation>Fonte inteira</translation>
+    </message>
+    <message>
+        <source>Width / Height:</source>
+        <translation>Largura / Altura:</translation>
+    </message>
+    <message>
         <source>Window</source>
         <translation>Janela</translation>
     </message>
@@ -868,8 +1502,16 @@
         <translation>Tamanho da janela:</translation>
     </message>
     <message>
+        <source>X / Y:</source>
+        <translation>X / Y:</translation>
+    </message>
+    <message>
         <source>off</source>
         <translation>desligado</translation>
+    </message>
+    <message>
+        <source>whole source</source>
+        <translation>fonte inteira</translation>
     </message>
     <message>
         <source>window</source>
@@ -989,8 +1631,12 @@
         <translation>Countdown</translation>
     </message>
     <message>
-        <source>Countdown window</source>
-        <translation>Janela de countdown</translation>
+        <source>Countdown web page</source>
+        <translation>Página web do countdown</translation>
+    </message>
+    <message>
+        <source>Countdown window (Window menu)</source>
+        <translation>Janela do countdown (menu Janela)</translation>
     </message>
     <message>
         <source>Countdown window full screen</source>
@@ -1093,6 +1739,10 @@
         <translation>Media server e player de vídeo para espetáculos ao vivo.</translation>
     </message>
     <message>
+        <source>Network</source>
+        <translation>Rede</translation>
+    </message>
+    <message>
         <source>Network card:</source>
         <translation>Placa de rede:</translation>
     </message>
@@ -1121,8 +1771,12 @@
         <translation>Desligado</translation>
     </message>
     <message>
-        <source>Open Show → Countdown on the network to see the address (e.g. http://192.168.1.20:8088). The page is read-only: it cannot control the show. The countdown shows the time left of the longest video in the cue on air, or the time until the next cue when the cue advances after a fixed time.</source>
-        <translation>Abra Show → Countdown na rede para ver o endereço (ex. http://192.168.1.20:8088). A página é só de leitura: não controla o show. O countdown mostra o tempo que falta do vídeo mais longo da cue no ar, ou o tempo até à cue seguinte quando a cue avança ao fim de um tempo fixo.</translation>
+        <source>Only this network card is used: people on the other networks of this PC (e.g. a control system) cannot reach VTHOST.</source>
+        <translation>Só esta placa de rede é usada: quem está nas outras redes deste PC (ex. um sistema de controlo) não chega ao VTHOST.</translation>
+    </message>
+    <message>
+        <source>Open Window → Countdown on the network to see the address (e.g. http://192.168.1.20:8088). The page is read-only: it cannot control the show.</source>
+        <translation>Abra Janela → Countdown na rede para ver o endereço (ex. http://192.168.1.20:8088). A página é só de leitura: não controla o show.</translation>
     </message>
     <message>
         <source>Open project</source>
@@ -1253,6 +1907,10 @@
         <translation>Sincronizar com a frequência do ecrã (V-Sync)</translation>
     </message>
     <message>
+        <source>The countdown shows the time left of the cue on air (all repetitions). It appears on the preview, in the countdown window (Window menu) and on the web page (Preferences → Network).</source>
+        <translation>O countdown mostra o tempo que falta da cue no ar (todas as repetições). Aparece no preview, na janela do countdown (menu Janela) e na página web (Preferências → Rede).</translation>
+    </message>
+    <message>
         <source>The language will change the next time VTHOST Studio starts.</source>
         <translation>O idioma muda da próxima vez que o VTHOST Studio arrancar.</translation>
     </message>
@@ -1291,6 +1949,17 @@
     <message>
         <source>© %1 %2. All rights reserved.</source>
         <translation>© %1 %2. Todos os direitos reservados.</translation>
+    </message>
+</context>
+<context>
+    <name>SliceCanvas</name>
+    <message>
+        <source>Select a screen or a slice</source>
+        <translation>Escolha um screen ou um slice</translation>
+    </message>
+    <message>
+        <source>Select a slice</source>
+        <translation>Escolha um slice</translation>
     </message>
 </context>
 <context>
