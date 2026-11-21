@@ -136,19 +136,6 @@ std::string Project::newOutputId() const {
     }
 }
 
-const Composition* Project::findComposition(const std::string& id) const {
-    for (const auto& c : compositions)
-        if (c.id == id) return &c;
-    return nullptr;
-}
-
-std::string Project::newCompositionId() const {
-    for (int i = 1;; ++i) {
-        std::string id = "comp" + std::to_string(i);
-        if (!findComposition(id)) return id;
-    }
-}
-
 Project Project::makeDefault() {
     Project p;
     Output o;
@@ -156,254 +143,8 @@ Project Project::makeDefault() {
     o.name = "Output 1";
     o.type = OutputType::Display;
     o.monitor = 1; // segundo ecrã (se não existir, abre janela no principal)
-    Slice full = makeFullSlice(SliceSourceKind::MediaPlayer, o.width, o.height);
-    full.keepAspect = true;
-    o.slices.push_back(full);
     p.outputs.push_back(o);
-    p.compositions.push_back(Composition::makeDefault("comp1", "Composition 1"));
     return p;
-}
-
-// ---------------------------------------------------------------- slices
-
-const char* toString(SliceSourceKind k) {
-    switch (k) {
-    case SliceSourceKind::MediaPlayer: return "mediaplayer";
-    case SliceSourceKind::Composition: return "composition";
-    case SliceSourceKind::Layer: return "layer";
-    }
-    return "mediaplayer";
-}
-
-SliceSourceKind sliceSourceFromString(const std::string& s) {
-    if (s == "composition") return SliceSourceKind::Composition;
-    if (s == "layer") return SliceSourceKind::Layer;
-    return SliceSourceKind::MediaPlayer;
-}
-
-void Slice::clamp() {
-    auto c = [](double& v, double lo, double hi, double def) { v = clampFinite(v, lo, hi, def); };
-    c(inX, 0.0, kMaxCanvasSize, 0.0);
-    c(inY, 0.0, kMaxCanvasSize, 0.0);
-    c(inW, 0.0, kMaxCanvasSize, 0.0);
-    c(inH, 0.0, kMaxCanvasSize, 0.0);
-    c(x, -4.0 * kMaxCanvasSize, 4.0 * kMaxCanvasSize, 960.0);
-    c(y, -4.0 * kMaxCanvasSize, 4.0 * kMaxCanvasSize, 540.0);
-    c(width, 1.0, 4.0 * kMaxCanvasSize, 1920.0);
-    c(height, 1.0, 4.0 * kMaxCanvasSize, 1080.0);
-    c(rotation, -3600.0, 3600.0, 0.0);
-    for (auto& p : cornerOffsets) {
-        c(p.x, -4.0 * kMaxCanvasSize, 4.0 * kMaxCanvasSize, 0.0);
-        c(p.y, -4.0 * kMaxCanvasSize, 4.0 * kMaxCanvasSize, 0.0);
-    }
-    meshCols = std::clamp(meshCols, 0, kMaxMeshDivisions);
-    meshRows = std::clamp(meshRows, 0, kMaxMeshDivisions);
-    if (meshCols == 0 || meshRows == 0) {
-        meshCols = meshRows = 0;
-        mesh.clear();
-    } else if (mesh.size() != static_cast<std::size_t>((meshCols + 1) * (meshRows + 1))) {
-        mesh.clear();
-        for (int r = 0; r <= meshRows; ++r)
-            for (int k = 0; k <= meshCols; ++k)
-                mesh.push_back({static_cast<double>(k) / meshCols, static_cast<double>(r) / meshRows});
-    }
-    for (auto& p : mesh) {
-        c(p.x, -2.0, 3.0, 0.0);
-        c(p.y, -2.0, 3.0, 0.0);
-    }
-    for (double* v : {&brightness, &contrast, &red, &green, &blue}) c(*v, -1.0, 1.0, 0.0);
-    for (double* v : {&edgeLeft, &edgeRight, &edgeTop, &edgeBottom}) c(*v, 0.0, 4.0 * kMaxCanvasSize, 0.0);
-    c(edgeGamma, 0.2, 5.0, 2.2);
-    c(edgePower, 0.5, 8.0, 2.0);
-    if (source == SliceSourceKind::MediaPlayer) {
-        compositionId.clear();
-        layerId.clear();
-    } else if (source == SliceSourceKind::Composition) {
-        layerId.clear();
-    }
-}
-
-Slice makeFullSlice(SliceSourceKind source, int screenW, int screenH, const std::string& id) {
-    Slice s;
-    s.id = id;
-    s.name = "Slice 1";
-    s.source = source;
-    s.x = screenW / 2.0;
-    s.y = screenH / 2.0;
-    s.width = screenW;
-    s.height = screenH;
-    return s;
-}
-
-OutputMapping sliceToMapping(const Slice& s, int screenW, int screenH, int sourceW, int sourceH) {
-    OutputMapping m;
-    const double sw = std::max(1, screenW), sh = std::max(1, screenH);
-    const double srcW = std::max(1, sourceW), srcH = std::max(1, sourceH);
-    // Input Selection: recorte dentro da fonte.
-    if (s.inW > 0.0 && s.inH > 0.0) {
-        m.srcX = std::clamp(s.inX, 0.0, srcW - 1.0);
-        m.srcY = std::clamp(s.inY, 0.0, srcH - 1.0);
-        m.srcW = std::clamp(s.inW, 1.0, srcW - m.srcX);
-        m.srcH = std::clamp(s.inH, 1.0, srcH - m.srcY);
-    }
-    const double regionW = m.srcW > 0.0 ? m.srcW : srcW;
-    const double regionH = m.srcH > 0.0 ? m.srcH : srcH;
-    // Retângulo do slice (com a proporção da fonte, se pedido).
-    double w = s.width, h = s.height;
-    if (s.keepAspect && regionW > 0.0 && regionH > 0.0) {
-        const double a = regionW / regionH;
-        if (w / h > a) w = h * a;
-        else h = w / a;
-    }
-    const double rad = s.rotation * 3.14159265358979323846 / 180.0;
-    const double cs = std::cos(rad), sn = std::sin(rad);
-    const WarpPoint local[4] = {{-w / 2, -h / 2}, {w / 2, -h / 2}, {w / 2, h / 2}, {-w / 2, h / 2}};
-    WarpPoint screen[4];
-    for (int i = 0; i < 4; ++i) {
-        screen[i].x = s.x + local[i].x * cs - local[i].y * sn + s.cornerOffsets[static_cast<std::size_t>(i)].x;
-        screen[i].y = s.y + local[i].x * sn + local[i].y * cs + s.cornerOffsets[static_cast<std::size_t>(i)].y;
-    }
-    // Espelho: troca os cantos onde cada canto da imagem aparece.
-    int order[4] = {0, 1, 2, 3};
-    if (s.flipH && s.flipV) order[0] = 2, order[1] = 3, order[2] = 0, order[3] = 1;
-    else if (s.flipH) order[0] = 1, order[1] = 0, order[2] = 3, order[3] = 2;
-    else if (s.flipV) order[0] = 3, order[1] = 2, order[2] = 1, order[3] = 0;
-    for (int i = 0; i < 4; ++i)
-        m.corners[static_cast<std::size_t>(i)] = {screen[order[i]].x / sw, screen[order[i]].y / sh};
-    if (s.meshCols > 0 && s.meshRows > 0 &&
-        s.mesh.size() == static_cast<std::size_t>((s.meshCols + 1) * (s.meshRows + 1))) {
-        m.mode = WarpMode::Mesh;
-        m.meshCols = s.meshCols;
-        m.meshRows = s.meshRows;
-        m.mesh = s.mesh;
-    } else {
-        m.mode = WarpMode::Perspective;
-        m.resetMesh();
-    }
-    // Soft edge: em px do slice; o motor normaliza pela largura do screen.
-    if (s.softEdge) {
-        m.blendLeft = s.edgeLeft / w * sw;
-        m.blendRight = s.edgeRight / w * sw;
-        m.blendTop = s.edgeTop / h * sh;
-        m.blendBottom = s.edgeBottom / h * sh;
-    }
-    m.blendGamma = s.edgeGamma;
-    m.blendSmoothness = s.edgePower;
-    m.brightness = 1.0 + s.brightness;
-    m.contrast = 1.0 + s.contrast;
-    m.gainR = 1.0 + s.red;
-    m.gainG = 1.0 + s.green;
-    m.gainB = 1.0 + s.blue;
-    m.sanitize();
-    return m;
-}
-
-// ---------------------------------------------------------------- CUEPLAYER
-
-const char* toString(ClipEnd e) {
-    switch (e) {
-    case ClipEnd::Loop: return "loop";
-    case ClipEnd::Hold: return "hold";
-    case ClipEnd::Clear: return "clear";
-    }
-    return "loop";
-}
-
-ClipEnd clipEndFromString(const std::string& s) {
-    if (s == "hold") return ClipEnd::Hold;
-    if (s == "clear") return ClipEnd::Clear;
-    return ClipEnd::Loop;
-}
-
-std::string Clip::displayName() const {
-    if (!name.empty()) return name;
-    const std::size_t slash = path.find_last_of("/\\");
-    std::string n = slash == std::string::npos ? path : path.substr(slash + 1);
-    const std::size_t dot = n.find_last_of('.');
-    if (dot != std::string::npos && dot > 0) n.resize(dot);
-    return n;
-}
-
-void Clip::clamp() {
-    inPoint = clampFinite(inPoint, 0.0, kMaxMediaSeconds, 0.0);
-    outPoint = clampFinite(outPoint, 0.0, kMaxMediaSeconds, 0.0);
-    if (outPoint > 0.0 && outPoint <= inPoint + 0.04) outPoint = 0.0;
-    speed = clampFinite(speed, 0.25, 4.0, 1.0);
-    volumeDb = clampFinite(volumeDb, -60.0, 12.0, 0.0);
-    if (loudness && (!std::isfinite(*loudness) || *loudness < -100.0 || *loudness > 10.0)) loudness.reset();
-    if (peakDb && (!std::isfinite(*peakDb) || *peakDb < -200.0 || *peakDb > 30.0)) peakDb.reset();
-    if (thumbTime && (!std::isfinite(*thumbTime) || *thumbTime < 0.0 || *thumbTime > kMaxMediaSeconds)) thumbTime.reset();
-}
-
-void CompLayer::clamp() {
-    props.clamp();
-    transition = clampFinite(transition, 0.0, 60.0, 0.0);
-    volumeDb = clampFinite(volumeDb, -60.0, 12.0, 0.0);
-}
-
-const CompLayer* Composition::findLayer(const std::string& lid) const {
-    for (const auto& l : layers)
-        if (l.id == lid) return &l;
-    return nullptr;
-}
-
-const CompColumn* Composition::findColumn(const std::string& cid) const {
-    for (const auto& c : columns)
-        if (c.id == cid) return &c;
-    return nullptr;
-}
-
-std::string Composition::newLayerId() const {
-    for (int i = 1;; ++i) {
-        std::string lid = "L" + std::to_string(i);
-        if (!findLayer(lid)) return lid;
-    }
-}
-
-std::string Composition::newColumnId() const {
-    for (int i = 1;; ++i) {
-        std::string cid = "K" + std::to_string(i);
-        if (!findColumn(cid)) return cid;
-    }
-}
-
-Composition Composition::makeDefault(const std::string& id, const std::string& name) {
-    Composition c;
-    c.id = id;
-    c.name = name;
-    for (int i = 1; i <= 3; ++i) {
-        CompLayer l;
-        l.id = "L" + std::to_string(i);
-        l.name = "Layer " + std::to_string(i);
-        c.layers.push_back(l);
-    }
-    for (int i = 1; i <= 9; ++i) c.columns.push_back({"K" + std::to_string(i), "Column " + std::to_string(i), {}});
-    return c;
-}
-
-Cue clipToCue(const Clip& clip, const CompLayer& layer, const Composition& comp) {
-    Cue q;
-    q.id = comp.id + "/" + layer.id;
-    q.path = clip.path;
-    q.name = clip.displayName();
-    q.inPoint = clip.inPoint;
-    q.outPoint = clip.outPoint;
-    q.speed = clip.speed;
-    q.playCount = clip.end == ClipEnd::Loop ? 0 : 1;
-    q.pauseAtEnd = clip.end == ClipEnd::Hold;
-    q.clearAtEnd = clip.end == ClipEnd::Clear;
-    q.crossfade = layer.transition;
-    q.volumeDb = clip.volumeDb + layer.volumeDb + comp.volumeDb;
-    q.muted = !layer.audio || layer.bypass;
-    q.normalize = clip.normalize;
-    q.loudness = clip.loudness;
-    q.peakDb = clip.peakDb;
-    q.fit = layer.props.fit;
-    q.scale = layer.props.scale;
-    q.posX = layer.props.posX;
-    q.posY = layer.props.posY;
-    q.clamp();
-    return q;
 }
 
 namespace {
@@ -504,276 +245,7 @@ json cueToJson(const Cue& q) {
     return c;
 }
 
-json propsToJson(const LayerProps& p) {
-    return {{"opacity", p.opacity}, {"blend", toString(p.blend)}, {"x", p.posX},        {"y", p.posY},
-            {"scale", p.scale},     {"rotation", p.rotation},     {"fit", toString(p.fit)}, {"flipH", p.flipH},
-            {"flipV", p.flipV}};
-}
-
-LayerProps propsFromJson(const json& j) {
-    LayerProps p;
-    p.opacity = getNumber(j, "opacity", 1.0);
-    p.blend = blendModeFromString(getString(j, "blend", "normal"));
-    p.posX = getNumber(j, "x", 0.0);
-    p.posY = getNumber(j, "y", 0.0);
-    p.scale = getNumber(j, "scale", 1.0);
-    p.rotation = getNumber(j, "rotation", 0.0);
-    p.fit = fitModeFromString(getString(j, "fit", "fit"));
-    p.flipH = getBool(j, "flipH", false);
-    p.flipV = getBool(j, "flipV", false);
-    p.clamp();
-    return p;
-}
-
-json pointToJson(const WarpPoint& p) { return json::array({p.x, p.y}); }
-WarpPoint pointFromJson(const json& j) {
-    if (!j.is_array() || j.size() != 2 || !j[0].is_number() || !j[1].is_number()) return {};
-    return {j[0].get<double>(), j[1].get<double>()};
-}
-
-json sliceToJson(const Slice& s) {
-    json corners = json::array();
-    for (const auto& c : s.cornerOffsets) corners.push_back(pointToJson(c));
-    json mesh = json::array();
-    for (const auto& p : s.mesh) mesh.push_back(pointToJson(p));
-    return {{"id", s.id},           {"name", s.name},           {"enabled", s.enabled},
-            {"source", toString(s.source)}, {"composition", s.compositionId}, {"layer", s.layerId},
-            {"inX", s.inX},         {"inY", s.inY},             {"inW", s.inW},
-            {"inH", s.inH},         {"x", s.x},                 {"y", s.y},
-            {"width", s.width},     {"height", s.height},       {"rotation", s.rotation},
-            {"flipH", s.flipH},     {"flipV", s.flipV},         {"keepAspect", s.keepAspect},
-            {"corners", corners},   {"meshCols", s.meshCols},   {"meshRows", s.meshRows},
-            {"mesh", mesh},         {"brightness", s.brightness}, {"contrast", s.contrast},
-            {"red", s.red},         {"green", s.green},         {"blue", s.blue},
-            {"softEdge", s.softEdge}, {"edgeLeft", s.edgeLeft}, {"edgeRight", s.edgeRight},
-            {"edgeTop", s.edgeTop}, {"edgeBottom", s.edgeBottom}, {"edgeGamma", s.edgeGamma},
-            {"edgePower", s.edgePower}};
-}
-
-Slice sliceFromJson(const json& j) {
-    Slice s;
-    s.id = getString(j, "id");
-    s.name = getString(j, "name", s.id);
-    s.enabled = getBool(j, "enabled", true);
-    s.source = sliceSourceFromString(getString(j, "source", "mediaplayer"));
-    s.compositionId = getString(j, "composition");
-    s.layerId = getString(j, "layer");
-    s.inX = getNumber(j, "inX", 0.0);
-    s.inY = getNumber(j, "inY", 0.0);
-    s.inW = getNumber(j, "inW", 0.0);
-    s.inH = getNumber(j, "inH", 0.0);
-    s.x = getNumber(j, "x", 960.0);
-    s.y = getNumber(j, "y", 540.0);
-    s.width = getNumber(j, "width", 1920.0);
-    s.height = getNumber(j, "height", 1080.0);
-    s.rotation = getNumber(j, "rotation", 0.0);
-    s.flipH = getBool(j, "flipH", false);
-    s.flipV = getBool(j, "flipV", false);
-    s.keepAspect = getBool(j, "keepAspect", false);
-    if (auto c = j.find("corners"); c != j.end() && c->is_array() && c->size() == 4)
-        for (std::size_t i = 0; i < 4; ++i) s.cornerOffsets[i] = pointFromJson((*c)[i]);
-    s.meshCols = getInt(j, "meshCols", 0);
-    s.meshRows = getInt(j, "meshRows", 0);
-    if (auto m = j.find("mesh"); m != j.end() && m->is_array() && m->size() <= 17u * 17u)
-        for (const auto& p : *m) s.mesh.push_back(pointFromJson(p));
-    s.brightness = getNumber(j, "brightness", 0.0);
-    s.contrast = getNumber(j, "contrast", 0.0);
-    s.red = getNumber(j, "red", 0.0);
-    s.green = getNumber(j, "green", 0.0);
-    s.blue = getNumber(j, "blue", 0.0);
-    s.softEdge = getBool(j, "softEdge", false);
-    s.edgeLeft = getNumber(j, "edgeLeft", 0.0);
-    s.edgeRight = getNumber(j, "edgeRight", 0.0);
-    s.edgeTop = getNumber(j, "edgeTop", 0.0);
-    s.edgeBottom = getNumber(j, "edgeBottom", 0.0);
-    s.edgeGamma = getNumber(j, "edgeGamma", 2.2);
-    s.edgePower = getNumber(j, "edgePower", 2.0);
-    s.clamp();
-    return s;
-}
-
-json outputToJsonObj(const Output& o) {
-    json slices = json::array();
-    for (const auto& s : o.slices) slices.push_back(sliceToJson(s));
-    return {{"id", o.id},
-            {"name", o.name},
-            {"type", toString(o.type)},
-            {"enabled", o.enabled},
-            {"display", o.displayId},
-            {"monitor", o.monitor},
-            {"windowWidth", o.windowWidth},
-            {"windowHeight", o.windowHeight},
-            {"ndiName", o.ndiName},
-            {"ndiAlpha", o.ndiAlpha},
-            {"deviceId", o.deviceId},
-            {"width", o.width},
-            {"height", o.height},
-            {"slices", slices}};
-}
-
-Output outputFromJsonObj(const json& o) {
-    Output it;
-    it.id = getString(o, "id");
-    it.name = getString(o, "name", it.id);
-    it.type = outputTypeFromString(getString(o, "type", "display"));
-    it.enabled = getBool(o, "enabled", true);
-    it.displayId = getString(o, "display");
-    it.monitor = std::clamp(getInt(o, "monitor", 0), 0, 16);
-    it.windowWidth = std::clamp(getInt(o, "windowWidth", 1280), 160, kMaxCanvasSize);
-    it.windowHeight = std::clamp(getInt(o, "windowHeight", 720), 90, kMaxCanvasSize);
-    it.ndiName = getString(o, "ndiName");
-    it.ndiAlpha = getBool(o, "ndiAlpha", false);
-    it.deviceId = getString(o, "deviceId");
-    it.width = std::clamp(getInt(o, "width", 1920), 16, kMaxCanvasSize);
-    it.height = std::clamp(getInt(o, "height", 1080), 16, kMaxCanvasSize);
-    if (auto a = o.find("slices"); a != o.end() && a->is_array()) {
-        std::set<std::string> ids;
-        for (const auto& sj : *a) {
-            if (!sj.is_object() || it.slices.size() >= 64) continue;
-            Slice s = sliceFromJson(sj);
-            if (s.id.empty() || !ids.insert(s.id).second) s.id = "S" + std::to_string(it.slices.size() + 1) + "x";
-            ids.insert(s.id);
-            it.slices.push_back(std::move(s));
-        }
-    } else {
-        // Saída antiga (sem slices): mostra o MEDIAPLAYER inteiro, com a proporção certa.
-        Slice s = makeFullSlice(SliceSourceKind::MediaPlayer, it.width, it.height);
-        s.keepAspect = true;
-        it.slices.push_back(s);
-    }
-    return it;
-}
-
-json clipToJson(const Clip& c) {
-    json j{{"path", c.path}, {"name", c.name},         {"in", c.inPoint},         {"out", c.outPoint},
-           {"speed", c.speed}, {"end", toString(c.end)}, {"volumeDb", c.volumeDb}, {"normalize", c.normalize}};
-    if (c.loudness) j["loudness"] = *c.loudness;
-    if (c.peakDb) j["peakDb"] = *c.peakDb;
-    if (c.thumbTime) j["thumb"] = *c.thumbTime;
-    return j;
-}
-
-Clip clipFromJson(const json& j) {
-    Clip c;
-    c.path = getString(j, "path");
-    c.name = getString(j, "name");
-    c.inPoint = getNumber(j, "in", 0.0);
-    c.outPoint = getNumber(j, "out", 0.0);
-    c.speed = getNumber(j, "speed", 1.0);
-    c.end = clipEndFromString(getString(j, "end", "loop"));
-    c.volumeDb = getNumber(j, "volumeDb", 0.0);
-    c.normalize = getBool(j, "normalize", true);
-    c.loudness = getOptNumber(j, "loudness");
-    c.peakDb = getOptNumber(j, "peakDb");
-    c.thumbTime = getOptNumber(j, "thumb");
-    c.clamp();
-    return c;
-}
-
-json layerToJsonObj(const CompLayer& l) {
-    json j{{"id", l.id},       {"name", l.name},     {"props", propsToJson(l.props)}, {"video", l.video},
-           {"audio", l.audio}, {"solo", l.solo},     {"bypass", l.bypass},            {"transition", l.transition},
-           {"volumeDb", l.volumeDb}};
-    return j;
-}
-
-CompLayer layerFromJsonObj(const json& j) {
-    CompLayer l;
-    l.id = getString(j, "id");
-    l.name = getString(j, "name", l.id);
-    if (auto p = j.find("props"); p != j.end() && p->is_object()) l.props = propsFromJson(*p);
-    l.video = getBool(j, "video", true);
-    l.audio = getBool(j, "audio", true);
-    l.solo = getBool(j, "solo", false);
-    l.bypass = getBool(j, "bypass", false);
-    l.transition = getNumber(j, "transition", 0.0);
-    l.volumeDb = getNumber(j, "volumeDb", 0.0);
-    l.clamp();
-    return l;
-}
-
-json compositionToJson(const Composition& c) {
-    json layers = json::array();
-    for (const auto& l : c.layers) layers.push_back(layerToJsonObj(l));
-    json columns = json::array();
-    for (const auto& col : c.columns) {
-        json cells = json::object();
-        for (const auto& [lid, clip] : col.cells) cells[lid] = clipToJson(clip);
-        columns.push_back({{"id", col.id}, {"name", col.name}, {"cells", cells}});
-    }
-    return {{"id", c.id},         {"name", c.name},           {"width", c.width},   {"height", c.height},
-            {"opacity", c.opacity}, {"volumeDb", c.volumeDb}, {"layers", layers},   {"columns", columns}};
-}
-
-Composition compositionFromJson(const json& j, std::vector<std::string>& warnings) {
-    Composition c;
-    c.id = getString(j, "id");
-    c.name = getString(j, "name", c.id);
-    c.width = std::clamp(getInt(j, "width", 1920), 16, kMaxCanvasSize);
-    c.height = std::clamp(getInt(j, "height", 1080), 16, kMaxCanvasSize);
-    c.opacity = clampFinite(getNumber(j, "opacity", 1.0), 0.0, 1.0, 1.0);
-    c.volumeDb = clampFinite(getNumber(j, "volumeDb", 0.0), -60.0, 12.0, 0.0);
-    std::set<std::string> lids;
-    if (auto a = j.find("layers"); a != j.end() && a->is_array())
-        for (const auto& lj : *a) {
-            if (!lj.is_object() || c.layers.size() >= 64) continue;
-            CompLayer l = layerFromJsonObj(lj);
-            if (l.id.empty() || lids.count(l.id)) l.id = c.newLayerId();
-            lids.insert(l.id);
-            c.layers.push_back(std::move(l));
-        }
-    std::set<std::string> cids;
-    if (auto a = j.find("columns"); a != j.end() && a->is_array())
-        for (const auto& cj : *a) {
-            if (!cj.is_object() || c.columns.size() >= 512) continue;
-            CompColumn col;
-            col.id = getString(cj, "id");
-            if (col.id.empty() || cids.count(col.id)) col.id = c.newColumnId();
-            cids.insert(col.id);
-            col.name = getString(cj, "name", col.id);
-            if (auto cells = cj.find("cells"); cells != cj.end() && cells->is_object())
-                for (auto it = cells->begin(); it != cells->end(); ++it) {
-                    if (!it.value().is_object() || !lids.count(it.key())) {
-                        warnings.push_back("clip numa layer inexistente ignorado");
-                        continue;
-                    }
-                    Clip clip = clipFromJson(it.value());
-                    if (!clip.path.empty()) col.cells[it.key()] = std::move(clip);
-                }
-            c.columns.push_back(std::move(col));
-        }
-    return c;
-}
-
 } // namespace
-
-std::string outputToJson(const Output& o) { return outputToJsonObj(o).dump(-1, ' ', false, json::error_handler_t::replace); }
-
-std::optional<Output> outputFromJson(const std::string& text) {
-    const json j = json::parse(text, nullptr, false);
-    if (j.is_discarded() || !j.is_object()) return std::nullopt;
-    try {
-        Output o = outputFromJsonObj(j);
-        if (o.id.empty()) return std::nullopt;
-        return o;
-    } catch (...) {
-        return std::nullopt;
-    }
-}
-
-std::string compLayerToJson(const CompLayer& l) { return layerToJsonObj(l).dump(-1, ' ', false, json::error_handler_t::replace); }
-
-std::optional<CompLayer> compLayerFromJson(const std::string& text) {
-    const json j = json::parse(text, nullptr, false);
-    if (j.is_discarded() || !j.is_object()) return std::nullopt;
-    try {
-        CompLayer l = layerFromJsonObj(j);
-        if (l.id.empty()) return std::nullopt;
-        return l;
-    } catch (...) {
-        return std::nullopt;
-    }
-}
 
 ParseResult parseProject(const std::string& text) {
     ParseResult r;
@@ -789,7 +261,8 @@ ParseResult parseProject(const std::string& text) {
         }
         Project p;
         const int fileVersion = getInt(j, "version", kProjectFormatVersion);
-        if (fileVersion > kProjectFormatVersion)
+        // O formato 3 (0.8.0, CUEPLAYER, retirado na 0.8.1) só acrescentava chaves que aqui se ignoram.
+        if (fileVersion > kProjectFormatVersion + 1)
             r.warnings.push_back("projecto criado numa versão mais recente do VTHOST");
         p.version = kProjectFormatVersion;
         p.name = getString(j, "name", "Untitled");
@@ -842,34 +315,25 @@ ParseResult parseProject(const std::string& text) {
         if (auto a = j.find("outputs"); a != j.end() && a->is_array()) {
             for (const auto& o : *a) {
                 if (!o.is_object()) continue;
-                Output it = outputFromJsonObj(o);
+                Output it;
+                it.id = getString(o, "id");
                 if (it.id.empty() || !outputIds.insert(it.id).second) {
                     r.warnings.push_back("output ignorado (id vazio ou duplicado)");
                     continue;
                 }
+                it.name = getString(o, "name", it.id);
+                it.type = outputTypeFromString(getString(o, "type", "display"));
+                it.enabled = getBool(o, "enabled", true);
+                it.displayId = getString(o, "display");
+                it.monitor = std::clamp(getInt(o, "monitor", 0), 0, 16);
+                it.windowWidth = std::clamp(getInt(o, "windowWidth", 1280), 160, kMaxCanvasSize);
+                it.windowHeight = std::clamp(getInt(o, "windowHeight", 720), 90, kMaxCanvasSize);
+                it.ndiName = getString(o, "ndiName");
+                it.ndiAlpha = getBool(o, "ndiAlpha", false);
+                it.deviceId = getString(o, "deviceId");
                 p.outputs.push_back(std::move(it));
             }
         }
-
-        std::set<std::string> compIds;
-        if (auto a = j.find("compositions"); a != j.end() && a->is_array()) {
-            for (const auto& cj : *a) {
-                if (!cj.is_object() || p.compositions.size() >= 64) continue;
-                Composition c = compositionFromJson(cj, r.warnings);
-                if (c.id.empty() || compIds.count(c.id)) c.id = p.newCompositionId();
-                compIds.insert(c.id);
-                p.compositions.push_back(std::move(c));
-            }
-        }
-        if (p.compositions.empty()) p.compositions.push_back(Composition::makeDefault("comp1", "Composition 1"));
-        // Slices que apontam para composições/layers que já não existem passam a mostrar nada (fonte inválida).
-        for (auto& o : p.outputs)
-            for (auto& sl : o.slices) {
-                if (sl.source == SliceSourceKind::MediaPlayer) continue;
-                const Composition* c = p.findComposition(sl.compositionId);
-                if (!c || (sl.source == SliceSourceKind::Layer && !c->findLayer(sl.layerId)))
-                    r.warnings.push_back("slice \"" + sl.name + "\" com uma fonte que já não existe");
-            }
         r.project = std::move(p);
     } catch (const std::exception& e) {
         r.error = e.what();
@@ -891,10 +355,19 @@ std::string serializeProject(const Project& p) {
     j["masterVolumeDb"] = p.masterVolumeDb;
     j["cues"] = json::array();
     for (const auto& q : p.cues) j["cues"].push_back(cueToJson(q));
-    j["compositions"] = json::array();
-    for (const auto& c : p.compositions) j["compositions"].push_back(compositionToJson(c));
     j["outputs"] = json::array();
-    for (const auto& o : p.outputs) j["outputs"].push_back(outputToJsonObj(o));
+    for (const auto& o : p.outputs)
+        j["outputs"].push_back({{"id", o.id},
+                                {"name", o.name},
+                                {"type", toString(o.type)},
+                                {"enabled", o.enabled},
+                                {"display", o.displayId},
+                                {"monitor", o.monitor},
+                                {"windowWidth", o.windowWidth},
+                                {"windowHeight", o.windowHeight},
+                                {"ndiName", o.ndiName},
+                                {"ndiAlpha", o.ndiAlpha},
+                                {"deviceId", o.deviceId}});
     // error_handler::replace: UTF-8 inválido num nome não pode impedir a gravação.
     return j.dump(2, ' ', false, json::error_handler_t::replace);
 }

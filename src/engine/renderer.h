@@ -61,17 +61,12 @@ public:
 
     // Saídas
     bool buildWarpMesh(const OutputMapping& mapping, WarpMesh& out);
-    // clear = limpar o alvo antes (só no primeiro slice de cada screen).
     void drawOutput(ID3D11RenderTargetView* rtv, int width, int height, const std::string& canvasId,
-                    const OutputMapping& mapping, const WarpMesh& mesh, bool testCard, bool clear = true);
-    // Alvo de um canvas (para desenhar os slices de uma saída NDI num canvas próprio).
-    ID3D11RenderTargetView* canvasRtv(const std::string& id) const;
-    void clearCanvas(const std::string& id);
+                    const OutputMapping& mapping, const WarpMesh& mesh, bool testCard);
 
     // Cópias para a CPU. `sink` só é chamado quando há dados prontos.
     using PixelSink = std::function<void(const std::uint8_t* data, int rowPitch, int width, int height)>;
-    // slot 0 = preview principal, 1 = monitor Preview do CUEPLAYER. Reduzido (<= 960x540).
-    void capturePreview(int slot, const std::string& canvasId, const PixelSink& sink);
+    void capturePreview(const std::string& canvasId, const PixelSink& sink); // reduzido (<= 960x540)
     void captureCanvas(const std::string& canvasId, const PixelSink& sink);  // resolução total (NDI)
 
     // Copiar o frame descodificado para a textura (recria-a se o tamanho mudou).
@@ -125,10 +120,9 @@ private:
     std::map<std::string, CanvasTarget> canvases_;
     CanvasTarget* current_ = nullptr;
 
-    static constexpr int kPreviewSlots = 2;
-    ComPtr<ID3D11Texture2D> previewRt_[kPreviewSlots];
-    ComPtr<ID3D11RenderTargetView> previewRtv_[kPreviewSlots];
-    Readback preview_[kPreviewSlots];
+    ComPtr<ID3D11Texture2D> previewRt_;
+    ComPtr<ID3D11RenderTargetView> previewRtv_;
+    Readback preview_;
     bool warp_ = false;
 };
 

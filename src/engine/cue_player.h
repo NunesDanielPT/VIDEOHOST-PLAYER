@@ -48,11 +48,8 @@ public:
     // Trim, velocidade e repetições só mudam na próxima vez que a cue começar.
     void updateCue(const Cue& cue, int index);
 
-    // Por frame: frames novos, áudio, transições. Ganho do som = cue + master (dB).
-    void update(double normalizeTargetLufs, double masterDb);
-    // No canvas actual. Sem `props`: geometria da cue (MEDIAPLAYER); com `props`:
-    // propriedades da layer (CUEPLAYER). `opacity` multiplica tudo.
-    void draw(const LayerProps* props = nullptr, float opacity = 1.0f);
+    void update(const Project& project); // por frame: frames novos, áudio, transições
+    void draw();                         // no canvas actual
 
     bool active() const { return cur_.active; }
     int index() const { return cur_.index; }
@@ -94,7 +91,7 @@ private:
 
     void openDecoders(Slot& s, double startTime);
     void retire(Slot& s);
-    void updateSlot(Slot& s, double normalizeTargetLufs, double masterDb);
+    void updateSlot(Slot& s, const Project& project);
     double passLength(const Slot& s) const;  // tempo de media de uma passagem (0 = desconhecido / infinito)
     double endTime(const Slot& s) const;     // tempo de cue em que acaba (0 = nunca)
     float opacity(const Slot& s) const;

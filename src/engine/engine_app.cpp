@@ -21,22 +21,14 @@ namespace vthost {
 using namespace std::chrono_literals;
 
 namespace {
-const std::string kCanvasId = "C1";   // MEDIAPLAYER (resolução do projecto)
-const std::string kPreviewClip = "pv"; // monitor Preview do CUEPLAYER
-std::string compCanvas(const std::string& id) { return "comp:" + id; }
-std::string layerCanvas(const std::string& comp, const std::string& layer) { return "layer:" + comp + ":" + layer; }
-std::string ndiCanvas(const std::string& id) { return "ndi:" + id; }
+const std::string kCanvasId = "C1"; // o player tem um só canvas (resolução do projecto)
 } // namespace
 
 EngineApp::~EngineApp() {
     player_.reset();
     outputs_.clear();
-    previewPlayer_.reset();
-    comps_.clear();
-    for (int i = 0; i < 2; ++i) {
-        if (previewBlock_[i]) UnmapViewOfFile(previewBlock_[i]);
-        if (previewMapping_[i]) CloseHandle(previewMapping_[i]);
-    }
+    if (previewBlock_) UnmapViewOfFile(previewBlock_);
+    if (previewMapping_) CloseHandle(previewMapping_);
     if (heartbeat_) UnmapViewOfFile(heartbeat_);
     if (heartbeatMapping_) CloseHandle(heartbeatMapping_);
 }
@@ -83,10 +75,8 @@ bool EngineApp::loadProject(const std::string& path, std::string* error) {
     for (const auto& w : warnings_) log::warn("projecto: " + w);
     log::info("projecto carregado: " + project_.name + " (" + path + ", " + std::to_string(project_.cues.size()) + " cues)");
 
-    syncCompositions();
     syncCanvas();
     syncOutputs();
-    rebuildSlices();
     // A cue no ar continua; recebe os parâmetros novos (volume, fades...) e o índice actual.
     if (player_ && player_->active()) {
         const int idx = project_.cueIndex(player_->cueId());
@@ -97,75 +87,9 @@ bool EngineApp::loadProject(const std::string& path, std::string* error) {
 }
 
 void EngineApp::syncCanvas() {
-    std::set<std::string> keep{kCanvasId, kPreviewClip};
     renderer_.ensureCanvas(kCanvasId, project_.width, project_.height);
-    renderer_.ensureCanvas(kPreviewClip, 1280, 720);
-    for (const auto& c : project_.compositions) {
-        renderer_.ensureCanvas(compCanvas(c.id), c.width, c.height);
-        keep.insert(compCanvas(c.id));
-    }
-    for (const auto& id : layerCanvases_) keep.insert(id); // criados em rebuildSlices
-    for (const auto& o : project_.outputs)
-        if (o.enabled && o.type == OutputType::Ndi) {
-            renderer_.ensureCanvas(ndiCanvas(o.id), o.width, o.height);
-            keep.insert(ndiCanvas(o.id));
-        }
-    renderer_.keepOnlyCanvases(keep);
-}
-
-std::string EngineApp::sliceCanvas(const Slice& s, int& w, int& h) const {
-    if (s.source == SliceSourceKind::MediaPlayer) {
-        w = project_.width;
-        h = project_.height;
-        return kCanvasId;
-    }
-    const Composition* c = project_.findComposition(s.compositionId);
-    if (!c) return {};
-    w = c->width;
-    h = c->height;
-    if (s.source == SliceSourceKind::Composition) return compCanvas(c->id);
-    if (!c->findLayer(s.layerId)) return {};
-    return layerCanvas(c->id, s.layerId);
-}
-
-void EngineApp::rebuildSlices() {
-    // Canvases de layers usados por slices (só esses são desenhados à parte).
-    std::set<std::string> layers;
-    for (const auto& o : project_.outputs)
-        for (const auto& sl : o.slices)
-            if (sl.enabled && sl.source == SliceSourceKind::Layer) {
-                int w = 0, h = 0;
-                const std::string id = sliceCanvas(sl, w, h);
-                if (!id.empty() && renderer_.ensureCanvas(id, w, h)) layers.insert(id);
-            }
-    layerCanvases_ = std::move(layers);
-    syncCanvas();
-
-    auto build = [this](const Output& o) {
-        std::vector<SliceDraw> list;
-        for (const auto& sl : o.slices) {
-            if (!sl.enabled) continue;
-            int w = 0, h = 0;
-            const std::string canvas = sliceCanvas(sl, w, h);
-            if (canvas.empty()) continue; // fonte que já não existe: o slice fica preto
-            SliceDraw d;
-            d.canvasId = canvas;
-            d.mapping = sliceToMapping(sl, o.width, o.height, w, h);
-            if (!renderer_.buildWarpMesh(d.mapping, d.mesh)) continue;
-            list.push_back(std::move(d));
-        }
-        return list;
-    };
-    ndiSlices_.clear();
-    for (const auto& o : project_.outputs) {
-        if (!o.enabled) continue;
-        if (o.type == OutputType::Ndi) {
-            ndiSlices_[o.id] = build(o);
-            continue;
-        }
-        for (auto& w : outputs_)
-            if (w->id() == o.id) w->setSlices(build(o));
-    }
+    renderer_.keepOnlyCanvases({kCanvasId});
+    for (auto& w : outputs_) w->setCanvas(kCanvasId, project_.width, project_.height);
 }
 
 namespace {
@@ -198,6 +122,7 @@ void EngineApp::syncOutputs() {
             }
             auto w = std::make_unique<OutputWindow>(renderer_, o);
             if (!w->create()) log::error("output " + o.id + ": " + w->error());
+            w->setCanvas(kCanvasId, project_.width, project_.height);
             outputs_.push_back(std::move(w));
         } else if (o.type == OutputType::Ndi) {
             const std::string name = o.ndiName.empty() ? "VTHOST - " + o.name : o.ndiName;
@@ -255,174 +180,6 @@ void EngineApp::handleCueEnd() {
     saveStateIfDue(true);
 }
 
-// ---------------------------------------------------------------- CUEPLAYER
-
-void EngineApp::syncCompositions() {
-    // Composições/layers apagadas: os players desaparecem (destruição em fundo).
-    for (auto it = comps_.begin(); it != comps_.end();) {
-        const Composition* c = project_.findComposition(it->first);
-        if (!c) {
-            it = comps_.erase(it);
-            continue;
-        }
-        auto& pl = it->second.players;
-        for (auto p = pl.begin(); p != pl.end();) {
-            if (!c->findLayer(p->first)) {
-                it->second.column.erase(p->first);
-                p = pl.erase(p);
-            } else {
-                ++p;
-            }
-        }
-        ++it;
-    }
-    for (const auto& c : project_.compositions) refreshCompCues(c.id);
-}
-
-void EngineApp::refreshCompCues(const std::string& compId) {
-    const Composition* c = project_.findComposition(compId);
-    auto it = comps_.find(compId);
-    if (!c || it == comps_.end()) return;
-    for (auto& [lid, player] : it->second.players) {
-        if (!player || !player->active()) continue;
-        const CompLayer* layer = c->findLayer(lid);
-        const auto col = it->second.column.find(lid);
-        if (!layer || col == it->second.column.end()) continue;
-        const CompColumn* column = c->findColumn(col->second);
-        if (!column) continue;
-        auto cell = column->cells.find(lid);
-        if (cell == column->cells.end()) continue;
-        player->updateCue(clipToCue(cell->second, *layer, *c), player->index());
-    }
-}
-
-bool EngineApp::launchClip(const std::string& comp, const std::string& layer, const std::string& column,
-                           const CuePlayer::StartOptions& opts, std::string* error) {
-    const Composition* c = project_.findComposition(comp);
-    const CompLayer* l = c ? c->findLayer(layer) : nullptr;
-    const CompColumn* col = c ? c->findColumn(column) : nullptr;
-    if (!c || !l || !col) {
-        if (error) *error = "composição, layer ou coluna inexistente";
-        return false;
-    }
-    auto cell = col->cells.find(layer);
-    if (cell == col->cells.end()) { // célula vazia: limpa a layer
-        clearLayer(comp, layer);
-        return true;
-    }
-    auto& pb = comps_[comp];
-    auto& player = pb.players[layer];
-    if (!player) player = std::make_unique<CuePlayer>(renderer_, audio_);
-    int colIndex = 0;
-    for (std::size_t i = 0; i < c->columns.size(); ++i)
-        if (c->columns[i].id == column) colIndex = static_cast<int>(i);
-    player->start(clipToCue(cell->second, *l, *c), colIndex, opts);
-    pb.column[layer] = column;
-    return true;
-}
-
-bool EngineApp::launchColumn(const std::string& comp, const std::string& column, std::string* error) {
-    const Composition* c = project_.findComposition(comp);
-    if (!c || !c->findColumn(column)) {
-        if (error) *error = "composição ou coluna inexistente";
-        return false;
-    }
-    // Como no Resolume: cada layer toca o clip desta coluna; layers sem clip ficam vazias.
-    for (const auto& l : c->layers) {
-        CuePlayer::StartOptions o;
-        launchClip(comp, l.id, column, o, nullptr);
-    }
-    log::info("CUEPLAYER: coluna " + column + " (" + c->name + ")");
-    saveStateIfDue(true);
-    return true;
-}
-
-void EngineApp::clearLayer(const std::string& comp, const std::string& layer) {
-    auto it = comps_.find(comp);
-    if (it == comps_.end()) return;
-    auto p = it->second.players.find(layer);
-    if (p != it->second.players.end() && p->second) {
-        const Composition* c = project_.findComposition(comp);
-        const CompLayer* l = c ? c->findLayer(layer) : nullptr;
-        p->second->stop(l ? l->transition : 0.0);
-    }
-    it->second.column.erase(layer);
-}
-
-void EngineApp::handleCompEnds() {
-    for (auto& [cid, pb] : comps_) {
-        for (auto& [lid, player] : pb.players) {
-            if (!player || !player->active() || player->endHandled() || !player->reachedEnd()) continue;
-            if (player->secondsSinceStart() < 0.25) continue;
-            player->setEndHandled();
-            if (player->cue().pauseAtEnd) {
-                player->holdAtEnd();
-            } else {
-                player->stop(player->cue().crossfade);
-                pb.column.erase(lid);
-            }
-        }
-    }
-}
-
-void EngineApp::drawCompositions() {
-    const double target = project_.normalizeTargetLufs;
-    for (const auto& c : project_.compositions) {
-        auto it = comps_.find(c.id);
-        CompPlayback* pb = it != comps_.end() ? &it->second : nullptr;
-        bool anySolo = false;
-        for (const auto& l : c.layers) anySolo = anySolo || l.solo;
-        auto playerOf = [&](const std::string& lid) -> CuePlayer* {
-            if (!pb) return nullptr;
-            auto p = pb->players.find(lid);
-            return p != pb->players.end() ? p->second.get() : nullptr;
-        };
-        // Som: solo cala as outras layers.
-        for (const auto& l : c.layers)
-            if (CuePlayer* p = playerOf(l.id)) p->update(target, (anySolo && !l.solo) ? -120.0 : 0.0);
-        // Composição: Layer 1 em baixo, a última em cima.
-        renderer_.beginCanvas(compCanvas(c.id));
-        for (const auto& l : c.layers) {
-            if (l.bypass || !l.video || (anySolo && !l.solo)) continue;
-            if (CuePlayer* p = playerOf(l.id)) p->draw(&l.props, static_cast<float>(c.opacity));
-        }
-        // Layers usadas sozinhas por slices.
-        for (const auto& l : c.layers) {
-            const std::string lc = layerCanvas(c.id, l.id);
-            if (!layerCanvases_.count(lc)) continue;
-            renderer_.beginCanvas(lc);
-            if (l.bypass || !l.video) continue;
-            if (CuePlayer* p = playerOf(l.id)) p->draw(&l.props, static_cast<float>(c.opacity));
-        }
-    }
-}
-
-bool EngineApp::previewClip(const std::string& comp, const std::string& layer, const std::string& column,
-                            std::string* error) {
-    const Composition* c = project_.findComposition(comp);
-    const CompLayer* l = c ? c->findLayer(layer) : nullptr;
-    const CompColumn* col = c ? c->findColumn(column) : nullptr;
-    auto cell = col ? col->cells.find(layer) : std::map<std::string, Clip>::const_iterator{};
-    if (!c || !l || !col || cell == col->cells.end()) {
-        if (error) *error = "clip inexistente";
-        return false;
-    }
-    if (!previewPlayer_) previewPlayer_ = std::make_unique<CuePlayer>(renderer_, audio_);
-    Cue q = clipToCue(cell->second, *l, *c);
-    q.muted = true;     // o preview nunca vai para o som
-    q.playCount = 0;    // repete enquanto se vê
-    q.pauseAtEnd = false;
-    q.clearAtEnd = false;
-    q.crossfade = 0.0;
-    q.fit = FitMode::Fit;
-    q.scale = 1.0;
-    q.posX = q.posY = 0.0;
-    CuePlayer::StartOptions o;
-    o.cut = true;
-    previewPlayer_->start(q, -1, o);
-    return true;
-}
-
 void EngineApp::recover() {
     ShowState st;
     if (!loadShowState(st) || st.projectPath.empty()) {
@@ -444,12 +201,6 @@ void EngineApp::recover() {
         o.cut = true;
         play(idx, o, &err);
     }
-    for (const auto& l : st.compLayers) {
-        CuePlayer::StartOptions o;
-        o.startTime = l.cueTime;
-        o.cut = true;
-        launchClip(l.comp, l.layer, l.column, o, nullptr);
-    }
     recovered_ = true;
     log::warn("RECUPERAÇÃO: show retomado após reinício do motor");
 }
@@ -468,12 +219,6 @@ void EngineApp::saveStateIfDue(bool force) {
         st.cueTime = player_->cueTime();
         st.paused = player_->paused() || player_->holding();
     }
-    for (const auto& [cid, pb] : comps_)
-        for (const auto& [lid, col] : pb.column) {
-            auto p = pb.players.find(lid);
-            if (p == pb.players.end() || !p->second || !p->second->active()) continue;
-            st.compLayers.push_back({cid, lid, col, p->second->cueTime()});
-        }
     std::string err;
     if (!saveShowState(st, &err)) {
         static auto lastWarn = Clock::time_point{};
@@ -549,70 +294,6 @@ std::string EngineApp::handle(const std::string& line) {
         return displaysResponse(enumerateDisplays());
     case CommandType::ListAudioDevices:
         return audioDevicesResponse(AudioOutput::listDevices());
-    case CommandType::LaunchColumn:
-        return launchColumn(c.comp, c.column, &err) ? okResponse() : errorResponse(err);
-    case CommandType::LaunchClip: {
-        CuePlayer::StartOptions o;
-        if (!launchClip(c.comp, c.layer, c.column, o, &err)) return errorResponse(err);
-        saveStateIfDue(true);
-        return okResponse();
-    }
-    case CommandType::ClearLayer:
-        clearLayer(c.comp, c.layer);
-        saveStateIfDue(true);
-        return okResponse();
-    case CommandType::ClearComposition:
-        if (const Composition* comp = project_.findComposition(c.comp))
-            for (const auto& l : comp->layers) clearLayer(c.comp, l.id);
-        saveStateIfDue(true);
-        return okResponse();
-    case CommandType::SetCompLayer: {
-        // Ao vivo (opacidade, blend, transform, som...): sem recarregar o projecto.
-        auto layer = compLayerFromJson(c.json);
-        if (!layer) return errorResponse("layer inválida");
-        for (auto& comp : project_.compositions) {
-            if (comp.id != c.comp) continue;
-            for (auto& l : comp.layers)
-                if (l.id == layer->id) {
-                    l = *layer;
-                    refreshCompCues(comp.id);
-                    return okResponse();
-                }
-        }
-        return errorResponse("layer inexistente");
-    }
-    case CommandType::SetCompProps:
-        for (auto& comp : project_.compositions)
-            if (comp.id == c.comp) {
-                comp.opacity = c.opacity;
-                comp.volumeDb = c.volumeDb;
-                refreshCompCues(comp.id);
-                return okResponse();
-            }
-        return errorResponse("composição inexistente");
-    case CommandType::SetOutput: {
-        // Editor de output ao vivo: troca a saída sem recarregar o projecto.
-        auto out = outputFromJson(c.json);
-        if (!out) return errorResponse("saída inválida");
-        bool found = false;
-        for (auto& o : project_.outputs)
-            if (o.id == out->id) {
-                o = *out;
-                found = true;
-            }
-        if (!found) return errorResponse("saída inexistente");
-        syncOutputs();
-        rebuildSlices();
-        return okResponse();
-    }
-    case CommandType::PreviewClip:
-        return previewClip(c.comp, c.layer, c.column, &err) ? okResponse() : errorResponse(err);
-    case CommandType::PreviewStop:
-        if (previewPlayer_) previewPlayer_->stop(0.0);
-        return okResponse();
-    case CommandType::SetPreviewSource:
-        previewSource_ = c.source.empty() ? std::string("media") : c.source;
-        return okResponse();
     case CommandType::Shutdown:
         if (showMode_) return errorResponse("Show Mode activo: desligue-o para parar o motor");
         setRunState(EngineRunState::StoppingOnPurpose);
@@ -638,27 +319,6 @@ protocol::EngineStatus EngineApp::buildStatus() const {
     if (player_) {
         player_->fillStatus(s);
         if (player_->active() && player_->index() >= 0) s.nextCue = project_.nextCue(player_->index());
-    }
-    for (const auto& [cid, pb] : comps_)
-        for (const auto& [lid, player] : pb.players) {
-            if (!player || !player->active()) continue;
-            protocol::EngineStatus tmp;
-            player->fillStatus(tmp);
-            protocol::CompLayerStatus ls;
-            ls.comp = cid;
-            ls.layer = lid;
-            auto col = pb.column.find(lid);
-            ls.column = col != pb.column.end() ? col->second : std::string();
-            ls.state = tmp.state;
-            ls.elapsed = tmp.elapsed;
-            ls.remaining = tmp.remaining;
-            ls.passDuration = tmp.passDuration;
-            s.compLayers.push_back(std::move(ls));
-        }
-    if (previewPlayer_ && previewPlayer_->active()) {
-        protocol::EngineStatus tmp;
-        previewPlayer_->fillStatus(tmp);
-        s.previewState = tmp.state;
     }
     s.audioDevice = audio_.deviceName();
     s.audioOk = audio_.ok();
@@ -715,42 +375,29 @@ void EngineApp::applySettings(const protocol::EngineSettings& s) {
 // ---------------------------------------------------------------- preview
 
 bool EngineApp::initPreview() {
-    const wchar_t* names[2] = {kPreviewName, kPreviewName2};
-    bool ok = true;
-    for (int i = 0; i < 2; ++i) {
-        previewMapping_[i] = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
-                                                static_cast<DWORD>(kPreviewBlockBytes), names[i]);
-        if (!previewMapping_[i]) {
-            ok = false;
-            continue;
-        }
-        previewBlock_[i] = static_cast<std::uint8_t*>(
-            MapViewOfFile(previewMapping_[i], FILE_MAP_ALL_ACCESS, 0, 0, kPreviewBlockBytes));
-        if (!previewBlock_[i]) {
-            ok = false;
-            continue;
-        }
-        reinterpret_cast<PreviewHeader*>(previewBlock_[i])->magic = kPreviewMagic;
-    }
-    return ok;
+    previewMapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
+                                         static_cast<DWORD>(kPreviewBlockBytes), kPreviewName);
+    if (!previewMapping_) return false;
+    previewBlock_ = static_cast<std::uint8_t*>(MapViewOfFile(previewMapping_, FILE_MAP_ALL_ACCESS, 0, 0, kPreviewBlockBytes));
+    if (!previewBlock_) return false;
+    auto* h = reinterpret_cast<PreviewHeader*>(previewBlock_);
+    h->magic = kPreviewMagic;
+    return true;
 }
 
-void EngineApp::writePreview(int slot, const std::string& canvasId, const std::uint8_t* data, int rowPitch, int width,
-                             int height) {
-    if (slot < 0 || slot > 1) return;
-    std::uint8_t* block = previewBlock_[slot];
-    if (!block || width <= 0 || height <= 0 || width > kPreviewMaxWidth || height > kPreviewMaxHeight) return;
-    auto* h = reinterpret_cast<PreviewHeader*>(block);
+void EngineApp::writePreview(const std::uint8_t* data, int rowPitch, int width, int height) {
+    if (!previewBlock_ || width <= 0 || height <= 0 || width > kPreviewMaxWidth || height > kPreviewMaxHeight) return;
+    auto* h = reinterpret_cast<PreviewHeader*>(previewBlock_);
     auto* seq = reinterpret_cast<volatile LONG64*>(&h->sequence);
     if (InterlockedIncrement64(seq) % 2 == 0) InterlockedIncrement64(seq); // garante ímpar = a escrever
     h->width = static_cast<std::uint32_t>(width);
     h->height = static_cast<std::uint32_t>(height);
     h->stride = static_cast<std::uint32_t>(width * 4);
     int cw = 0, ch = 0;
-    renderer_.canvasSize(canvasId, cw, ch);
+    renderer_.canvasSize(kCanvasId, cw, ch);
     h->canvasWidth = static_cast<std::uint32_t>(cw);
     h->canvasHeight = static_cast<std::uint32_t>(ch);
-    std::uint8_t* dst = block + sizeof(PreviewHeader);
+    std::uint8_t* dst = previewBlock_ + sizeof(PreviewHeader);
     const std::size_t row = static_cast<std::size_t>(width) * 4;
     for (int y = 0; y < height; ++y) std::memcpy(dst + y * row, data + static_cast<std::size_t>(y) * rowPitch, row);
     h->frameNumber++;
@@ -761,62 +408,27 @@ void EngineApp::writePreview(int slot, const std::string& canvasId, const std::u
 // ---------------------------------------------------------------- render loop
 
 void EngineApp::renderFrame() {
-    // MEDIAPLAYER
-    player_->update(project_.normalizeTargetLufs, project_.masterVolumeDb);
+    player_->update(project_);
     handleCueEnd();
+
     renderer_.beginCanvas(kCanvasId);
     player_->draw();
 
-    // CUEPLAYER: todas as composições (podem estar no ar ao mesmo tempo que o MEDIAPLAYER).
-    handleCompEnds();
-    drawCompositions();
+    // Saídas NDI: canvas em resolução total, copiado sem esperar pela GPU.
+    bool anyNdi = false;
+    for (const auto& n : ndi_) anyNdi = anyNdi || n->ok();
+    if (anyNdi)
+        renderer_.captureCanvas(kCanvasId, [this](const std::uint8_t* d, int pitch, int w, int h) {
+            for (auto& n : ndi_) n->submit(d, pitch, w, h, fps_);
+        });
 
-    // Monitor Preview do CUEPLAYER (clip selecionado, sem som).
-    const bool previewing = previewPlayer_ && previewPlayer_->active();
-    if (previewPlayer_) previewPlayer_->update(project_.normalizeTargetLufs, -120.0);
-    if (previewing) {
-        renderer_.beginCanvas(kPreviewClip);
-        previewPlayer_->draw();
-    }
-
-    // Saídas NDI: os slices são desenhados num canvas próprio e copiados sem esperar pela GPU.
-    for (auto& n : ndi_) {
-        if (!n->ok()) continue;
-        const Output* cfg = nullptr;
-        for (const auto& o : project_.outputs)
-            if (o.id == n->id()) cfg = &o;
-        auto sl = ndiSlices_.find(n->id());
-        ID3D11RenderTargetView* rtv = renderer_.canvasRtv(ndiCanvas(n->id()));
-        if (!cfg || !rtv) continue;
-        if (sl == ndiSlices_.end() || sl->second.empty()) {
-            renderer_.clearCanvas(ndiCanvas(n->id()));
-        } else {
-            bool first = true;
-            for (const auto& d : sl->second) {
-                renderer_.drawOutput(rtv, cfg->width, cfg->height, d.canvasId, d.mapping, d.mesh, testCard_, first);
-                first = false;
-            }
-        }
-        NdiOutput* out = n.get();
-        renderer_.captureCanvas(ndiCanvas(n->id()),
-                                [this, out](const std::uint8_t* d, int pitch, int w, int h) { out->submit(d, pitch, w, h, fps_); });
-    }
-
-    // Previews para o Studio ao ritmo escolhido nas preferências.
+    // Preview para o Studio ao ritmo escolhido nas preferências.
     const auto now = Clock::now();
-    if (settings_.previewFps > 0 && now - lastPreview_ >= std::chrono::duration<double>(1.0 / settings_.previewFps)) {
+    if (previewBlock_ && settings_.previewFps > 0 &&
+        now - lastPreview_ >= std::chrono::duration<double>(1.0 / settings_.previewFps)) {
         lastPreview_ = now;
-        std::string main = kCanvasId;
-        if (previewSource_.rfind("comp:", 0) == 0 && project_.findComposition(previewSource_.substr(5)))
-            main = previewSource_;
-        if (previewBlock_[0])
-            renderer_.capturePreview(0, main, [this, &main](const std::uint8_t* d, int pitch, int w, int h) {
-                writePreview(0, main, d, pitch, w, h);
-            });
-        if (previewBlock_[1] && previewing)
-            renderer_.capturePreview(1, kPreviewClip, [this](const std::uint8_t* d, int pitch, int w, int h) {
-                writePreview(1, kPreviewClip, d, pitch, w, h);
-            });
+        renderer_.capturePreview(kCanvasId,
+                                 [this](const std::uint8_t* d, int pitch, int w, int h) { writePreview(d, pitch, w, h); });
     }
 
     bool first = true;
@@ -837,7 +449,6 @@ int EngineApp::run(const Options& options) {
         return kExitInitFailed;
     }
     player_ = std::make_unique<CuePlayer>(renderer_, audio_);
-    previewPlayer_ = std::make_unique<CuePlayer>(renderer_, audio_);
     syncCanvas();
 
     // Nada de protector de ecrã, monitores a desligar ou PC a suspender durante o show.

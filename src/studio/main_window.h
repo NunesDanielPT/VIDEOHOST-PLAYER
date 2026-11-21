@@ -26,7 +26,6 @@
 #include <string>
 
 class CountdownServer;
-class CuePlayerPage;
 class UpdateDialog;
 class CountdownView;
 class CountdownWindow;
@@ -52,8 +51,6 @@ private:
     void buildUi();
     QWidget* buildTransportBar();
     void buildMenus();
-    void setWorkspace(int index);
-    void onWorkspaceChanged(int index); // fonte do preview principal, atalhos...
 
     // Projecto
     void newProject();
@@ -165,9 +162,6 @@ private:
     QTimer countdownTimer_;
     double statusMediaTime_ = 0.0; // posição no ficheiro no último estado
 
-    QStackedWidget* workspaces_ = nullptr; // 0 = MEDIAPLAYER, 1 = CUEPLAYER
-    CuePlayerPage* cuePage_ = nullptr;
-    QToolButton* workspaceButtons_[2] = {nullptr, nullptr};
     QSplitter* mainSplit_ = nullptr;
     QSplitter* centerSplit_ = nullptr;
     PlaylistView* playlist_ = nullptr;

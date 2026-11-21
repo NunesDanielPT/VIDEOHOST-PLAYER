@@ -16,8 +16,6 @@ inline constexpr std::uint32_t kPreviewMagic = 0x56545056; // "VTPV"
 inline constexpr int kPreviewMaxWidth = 960;
 inline constexpr int kPreviewMaxHeight = 540;
 inline constexpr const wchar_t* kPreviewName = L"Local\\VTHOST_Preview";
-// 2.º bloco: monitor Preview do CUEPLAYER (clip selecionado, antes de ir para o ar).
-inline constexpr const wchar_t* kPreviewName2 = L"Local\\VTHOST_Preview2";
 
 struct PreviewHeader {
     std::uint32_t magic;

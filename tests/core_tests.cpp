@@ -324,6 +324,14 @@ static void testProjectTolerance() {
     CHECK(!parseProject("{}").project);
     CHECK(!parseProject("lixo").project);
 
+    // Projecto gravado na 0.8.0 (formato 3, CUEPLAYER): abre sem avisos e as cues ficam.
+    auto v3 = parseProject(R"({"format":"vthost-project","version":3,"cues":[{"id":"Q1","path":"a.mp4"}],
+        "compositions":[{"id":"comp1","layers":[]}],"outputs":[{"id":"O1","slices":[{"id":"S1"}]}]})");
+    CHECK(v3.project && v3.project->cues.size() == 1 && v3.project->outputs.size() == 1);
+    CHECK(v3.warnings.empty());
+    auto future = parseProject(R"({"format":"vthost-project","version":9,"cues":[]})");
+    CHECK(future.project && !future.warnings.empty());
+
     // Projecto antigo (0.6): cada media passa a uma cue.
     auto old = parseProject(R"({"format":"vthost-project","version":1,"canvases":[{"id":"C1","width":1280,"height":720}],
         "media":[{"id":"m1","path":"a.mp4","loopMode":"infinite"},{"id":"m2","path":"b.mov","loopMode":"once-freeze"}],
@@ -351,7 +359,7 @@ static void testProtocol() {
 
     // Ida e volta de todos os comandos.
     std::vector<Command> all;
-    for (int t = 0; t <= static_cast<int>(CommandType::SetPreviewSource); ++t) {
+    for (int t = 0; t <= static_cast<int>(CommandType::Shutdown); ++t) {
         Command c;
         c.type = static_cast<CommandType>(t);
         c.path = "C:/shows/ação.vthost";
@@ -362,13 +370,6 @@ static void testProtocol() {
         c.action = TransportAction::Stop;
         c.settings.audioDevice = "{0.0.0.00000000}.{abc}";
         c.settings.previewFps = 25;
-        c.comp = "comp1";
-        c.layer = "L2";
-        c.column = "K3";
-        c.json = "{\"id\":\"L2\"}";
-        c.source = "comp:comp1";
-        c.opacity = 0.5;
-        c.volumeDb = -6.0;
         all.push_back(c);
     }
     for (const auto& c : all) {
@@ -384,16 +385,6 @@ static void testProtocol() {
         case CommandType::SetSettings: CHECK(b.command->settings == c.settings); break;
         case CommandType::SetShowMode:
         case CommandType::SetTestCard: CHECK(b.command->on); break;
-        case CommandType::LaunchClip:
-        case CommandType::PreviewClip:
-            CHECK(b.command->comp == "comp1" && b.command->layer == "L2" && b.command->column == "K3");
-            break;
-        case CommandType::LaunchColumn: CHECK(b.command->comp == "comp1" && b.command->column == "K3"); break;
-        case CommandType::ClearLayer: CHECK(b.command->layer == "L2"); break;
-        case CommandType::SetCompLayer:
-        case CommandType::SetOutput: CHECK(b.command->json == c.json); break;
-        case CommandType::SetCompProps: CHECK(b.command->opacity == 0.5 && b.command->volumeDb == -6.0); break;
-        case CommandType::SetPreviewSource: CHECK(b.command->source == "comp:comp1"); break;
         default: break;
         }
     }
@@ -540,141 +531,7 @@ static void testLoudness() {
     CHECK(g.integrated() && std::abs(*g.integrated() - (-23.0)) < 0.2);
 }
 
-static void testCompositionsAndSlices() {
-    Project p = Project::makeDefault();
-    CHECK(p.compositions.size() == 1 && p.compositions[0].layers.size() == 3 && p.compositions[0].columns.size() == 9);
-    CHECK(p.outputs.size() == 1 && p.outputs[0].slices.size() == 1 && p.outputs[0].slices[0].keepAspect);
-    Composition& c = p.compositions[0];
-    c.width = 3840;
-    c.height = 1080;
-    c.opacity = 0.8;
-    c.layers[1].props.opacity = 0.5;
-    c.layers[1].props.blend = BlendMode::Add;
-    c.layers[1].transition = 1.5;
-    c.layers[1].audio = false;
-    Clip clip;
-    clip.path = "C:/v/Logo.mov";
-    clip.end = ClipEnd::Hold;
-    clip.volumeDb = -3.0;
-    clip.thumbTime = 4.0;
-    c.columns[2].cells["L2"] = clip;
-    Composition c2 = Composition::makeDefault(p.newCompositionId(), "Tiras");
-    CHECK(c2.id == "comp2");
-    p.compositions.push_back(c2);
-
-    Output& o = p.outputs[0];
-    Slice s = makeFullSlice(SliceSourceKind::Layer, 1920, 1080, "S2");
-    s.compositionId = "comp1";
-    s.layerId = "L2";
-    s.inX = 100;
-    s.inW = 500;
-    s.inH = 400;
-    s.rotation = 90;
-    s.flipH = true;
-    s.cornerOffsets[2] = {5, -7};
-    s.meshCols = 2;
-    s.meshRows = 1;
-    s.clamp(); // gera a malha regular
-    s.softEdge = true;
-    s.edgeLeft = 200;
-    s.red = 0.2;
-    o.slices.push_back(s);
-
-    auto r = parseProject(serializeProject(p));
-    CHECK(r.project && r.warnings.empty());
-    if (!r.project) return;
-    const Project& q = *r.project;
-    CHECK(q.compositions.size() == 2 && q.compositions[1].name == "Tiras");
-    const Composition& qc = q.compositions[0];
-    CHECK(qc.width == 3840 && qc.opacity == 0.8 && qc.layers[1].props.blend == BlendMode::Add);
-    CHECK(qc.layers[1].transition == 1.5 && !qc.layers[1].audio && qc.layers[1].props.opacity == 0.5);
-    const Clip* qclip = nullptr;
-    if (auto it = qc.columns[2].cells.find("L2"); it != qc.columns[2].cells.end()) qclip = &it->second;
-    CHECK(qclip && qclip->end == ClipEnd::Hold && qclip->volumeDb == -3.0 && qclip->thumbTime && *qclip->thumbTime == 4.0);
-    CHECK(qclip && qclip->displayName() == "Logo");
-    CHECK(q.outputs[0].slices.size() == 2);
-    if (q.outputs[0].slices.size() == 2) {
-        const Slice& x = q.outputs[0].slices[1];
-        CHECK(x.source == SliceSourceKind::Layer && x.compositionId == "comp1" && x.layerId == "L2");
-        CHECK(x.inX == 100 && x.inW == 500 && x.rotation == 90 && x.flipH && x.cornerOffsets[2].x == 5);
-        CHECK(x.meshCols == 2 && x.mesh.size() == 6 && x.softEdge && x.edgeLeft == 200 && x.red == 0.2);
-    }
-
-    // Cue a partir de um clip: volume somado, som da layer, fim do clip.
-    if (qclip) {
-        const Cue cue = clipToCue(*qclip, qc.layers[1], qc);
-        CHECK(cue.playCount == 1 && cue.pauseAtEnd && !cue.clearAtEnd && cue.crossfade == 1.5 && cue.muted);
-        CHECK(cue.volumeDb == -3.0 && cue.path == "C:/v/Logo.mov");
-    }
-    Clip loop;
-    loop.path = "x.mp4";
-    CHECK(clipToCue(loop, qc.layers[0], qc).playCount == 0);
-
-    // Geometria do slice.
-    Slice full = makeFullSlice(SliceSourceKind::MediaPlayer, 1920, 1080);
-    OutputMapping m = sliceToMapping(full, 1920, 1080, 1920, 1080);
-    CHECK(near(m.corners[0].x, 0) && near(m.corners[0].y, 0) && near(m.corners[2].x, 1) && near(m.corners[2].y, 1));
-    CHECK(m.srcW == 0.0 && m.mode == WarpMode::Perspective && m.brightness == 1.0);
-    full.keepAspect = true; // fonte 4:3 num screen 16:9: barras laterais
-    m = sliceToMapping(full, 1920, 1080, 1440, 1080);
-    CHECK(near(m.corners[0].x, 0.125) && near(m.corners[1].x, 0.875) && near(m.corners[0].y, 0));
-    Slice f2 = makeFullSlice(SliceSourceKind::MediaPlayer, 1920, 1080);
-    f2.flipH = true;
-    m = sliceToMapping(f2, 1920, 1080, 1920, 1080);
-    CHECK(near(m.corners[0].x, 1) && near(m.corners[1].x, 0)); // canto sup-esq da imagem vai para a direita
-    Slice r90 = makeFullSlice(SliceSourceKind::MediaPlayer, 1000, 1000);
-    r90.width = 400;
-    r90.height = 200;
-    r90.rotation = 90;
-    m = sliceToMapping(r90, 1000, 1000, 400, 200);
-    CHECK(near(m.corners[0].x, 0.6) && near(m.corners[0].y, 0.3)); // sup-esq roda para sup-dir
-    Slice crop = makeFullSlice(SliceSourceKind::MediaPlayer, 1920, 1080);
-    crop.inX = 1800;
-    crop.inW = 500;
-    crop.inH = 2000;
-    crop.softEdge = true;
-    crop.edgeLeft = 96; // 5% da largura do slice
-    crop.brightness = -0.5;
-    crop.green = 0.25;
-    m = sliceToMapping(crop, 1920, 1080, 1920, 1080);
-    CHECK(m.srcX == 1800 && m.srcW == 120 && m.srcH == 1080); // recorte limitado à fonte
-    CHECK(near(m.blendLeft / 1920.0, 0.05) && near(m.brightness, 0.5) && near(m.gainG, 1.25));
-
-    // JSON ao vivo (set_output / set_comp_layer).
-    auto oj = outputFromJson(outputToJson(q.outputs[0]));
-    CHECK(oj && oj->slices.size() == 2 && oj->slices[1].layerId == "L2");
-    CHECK(!outputFromJson("lixo") && !outputFromJson("{}"));
-    auto lj = compLayerFromJson(compLayerToJson(qc.layers[1]));
-    CHECK(lj && lj->id == "L2" && lj->transition == 1.5 && lj->props.blend == BlendMode::Add);
-    CHECK(!compLayerFromJson("[1,2]"));
-
-    // Saída antiga (sem slices) passa a mostrar o MEDIAPLAYER inteiro.
-    auto old = parseProject(R"({"format":"vthost-project","version":2,"outputs":[{"id":"O1","type":"ndi"}]})");
-    CHECK(old.project && old.project->outputs.size() == 1 && old.project->outputs[0].slices.size() == 1 &&
-          old.project->outputs[0].slices[0].source == SliceSourceKind::MediaPlayer && !old.project->compositions.empty());
-
-    // Fonte inexistente: aviso, mas abre.
-    auto bad = parseProject(R"({"format":"vthost-project","version":3,"outputs":[{"id":"O1","slices":[
-        {"id":"S1","source":"layer","composition":"compX","layer":"L9"}]}]})");
-    CHECK(bad.project && !bad.warnings.empty());
-
-    // Estado do show com clips no ar.
-    ShowState st;
-    st.compLayers.push_back({"comp1", "L2", "K3", 12.5});
-    ShowState back;
-    CHECK(parseShowState(serializeShowState(st), back) && back.compLayers.size() == 1 && back.compLayers[0].cueTime == 12.5);
-
-    // Estado do motor.
-    protocol::EngineStatus es;
-    es.compLayers.push_back({"comp1", "L2", "K3", "playing", 1.0, 9.0, 10.0});
-    es.previewState = "playing";
-    auto pr = protocol::parseResponse(protocol::statusResponse(es));
-    CHECK(pr.status && pr.status->compLayers.size() == 1 && pr.status->compLayers[0].column == "K3" &&
-          pr.status->compLayers[0].remaining == 9.0 && pr.status->previewState == "playing");
-}
-
 int main() {
-    testCompositionsAndSlices();
     testLoudness();
     testProject();
     testProjectTolerance();

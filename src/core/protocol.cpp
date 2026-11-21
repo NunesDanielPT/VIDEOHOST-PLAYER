@@ -112,48 +112,6 @@ ParsedCommand parseCommand(const std::string& line) {
             c.type = CommandType::ListAudioDevices;
         } else if (cmd == "shutdown") {
             c.type = CommandType::Shutdown;
-        } else if (cmd == "launch_column" || cmd == "launch_clip" || cmd == "clear_layer" || cmd == "clear_comp" ||
-                   cmd == "set_comp_layer" || cmd == "set_comp_props" || cmd == "preview_clip") {
-            c.comp = str(j, "comp");
-            c.layer = str(j, "layer");
-            c.column = str(j, "column");
-            c.json = str(j, "json");
-            bool okArgs = !c.comp.empty();
-            if (cmd == "launch_column") {
-                c.type = CommandType::LaunchColumn;
-                okArgs = okArgs && !c.column.empty();
-            } else if (cmd == "launch_clip" || cmd == "preview_clip") {
-                c.type = cmd == "launch_clip" ? CommandType::LaunchClip : CommandType::PreviewClip;
-                okArgs = okArgs && !c.layer.empty() && !c.column.empty();
-            } else if (cmd == "clear_layer") {
-                c.type = CommandType::ClearLayer;
-                okArgs = okArgs && !c.layer.empty();
-            } else if (cmd == "clear_comp") {
-                c.type = CommandType::ClearComposition;
-            } else if (cmd == "set_comp_layer") {
-                c.type = CommandType::SetCompLayer;
-                okArgs = okArgs && !c.json.empty();
-            } else {
-                c.type = CommandType::SetCompProps;
-                c.opacity = std::clamp(num(j, "opacity").value_or(1.0), 0.0, 1.0);
-                c.volumeDb = std::clamp(num(j, "volumeDb").value_or(0.0), -60.0, 12.0);
-            }
-            if (!okArgs) {
-                r.error = cmd + ": faltam argumentos";
-                return r;
-            }
-        } else if (cmd == "set_output") {
-            c.type = CommandType::SetOutput;
-            c.json = str(j, "json");
-            if (c.json.empty()) {
-                r.error = "set_output: falta 'json'";
-                return r;
-            }
-        } else if (cmd == "preview_stop") {
-            c.type = CommandType::PreviewStop;
-        } else if (cmd == "set_preview_source") {
-            c.type = CommandType::SetPreviewSource;
-            c.source = str(j, "source");
         } else {
             r.error = "comando desconhecido: " + cmd;
             return r;
@@ -196,22 +154,6 @@ std::string serializeCommand(const Command& c) {
     case CommandType::ListDisplays: j["cmd"] = "list_displays"; break;
     case CommandType::ListAudioDevices: j["cmd"] = "list_audio_devices"; break;
     case CommandType::Shutdown: j["cmd"] = "shutdown"; break;
-    case CommandType::LaunchColumn: j = {{"cmd", "launch_column"}, {"comp", c.comp}, {"column", c.column}}; break;
-    case CommandType::LaunchClip:
-        j = {{"cmd", "launch_clip"}, {"comp", c.comp}, {"layer", c.layer}, {"column", c.column}};
-        break;
-    case CommandType::PreviewClip:
-        j = {{"cmd", "preview_clip"}, {"comp", c.comp}, {"layer", c.layer}, {"column", c.column}};
-        break;
-    case CommandType::ClearLayer: j = {{"cmd", "clear_layer"}, {"comp", c.comp}, {"layer", c.layer}}; break;
-    case CommandType::ClearComposition: j = {{"cmd", "clear_comp"}, {"comp", c.comp}}; break;
-    case CommandType::SetCompLayer: j = {{"cmd", "set_comp_layer"}, {"comp", c.comp}, {"json", c.json}}; break;
-    case CommandType::SetCompProps:
-        j = {{"cmd", "set_comp_props"}, {"comp", c.comp}, {"opacity", c.opacity}, {"volumeDb", c.volumeDb}};
-        break;
-    case CommandType::SetOutput: j = {{"cmd", "set_output"}, {"json", c.json}}; break;
-    case CommandType::PreviewStop: j["cmd"] = "preview_stop"; break;
-    case CommandType::SetPreviewSource: j = {{"cmd", "set_preview_source"}, {"source", c.source}}; break;
     }
     return dump(j);
 }
@@ -221,10 +163,6 @@ std::string okResponse() { return dump(json{{"ok", true}}); }
 std::string errorResponse(const std::string& message) { return dump(json{{"ok", false}, {"error", message}}); }
 
 std::string statusResponse(const EngineStatus& s) {
-    json compLayers = json::array();
-    for (const auto& l : s.compLayers)
-        compLayers.push_back({{"comp", l.comp}, {"layer", l.layer}, {"column", l.column}, {"state", l.state},
-                              {"elapsed", l.elapsed}, {"remaining", l.remaining}, {"pass", l.passDuration}});
     json outputs = json::array();
     for (const auto& o : s.outputs)
         outputs.push_back({{"id", o.id}, {"monitor", o.monitor}, {"ok", o.ok}, {"error", o.error},
@@ -257,9 +195,7 @@ std::string statusResponse(const EngineStatus& s) {
                 {"levelL", s.levelL},
                 {"levelR", s.levelR},
                 {"outputs", outputs},
-                {"warnings", s.warnings},
-                {"compLayers", compLayers},
-                {"previewState", s.previewState}}}};
+                {"warnings", s.warnings}}}};
     return dump(j);
 }
 
@@ -326,14 +262,6 @@ ParsedResponse parseResponse(const std::string& line) {
             if (auto a = s.find("warnings"); a != s.end() && a->is_array())
                 for (const auto& w : *a)
                     if (w.is_string()) es.warnings.push_back(w.get<std::string>());
-            if (auto a = s.find("compLayers"); a != s.end() && a->is_array())
-                for (const auto& l : *a)
-                    if (l.is_object())
-                        es.compLayers.push_back({str(l, "comp"), str(l, "layer"), str(l, "column"), str(l, "state"),
-                                                 std::max(0.0, num(l, "elapsed").value_or(0.0)),
-                                                 std::max(0.0, num(l, "remaining").value_or(0.0)),
-                                                 std::max(0.0, num(l, "pass").value_or(0.0))});
-            es.previewState = str(s, "previewState");
             r.status = std::move(es);
         }
         if (auto ds = j.find("displays"); ds != j.end() && ds->is_array()) {

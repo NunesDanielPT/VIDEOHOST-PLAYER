@@ -17,18 +17,6 @@
 //   {"cmd":"list_audio_devices"}        // placas de som (saídas)
 //   {"cmd":"shutdown"}                  // pára o motor de propósito (sem recuperação)
 //
-// CUEPLAYER (composições):
-//   {"cmd":"launch_column","comp":"comp1","column":"K2"}
-//   {"cmd":"launch_clip","comp":"comp1","layer":"L1","column":"K2"}
-//   {"cmd":"clear_layer","comp":"comp1","layer":"L1"}     // com a transição da layer
-//   {"cmd":"clear_comp","comp":"comp1"}
-//   {"cmd":"set_comp_layer","comp":"comp1","json":"{...layer...}"}   // ao vivo (opacidade, blend, transform, som...)
-//   {"cmd":"set_comp_props","comp":"comp1","opacity":1,"volumeDb":0}
-//   {"cmd":"set_output","json":"{...saída com slices...}"}           // ao vivo (editor de output)
-//   {"cmd":"preview_clip","comp":"comp1","layer":"L1","column":"K2"} // monitor Preview (sem som, não vai para o ar)
-//   {"cmd":"preview_stop"}
-//   {"cmd":"set_preview_source","source":"media" | "comp:comp1"}    // o que o preview principal mostra
-//
 // Respostas: {"ok":true, ...} ou {"ok":false,"error":"..."}
 
 #include "vthost/core/project.h"
@@ -54,17 +42,7 @@ enum class CommandType {
     GetStatus,
     ListDisplays,
     ListAudioDevices,
-    Shutdown,
-    LaunchColumn,
-    LaunchClip,
-    ClearLayer,
-    ClearComposition,
-    SetCompLayer,
-    SetCompProps,
-    SetOutput,
-    PreviewClip,
-    PreviewStop,
-    SetPreviewSource
+    Shutdown
 };
 enum class TransportAction { Pause, Resume, Toggle, Stop };
 
@@ -87,13 +65,6 @@ struct Command {
     double time = 0.0;
     TransportAction action = TransportAction::Toggle;
     EngineSettings settings;
-    std::string comp;    // CUEPLAYER
-    std::string layer;
-    std::string column;
-    std::string json;    // set_comp_layer / set_output
-    std::string source;  // set_preview_source
-    double opacity = 1.0;
-    double volumeDb = 0.0;
 };
 
 struct ParsedCommand {
@@ -133,17 +104,6 @@ struct AudioDeviceInfo {
     bool isDefault = false;
 };
 
-// Uma layer de uma composição do CUEPLAYER.
-struct CompLayerStatus {
-    std::string comp;
-    std::string layer;
-    std::string column;    // coluna do clip no ar ("" = nada)
-    std::string state;     // "playing" | "loading" | "ended" | "error"...
-    double elapsed = 0.0;
-    double remaining = 0.0;
-    double passDuration = 0.0;
-};
-
 struct EngineStatus {
     std::string version;
     std::string projectName;
@@ -177,10 +137,6 @@ struct EngineStatus {
 
     std::vector<OutputStatus> outputs;
     std::vector<std::string> warnings;
-
-    // CUEPLAYER
-    std::vector<CompLayerStatus> compLayers;
-    std::string previewState; // clip no monitor Preview ("" = nada)
 };
 
 std::string okResponse();

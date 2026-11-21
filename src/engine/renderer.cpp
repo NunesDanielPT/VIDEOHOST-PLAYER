@@ -130,7 +130,6 @@ cbuffer OutParams : register(b0) {
     float testCard;
     float2 canvasSize;  // píxeis
     float2 pad;
-    float4 colorGain;   // r, g, b, contraste
 };
 Texture2D tex : register(t0);
 SamplerState smp : register(s0);
@@ -193,8 +192,6 @@ float4 PSMain(VSOut i) : SV_Target {
     if (blend.y > 0) f *= edge((1.0 - i.uv.x) / blend.y);
     if (blend.z > 0) f *= edge(i.uv.y / blend.z);
     if (blend.w > 0) f *= edge((1.0 - i.uv.y) / blend.w);
-    rgb = (rgb - 0.5) * colorGain.w + 0.5;
-    rgb = saturate(rgb) * colorGain.rgb;
     return float4(saturate(rgb * brightness * f), 1.0);
 }
 )";
@@ -215,7 +212,6 @@ struct alignas(16) OutParams {
     float testCard;
     float canvasSize[2];
     float pad[2];
-    float colorGain[4]; // r, g, b, contraste
 };
 
 bool compile(const char* src, std::size_t len, const char* entry, const char* target, ComPtr<ID3DBlob>& out,
@@ -537,25 +533,11 @@ bool Renderer::buildWarpMesh(const OutputMapping& mapping, WarpMesh& out) {
     return true;
 }
 
-ID3D11RenderTargetView* Renderer::canvasRtv(const std::string& id) const {
-    auto it = canvases_.find(id);
-    return it != canvases_.end() ? it->second.rtv.Get() : nullptr;
-}
-
-void Renderer::clearCanvas(const std::string& id) {
-    auto it = canvases_.find(id);
-    if (it == canvases_.end()) return;
-    const float black[4] = {0.f, 0.f, 0.f, 1.f};
-    ctx_->ClearRenderTargetView(it->second.rtv.Get(), black);
-}
-
 void Renderer::drawOutput(ID3D11RenderTargetView* rtv, int width, int height, const std::string& canvasId,
-                          const OutputMapping& mapping, const WarpMesh& mesh, bool testCard, bool clear) {
+                          const OutputMapping& mapping, const WarpMesh& mesh, bool testCard) {
     if (!rtv) return;
-    if (clear) {
-        const float black[4] = {0.f, 0.f, 0.f, 1.f};
-        ctx_->ClearRenderTargetView(rtv, black);
-    }
+    const float black[4] = {0.f, 0.f, 0.f, 1.f};
+    ctx_->ClearRenderTargetView(rtv, black);
     auto it = canvases_.find(canvasId);
     if (it == canvases_.end() || !mesh.vb || width <= 0 || height <= 0) return;
     const CanvasTarget& cv = it->second;
@@ -577,10 +559,6 @@ void Renderer::drawOutput(ID3D11RenderTargetView* rtv, int width, int height, co
     p.testCard = testCard ? 1.0f : 0.0f;
     p.canvasSize[0] = static_cast<float>(cv.w);
     p.canvasSize[1] = static_cast<float>(cv.h);
-    p.colorGain[0] = static_cast<float>(mapping.gainR);
-    p.colorGain[1] = static_cast<float>(mapping.gainG);
-    p.colorGain[2] = static_cast<float>(mapping.gainB);
-    p.colorGain[3] = static_cast<float>(mapping.contrast);
     D3D11_MAPPED_SUBRESOURCE m{};
     if (FAILED(ctx_->Map(outCbuffer_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) return;
     std::memcpy(m.pData, &p, sizeof(p));
@@ -655,16 +633,15 @@ void Renderer::readback(Readback& rb, ID3D11Texture2D* source, const PixelSink& 
     rb.pending[read] = false;
 }
 
-void Renderer::capturePreview(int slot, const std::string& canvasId, const PixelSink& sink) {
-    if (slot < 0 || slot >= kPreviewSlots) return;
+void Renderer::capturePreview(const std::string& canvasId, const PixelSink& sink) {
     auto it = canvases_.find(canvasId);
     if (it == canvases_.end()) return;
     const CanvasTarget& cv = it->second;
     int w = 0, h = 0;
     previewSizeFor(cv.w, cv.h, w, h);
-    if (!previewRt_[slot] || preview_[slot].w != w || preview_[slot].h != h) {
-        previewRt_[slot].Reset();
-        previewRtv_[slot].Reset();
+    if (!previewRt_ || preview_.w != w || preview_.h != h) {
+        previewRt_.Reset();
+        previewRtv_.Reset();
         D3D11_TEXTURE2D_DESC td{};
         td.Width = static_cast<UINT>(w);
         td.Height = static_cast<UINT>(h);
@@ -674,13 +651,13 @@ void Renderer::capturePreview(int slot, const std::string& canvasId, const Pixel
         td.SampleDesc.Count = 1;
         td.Usage = D3D11_USAGE_DEFAULT;
         td.BindFlags = D3D11_BIND_RENDER_TARGET;
-        if (FAILED(device_->CreateTexture2D(&td, nullptr, &previewRt_[slot])) ||
-            FAILED(device_->CreateRenderTargetView(previewRt_[slot].Get(), nullptr, &previewRtv_[slot])))
+        if (FAILED(device_->CreateTexture2D(&td, nullptr, &previewRt_)) ||
+            FAILED(device_->CreateRenderTargetView(previewRt_.Get(), nullptr, &previewRtv_)))
             return;
     }
-    if (!ensureReadback(preview_[slot], w, h)) return;
+    if (!ensureReadback(preview_, w, h)) return;
 
-    ID3D11RenderTargetView* rtv = previewRtv_[slot].Get();
+    ID3D11RenderTargetView* rtv = previewRtv_.Get();
     ctx_->OMSetRenderTargets(1, &rtv, nullptr);
     D3D11_VIEWPORT vp{0.f, 0.f, static_cast<float>(w), static_cast<float>(h), 0.f, 1.f};
     ctx_->RSSetViewports(1, &vp);
@@ -691,7 +668,7 @@ void Renderer::capturePreview(int slot, const std::string& canvasId, const Pixel
     drawQuad(cv.srv.Get(), corners, 1.0f, 4);
     ID3D11ShaderResourceView* none = nullptr;
     ctx_->PSSetShaderResources(0, 1, &none);
-    readback(preview_[slot], previewRt_[slot].Get(), sink);
+    readback(preview_, previewRt_.Get(), sink);
 }
 
 void Renderer::captureCanvas(const std::string& canvasId, const PixelSink& sink) {

@@ -45,8 +45,6 @@ struct OutputMapping {
     double blendGamma = 2.2;
 
     double brightness = 1.0; // 0..2 (igualar projetores)
-    double contrast = 1.0;   // 0..2
-    double gainR = 1.0, gainG = 1.0, gainB = 1.0; // 0..2 (correção de cor por saída/slice)
 
     friend bool operator==(const OutputMapping&, const OutputMapping&) = default;
 

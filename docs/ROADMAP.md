@@ -75,28 +75,14 @@ Referência funcional: até à 0.6, media servers como o Millumin 5; desde a 0.7
 - [x] Removido: layers, Dashboard, Timeline, canvases múltiplos, mapping/warp/soft-edge, efeitos
 - [x] Countdown na rede local mantido (agora da cue no ar)
 - [x] 0.7.3: workspaces MEDIAPLAYER / CUEPLAYER (CUEPLAYER em desenvolvimento), escolha da placa de rede da página do countdown, menus arrumados (motor dentro de Saídas, arranca sozinho)
-- [x] CUEPLAYER: workspace próprio (0.8.0, ver Fase 4.5)
+- [x] 0.8.1: CUEPLAYER retirado (a 0.8.0 tinha-o; vai ser um software próprio). Fica só o player. Separador Rede nas Preferências, menu Definições antes de Ajuda, countdown no menu Janela
 - [x] 0.7.2: atualizações como no MapSim (janela com as novidades de cada versão, progresso, aviso no rodapé, procura de 30 em 30 min); notas das releases geradas pela CI
 - [x] 0.7.1: miniatura escolhida (botão da câmara / Ctrl+P na cue a tocar), miniatura automática evita frames pretos, ícones de transporte claros, ESPAÇO arranca a cue selecionada
 - [ ] Seleção de várias cues para alterar em conjunto
 - [ ] Legendas (SRT), saída de áudio por canais/placas diferentes por cue
 - [ ] Time-stretch sem mudar o tom ao mudar a velocidade
 
-## Fase 4.5 — CUEPLAYER e output avançado (0.8.0)
-- [x] Workspace CUEPLAYER (como no Resolume): composições com layers × colunas de clips, resolução própria por composição
-- [x] Clicar num clip lança-o; cabeçalho da coluna lança a coluna inteira; X limpa a layer; Limpar tudo
-- [x] Layers: opacidade, blend, transição (dissolve), volume, posição/escala/rotação, ajuste, espelho, V/A/Solo/Bypass (ao vivo)
-- [x] Clips: In/Out, velocidade, fim (loop, manter a última imagem, limpar), volume, normalização de loudness
-- [x] Monitores PREVIEW (Ctrl+clique: ver o clip antes de o lançar) e PROGRAM (composição no ar)
-- [x] Arrastar ficheiros para a grelha (vários ficheiros enchem a layer para a direita), mover/copiar clips (Ctrl)
-- [x] MEDIAPLAYER e CUEPLAYER no ar ao mesmo tempo, no mesmo motor; recuperação após crash inclui as layers
-- [x] Output avançado: Screens > Slices; cada slice mostra o MEDIAPLAYER, uma composição ou uma layer
-- [x] Slices: Input Selection (recorte da fonte), Output Transformation (posição, tamanho, rotação, espelho, proporção), cantos, pontos de edição (malha), cor (brilho, contraste, RGB) e soft edge; editor gráfico ao vivo
-- [x] Definições: separador Rede (placa de rede e página do countdown) e menu Definições antes de Ajuda; menu Janela com os workspaces e o countdown
-- [ ] Efeitos por layer/clip no CUEPLAYER, BPM/sync, autopilot de colunas
-- [ ] Máscaras por slice (polígonos) e importar o layout de um LED wall
-
-## Fase 5 — Controlo
+## Fase 5 — Controlo (0.8.0)
 - [ ] OSC entrada/saída, MIDI learn, DMX/Art-Net de entrada
 - [ ] Várias timelines por projeto, timelines disparadas a partir do Dashboard
 - [ ] OSC, MIDI, Art-Net/DMX de entrada

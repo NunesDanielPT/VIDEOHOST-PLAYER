@@ -3,7 +3,6 @@
 #include "app_info.h"
 #include "countdown_server.h"
 #include "countdown_view.h"
-#include "cue_player_page.h"
 #include "inspector_panel.h"
 #include "outputs_dialog.h"
 #include "prefs.h"
@@ -248,14 +247,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     project_.name = ss(tr("Untitled"));
     clearUndo();
     refreshPlaylist();
-    cuePage_->refresh();
 
     resize(1440, 900);
     const QSettings st;
     restoreGeometry(st.value(QStringLiteral("ui/geometry")).toByteArray());
     mainSplit_->restoreState(st.value(QStringLiteral("ui/playerSplit")).toByteArray());
     centerSplit_->restoreState(st.value(QStringLiteral("ui/centerSplit")).toByteArray());
-    setWorkspace(st.value(QStringLiteral("ui/workspace"), 0).toInt());
 
     applyPreferences();
 
@@ -428,7 +425,6 @@ void MainWindow::buildUi() {
     mainSplit_->setStretchFactor(2, 0);
     mainSplit_->setSizes({440, 760, 340});
 
-    // Workspace MEDIAPLAYER (este player) e CUEPLAYER (em desenvolvimento).
     auto* mediaPage = new QWidget(this);
     auto* v = new QVBoxLayout(mediaPage);
     v->setContentsMargins(0, 0, 0, 0);
@@ -436,50 +432,7 @@ void MainWindow::buildUi() {
     v->addWidget(buildTransportBar());
     v->addWidget(mainSplit_, 1);
 
-    cuePage_ = new CuePlayerPage(&project_, engine_, media_, this);
-    connect(cuePage_, &CuePlayerPage::changed, this, &MainWindow::markChanged);
-    connect(cuePage_, &CuePlayerPage::openOutputs, this, &MainWindow::openOutputs);
-    connect(cuePage_, &CuePlayerPage::message, this, [this](const QString& t) { infoLabel_->setText(t); });
-
-    workspaces_ = new QStackedWidget(this);
-    workspaces_->addWidget(mediaPage);
-    workspaces_->addWidget(cuePage_);
-
-    auto* wsBar = new QWidget(this);
-    wsBar->setObjectName(QStringLiteral("workspaces"));
-    wsBar->setStyleSheet(QStringLiteral(
-        "#workspaces { background: #151515; border-bottom: 1px solid #0c0c0c; }"
-        "QToolButton { color: #888; font-weight: bold; letter-spacing: 1px; padding: 4px 16px; border: none; "
-        "border-bottom: 2px solid transparent; }"
-        "QToolButton:hover { color: #ccc; }"
-        "QToolButton:checked#ws0 { color: #2aa0ff; border-bottom: 2px solid #2aa0ff; }"
-        "QToolButton:checked#ws1 { color: #e0a030; border-bottom: 2px solid #e0a030; }"));
-    auto* wl = new QHBoxLayout(wsBar);
-    wl->setContentsMargins(6, 0, 6, 0);
-    wl->setSpacing(2);
-    const QString names[] = {QStringLiteral("MEDIAPLAYER"), QStringLiteral("CUEPLAYER")};
-    for (int i = 0; i < 2; ++i) {
-        auto* b = new QToolButton(wsBar);
-        b->setObjectName(QStringLiteral("ws%1").arg(i));
-        b->setText(names[i]);
-        b->setCheckable(true);
-        b->setAutoExclusive(true);
-        b->setChecked(i == 0);
-        b->setToolTip(i == 0 ? tr("Media player: playlist of videos with preview, waveform and inspector")
-                             : tr("Cue player: layers and columns of clips, preview and program, advanced output (like Resolume)"));
-        connect(b, &QToolButton::clicked, this, [this, i] { setWorkspace(i); });
-        workspaceButtons_[i] = b;
-        wl->addWidget(b);
-    }
-    wl->addStretch();
-
-    auto* central = new QWidget(this);
-    auto* cv = new QVBoxLayout(central);
-    cv->setContentsMargins(0, 0, 0, 0);
-    cv->setSpacing(0);
-    cv->addWidget(wsBar);
-    cv->addWidget(workspaces_, 1);
-    setCentralWidget(central);
+    setCentralWidget(mediaPage);
 
     engineLabel_ = new QLabel(this);
     infoLabel_ = new QLabel(this);
@@ -560,11 +513,8 @@ void MainWindow::buildMenus() {
         QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdWString(paths::logsDir().wstring())));
     });
 
-    // Janela: workspaces e countdown.
+    // Janela: countdown.
     auto* window = menuBar()->addMenu(tr("&Window"));
-    window->addAction(QStringLiteral("MEDIAPLAYER"), QKeySequence(Qt::CTRL | Qt::Key_F1), this, [this] { setWorkspace(0); });
-    window->addAction(QStringLiteral("CUEPLAYER"), QKeySequence(Qt::CTRL | Qt::Key_F2), this, [this] { setWorkspace(1); });
-    window->addSeparator();
     window->addAction(tr("Countdown window"), QKeySequence(Qt::CTRL | Qt::Key_T), this, &MainWindow::openCountdownWindow);
     window->addAction(tr("Countdown on the network..."), this, &MainWindow::showCountdownWebInfo);
 
@@ -581,19 +531,6 @@ void MainWindow::buildMenus() {
     help->addAction(tr("Check for updates..."), this, [this] { checkForUpdates(true); });
     help->addSeparator();
     help->addAction(tr("About VTHOST"), this, [this] { openSettings(SettingsDialog::kAboutTab); });
-}
-
-void MainWindow::setWorkspace(int index) {
-    index = std::clamp(index, 0, 1);
-    workspaces_->setCurrentIndex(index);
-    if (workspaceButtons_[index]) workspaceButtons_[index]->setChecked(true);
-    onWorkspaceChanged(index);
-}
-
-void MainWindow::onWorkspaceChanged(int index) {
-    QSettings().setValue(QStringLiteral("ui/workspace"), index);
-    // CUEPLAYER: a imagem principal (Program) passa a ser a composição escolhida.
-    if (cuePage_) cuePage_->setActive(index == 1);
 }
 
 // ------------------------------------------------------------------ projecto
@@ -639,7 +576,6 @@ void MainWindow::setProject(Project p, const QString& path) {
     masterLabel_->setText(tr("%1 dB").arg(project_.masterVolumeDb, 0, 'f', 1));
     loopBtn_->setChecked(project_.loopPlaylist);
     loopAction_->setChecked(project_.loopPlaylist);
-    cuePage_->refresh();
     updateTitle();
     updateSelection();
     pushTimer_.start();
@@ -912,16 +848,6 @@ void MainWindow::applyAnalysis(const QString& path) {
             changed = true;
         }
     }
-    for (auto& c : project_.compositions)
-        for (auto& col : c.columns)
-            for (auto& [lid, k] : col.cells) {
-                if (qs(k.path) != path) continue;
-                if (k.loudness != a.loudness || k.peakDb != a.peakDb) {
-                    k.loudness = a.loudness;
-                    k.peakDb = a.peakDb;
-                    changed = true;
-                }
-            }
     if (changed) {
         // Resultado de uma medição, não uma edição: não conta como passo de desfazer.
         undoBase_ = serializeProject(project_);
@@ -984,10 +910,6 @@ void MainWindow::playCue(int index) {
 void MainWindow::playPause() {
     if (!engine_->isConnected()) {
         infoLabel_->setText(tr("The engine is not running."));
-        return;
-    }
-    if (workspaces_->currentIndex() == 1) {
-        cuePage_->launchSelected();
         return;
     }
     const QString state = engine_->hasStatus() ? qs(engine_->lastStatus().state) : QString();
@@ -1094,7 +1016,7 @@ void MainWindow::sendEngineSettings() {
 void MainWindow::openOutputs() {
     if (showMode_) return;
     const Project backup = project_;
-    OutputsDialog dlg(project_.width, project_.height, project_.outputs, project_.compositions, engine_, this);
+    OutputsDialog dlg(project_.width, project_.height, project_.outputs, engine_, this);
     // Ao vivo: o motor aplica logo (sem esperar pelo OK).
     connect(&dlg, &OutputsDialog::liveChanged, this, [this, &dlg] {
         project_.width = dlg.canvasWidth();
@@ -1124,10 +1046,7 @@ void MainWindow::onEngineConnection(bool connected) {
         playingCue_ = -1;
         if (playlist_) playlist_->setPlaying(-1, 0.0, QString());
     }
-    if (connected) {
-        sendEngineSettings();
-        cuePage_->setActive(workspaces_->currentIndex() == 1);
-    }
+    if (connected) sendEngineSettings();
     // Ao ligar, decide no primeiro status: adoptar o show que já está a correr ou enviar o nosso.
     if (connected && adoptedEngineProject_) pushTimer_.start();
 }
@@ -1183,7 +1102,6 @@ void MainWindow::onEngineStatus() {
     }
     static_cast<LevelMeter*>(meter_)->setLevels(s.levelL, s.levelR);
     preview_->setFps(s.fps);
-    cuePage_->onStatus(s);
 
     QStringList problems;
     for (const auto& o : s.outputs)
@@ -1206,7 +1124,6 @@ void MainWindow::updateEditingEnabled() {
     playlist_->setEditable(edit);
     inspector_->setEditable(edit);
     waveform_->setEditable(edit);
-    cuePage_->setEditable(edit);
     updateUndoActions();
     // Play, pausa, GOTO, volume geral e test card continuam: são controlos ao vivo.
 }
@@ -1235,7 +1152,6 @@ void MainWindow::restoreSnapshot(const std::string& json) {
     lastUndoPush_.invalidate(); // o próximo passo nunca se junta a este
     refreshPlaylist();
     playlist_->selectIndex(std::min(sel, static_cast<int>(project_.cues.size()) - 1));
-    cuePage_->refresh();
     loopBtn_->setChecked(project_.loopPlaylist);
     loopAction_->setChecked(project_.loopPlaylist);
     markChanged(); // envia para o motor (sem registar: restoring_)

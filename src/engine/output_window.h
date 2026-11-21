@@ -11,16 +11,8 @@
 #include <windows.h>
 
 #include <string>
-#include <vector>
 
 namespace vthost {
-
-// Um slice pronto a desenhar: fonte (canvas), geometria e malha na GPU.
-struct SliceDraw {
-    std::string canvasId;
-    OutputMapping mapping;
-    WarpMesh mesh;
-};
 
 class OutputWindow {
 public:
@@ -31,9 +23,9 @@ public:
     OutputWindow& operator=(const OutputWindow&) = delete;
 
     bool create();
-    void present(bool vsync, bool testCard); // desenha os slices e apresenta
-    // Slices deste screen (mudam ao vivo, sem recriar a janela).
-    void setSlices(std::vector<SliceDraw> slices) { slices_ = std::move(slices); }
+    void present(bool vsync, bool testCard); // desenha o canvas (com barras pretas se o formato diferir)
+    // Canvas a mostrar e o seu tamanho (para manter a proporção, sem esticar).
+    void setCanvas(const std::string& canvasId, int canvasW, int canvasH);
     void placeOnMonitor();    // reposiciona (ex.: após mudança de monitores)
 
     const std::string& id() const { return config_.id; }
@@ -51,7 +43,13 @@ private:
 
     Renderer& renderer_;
     Output config_;
-    std::vector<SliceDraw> slices_;
+    void updateLetterbox();
+
+    std::string canvasId_ = "C1";
+    int canvasW_ = 1920;
+    int canvasH_ = 1080;
+    OutputMapping mapping_; // canvas inteiro, centrado e com a proporção certa
+    WarpMesh mesh_;
     std::string detail_;
     HWND hwnd_ = nullptr;
     ComPtr<IDXGISwapChain1> swapChain_;
