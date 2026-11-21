@@ -17,6 +17,8 @@ qt_add_executable(vthost-studio WIN32
     settings_dialog.h
     update_checker.cpp
     update_checker.h
+    update_dialog.cpp
+    update_dialog.h
     app_info.h
     prefs.h
     outputs_dialog.cpp

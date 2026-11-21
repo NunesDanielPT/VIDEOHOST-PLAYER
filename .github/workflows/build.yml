@@ -133,6 +133,14 @@ jobs:
           name: VTHOST-Setup
           path: dist/installer
 
+      - name: Notas da versão (mensagem do commit, mostrada no Studio)
+        if: steps.version.outputs.publish == 'true'
+        shell: pwsh
+        run: |
+          $msg = git log -1 --pretty=%B
+          $lines = $msg -split "`n" | Where-Object { $_ -notmatch '^(Co-Authored-By|Claude-Session):' }
+          ($lines -join "`n").Trim() | Out-File -Encoding utf8 release_notes.md
+
       - name: Criar release vX.Y.Z (versão nova)
         if: steps.version.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
@@ -143,7 +151,7 @@ jobs:
           files: |
             dist/installer/VTHOST-Setup-*.exe
             dist/installer/VTHOST-Setup-*.exe.sha256
-          generate_release_notes: true
+          body_path: release_notes.md
 
       - name: Publicar símbolos (para analisar crashes)
         uses: actions/upload-artifact@v4

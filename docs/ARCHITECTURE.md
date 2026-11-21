@@ -63,7 +63,7 @@ Barra de transporte (play/pausa, parar, anterior/seguinte, repetir playlist, GOT
 
 ## Atualizações
 
-1. Ao arrancar (opção nas Definições) ou em *Ajuda → Procurar atualizações*, o Studio lê `api.github.com/repos/NunesDanielPT/VTHOST/releases/latest`.
+1. Ao arrancar, de 30 em 30 minutos (opção nas Definições) ou em *Ajuda → Procurar atualizações*, o Studio lê `api.github.com/repos/NunesDanielPT/VTHOST/releases` e junta as novidades de todas as versões mais recentes do que a instalada. A janela "Nova versão disponível" abre sozinha uma vez por versão, nunca em Show Mode nem com uma cue no ar (fica o aviso no rodapé). As notas de cada release são a mensagem do commit da versão (a CI escreve-as).
 2. Se a tag (`vX.Y.Z`) for mais recente que a versão instalada, mostra as notas e oferece *Atualizar agora / Mais tarde / Ignorar esta versão*.
 3. Descarrega `VTHOST-Setup-X.Y.Z.exe` (só HTTPS, só domínios do GitHub) e compara o SHA-256 com o `digest` da release ou com `VTHOST-Setup-X.Y.Z.exe.sha256`. Sem hash confirmado não instala.
 4. Pede ao motor um `shutdown` limpo, lança o instalador em modo silencioso com `/RELAUNCH=1` e fecha. O instalador pára watchdog/motor/Studio, substitui os ficheiros e reabre o Studio.

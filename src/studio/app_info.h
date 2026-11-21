@@ -17,6 +17,9 @@ inline const QString kUpdateRepo = QStringLiteral("NunesDanielPT/VTHOST");
 inline const QString kRepoUrl = QStringLiteral("https://github.com/") + kUpdateRepo;
 inline const QString kLatestReleaseApi =
     QStringLiteral("https://api.github.com/repos/") + kUpdateRepo + QStringLiteral("/releases/latest");
+// Lista das últimas releases (para mostrar as novidades de todas as versões que faltam).
+inline const QString kReleasesApi =
+    QStringLiteral("https://api.github.com/repos/") + kUpdateRepo + QStringLiteral("/releases?per_page=30");
 
 // Nome do instalador publicado em cada release: VTHOST-Setup-<versão>.exe
 inline const QString kInstallerPrefix = QStringLiteral("VTHOST-Setup-");

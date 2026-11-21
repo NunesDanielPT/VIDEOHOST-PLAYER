@@ -186,7 +186,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
     {
         auto* page = new QWidget(tabs);
         auto* f = new QFormLayout(page);
-        f->addRow(QString(), check(page, tr("Check for updates when VTHOST Studio starts"), kAutoUpdateKey, true));
+        f->addRow(QString(), check(page, tr("Check for updates automatically (at startup and every 30 minutes)"), kAutoUpdateKey, true));
         auto* checkNow = new QPushButton(tr("Check for updates now"), page);
         connect(checkNow, &QPushButton::clicked, this, &SettingsDialog::checkForUpdatesRequested);
         f->addRow(QString(), checkNow);

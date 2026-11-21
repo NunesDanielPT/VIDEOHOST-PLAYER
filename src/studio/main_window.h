@@ -18,10 +18,15 @@
 #include <QMainWindow>
 #include <QTimer>
 
+#include <QPointer>
+#include <QSet>
+
 #include <deque>
+#include <optional>
 #include <string>
 
 class CountdownServer;
+class UpdateDialog;
 class CountdownView;
 class CountdownWindow;
 class InspectorPanel;
@@ -116,8 +121,9 @@ private:
     void openSettings(int tab = 0);
     void checkForUpdates(bool userInitiated);
     void onUpdateAvailable(const UpdateInfo& info);
-    void downloadUpdate(const UpdateInfo& info);
-    void installUpdate(const QString& installerPath);
+    void showUpdateDialog();
+    void installUpdate(const QString& installerPath, bool ask = true);
+    void setUpdateLabel(const QString& html);
 
     void updateTitle();
     void updateEditingEnabled();
@@ -127,6 +133,13 @@ private:
     UpdateChecker* updater_ = nullptr;
     MediaCache* media_ = nullptr;
     bool updateCheckIsManual_ = false;
+    std::optional<UpdateInfo> availableUpdate_; // última versão nova encontrada
+    QString readyInstaller_;                    // instalador já descarregado e verificado
+    bool downloading_ = false;
+    QSet<QString> promptedVersions_;            // janela automática: uma vez por versão
+    QPointer<UpdateDialog> updateDialog_;
+    QLabel* updateLabel_ = nullptr;             // rodapé: "Versão X disponível — ver novidades"
+    QTimer updateTimer_;                        // procura de 30 em 30 minutos
 
     vthost::Project project_;
     QString projectPath_;

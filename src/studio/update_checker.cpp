@@ -1,5 +1,8 @@
 #include "update_checker.h"
 
+#include <algorithm>
+#include <optional>
+
 #include "app_info.h"
 #include "vthost/core/version.h"
 
@@ -47,7 +50,7 @@ QNetworkRequest UpdateChecker::makeRequest(const QUrl& url) const {
 void UpdateChecker::check() {
     if (checking_) return;
     checking_ = true;
-    QNetworkRequest req = makeRequest(QUrl(appinfo::kLatestReleaseApi));
+    QNetworkRequest req = makeRequest(QUrl(appinfo::kReleasesApi));
     req.setTransferTimeout(kApiTimeoutMs);
     QNetworkReply* reply = net_.get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply] { onCheckFinished(reply); });
@@ -65,18 +68,42 @@ void UpdateChecker::onCheckFinished(QNetworkReply* reply) {
         emit checkFailed(tr("Could not contact GitHub: %1").arg(reply->errorString()));
         return;
     }
-    const QJsonDocument doc = QJsonDocument::fromJson(reply->read(4 * 1024 * 1024));
-    if (!doc.isObject()) {
+    const QJsonDocument doc = QJsonDocument::fromJson(reply->read(8 * 1024 * 1024));
+    if (!doc.isArray()) {
         emit checkFailed(tr("Unexpected answer from GitHub."));
         return;
     }
-    const QJsonObject rel = doc.object();
-    const QString tag = rel.value(QStringLiteral("tag_name")).toString();
-    const auto latest = vthost::parseVersion(tag.toStdString());
+    // A release mais recente (ignora rascunhos, pré-versões e tags inválidas) e as
+    // novidades de todas as versões acima da instalada.
+    QJsonObject rel;
+    std::optional<vthost::Version> latest;
+    QList<ReleaseNotes> changes;
+    for (const auto& v : doc.array()) {
+        const QJsonObject o = v.toObject();
+        if (o.value(QStringLiteral("draft")).toBool() || o.value(QStringLiteral("prerelease")).toBool()) continue;
+        const QString t = o.value(QStringLiteral("tag_name")).toString();
+        const auto ver = vthost::parseVersion(t.toStdString());
+        if (!ver) continue;
+        if (!latest || *latest < *ver) {
+            latest = ver;
+            rel = o;
+        }
+        if (vthost::isNewerVersion(t.toStdString(), appinfo::kVersion.toStdString())) {
+            ReleaseNotes n;
+            n.version = QString::fromStdString(ver->toString());
+            n.date = o.value(QStringLiteral("published_at")).toString().left(10);
+            n.body = o.value(QStringLiteral("body")).toString().left(20000);
+            changes << n;
+        }
+    }
     if (!latest) {
-        emit checkFailed(tr("The latest release has an invalid version: %1").arg(tag));
+        emit upToDate(QString()); // ainda não há releases publicadas
         return;
     }
+    std::sort(changes.begin(), changes.end(), [](const ReleaseNotes& a, const ReleaseNotes& b) {
+        return vthost::isNewerVersion(a.version.toStdString(), b.version.toStdString());
+    });
+    const QString tag = rel.value(QStringLiteral("tag_name")).toString();
     const QString latestStr = QString::fromStdString(latest->toString());
     if (!vthost::isNewerVersion(tag.toStdString(), appinfo::kVersion.toStdString())) {
         emit upToDate(latestStr);
@@ -85,6 +112,7 @@ void UpdateChecker::onCheckFinished(QNetworkReply* reply) {
 
     UpdateInfo info;
     info.version = latestStr;
+    info.changes = changes;
     info.notes = rel.value(QStringLiteral("body")).toString().left(20000);
     info.pageUrl = rel.value(QStringLiteral("html_url")).toString();
     const QJsonArray assets = rel.value(QStringLiteral("assets")).toArray();

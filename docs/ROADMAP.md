@@ -74,6 +74,7 @@ Referência funcional: até à 0.6, media servers como o Millumin 5; desde a 0.7
 - [x] Normalização de loudness (LUFS, EBU R128) com limite de pico
 - [x] Removido: layers, Dashboard, Timeline, canvases múltiplos, mapping/warp/soft-edge, efeitos
 - [x] Countdown na rede local mantido (agora da cue no ar)
+- [x] 0.7.2: atualizações como no MapSim (janela com as novidades de cada versão, progresso, aviso no rodapé, procura de 30 em 30 min); notas das releases geradas pela CI
 - [x] 0.7.1: miniatura escolhida (botão da câmara / Ctrl+P na cue a tocar), miniatura automática evita frames pretos, ícones de transporte claros, ESPAÇO arranca a cue selecionada
 - [ ] Seleção de várias cues para alterar em conjunto
 - [ ] Legendas (SRT), saída de áudio por canais/placas diferentes por cue

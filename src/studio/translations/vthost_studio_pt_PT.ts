@@ -336,10 +336,6 @@
         <translation>Miniatura automática</translation>
     </message>
     <message>
-        <source>Cancel</source>
-        <translation>Cancelar</translation>
-    </message>
-    <message>
         <source>Check for updates...</source>
         <translation>Procurar atualizações...</translation>
     </message>
@@ -412,8 +408,8 @@
         <translation>Apagar cue</translation>
     </message>
     <message>
-        <source>Downloading VTHOST %1...</source>
-        <translation>A descarregar o VTHOST %1...</translation>
+        <source>Downloading VTHOST %1... %2%</source>
+        <translation>A descarregar o VTHOST %1... %2%</translation>
     </message>
     <message>
         <source>Duplicate</source>
@@ -470,10 +466,6 @@
     <message>
         <source>Jump to the last %1 seconds of the cue</source>
         <translation>Saltar para os últimos %1 segundos da cue</translation>
-    </message>
-    <message>
-        <source>Later</source>
-        <translation>Mais tarde</translation>
     </message>
     <message>
         <source>Leave Show Mode and unlock editing?</source>
@@ -628,10 +620,6 @@
         <translation>Mostrar no Explorador</translation>
     </message>
     <message>
-        <source>Skip this version</source>
-        <translation>Ignorar esta versão</translation>
-    </message>
-    <message>
         <source>Start engine</source>
         <translation>Iniciar motor</translation>
     </message>
@@ -710,20 +698,8 @@
         <translation>Atualização</translation>
     </message>
     <message>
-        <source>Update available</source>
-        <translation>Atualização disponível</translation>
-    </message>
-    <message>
-        <source>Update now</source>
-        <translation>Atualizar agora</translation>
-    </message>
-    <message>
         <source>Updates</source>
         <translation>Atualizações</translation>
-    </message>
-    <message>
-        <source>VTHOST %1 is available (you have %2).</source>
-        <translation>O VTHOST %1 está disponível (tem a %2).</translation>
     </message>
     <message>
         <source>VTHOST is up to date (version %1).</source>
@@ -732,6 +708,14 @@
     <message>
         <source>VTHOST projects (*.vthost)</source>
         <translation>Projetos VTHOST (*.vthost)</translation>
+    </message>
+    <message>
+        <source>Version %1 available — &lt;a href="#"&gt;see what's new&lt;/a&gt;</source>
+        <translation>Versão %1 disponível — &lt;a href="#"&gt;ver novidades&lt;/a&gt;</translation>
+    </message>
+    <message>
+        <source>Version %1 ready — &lt;a href="#"&gt;restart and install&lt;/a&gt;</source>
+        <translation>Versão %1 pronta — &lt;a href="#"&gt;reiniciar e instalar&lt;/a&gt;</translation>
     </message>
     <message>
         <source>Yellow</source>
@@ -962,12 +946,12 @@
         <translation>Áudio</translation>
     </message>
     <message>
-        <source>Check for updates now</source>
-        <translation>Procurar atualizações agora</translation>
+        <source>Check for updates automatically (at startup and every 30 minutes)</source>
+        <translation>Procurar atualizações automaticamente (ao arrancar e de 30 em 30 minutos)</translation>
     </message>
     <message>
-        <source>Check for updates when VTHOST Studio starts</source>
-        <translation>Procurar atualizações ao abrir o VTHOST Studio</translation>
+        <source>Check for updates now</source>
+        <translation>Procurar atualizações agora</translation>
     </message>
     <message>
         <source>Closing VTHOST Studio never stops the engine: the show keeps running.</source>
@@ -1321,10 +1305,6 @@
         <translation>O instalador descarregado está corrompido (checksum diferente). Tente outra vez.</translation>
     </message>
     <message>
-        <source>The latest release has an invalid version: %1</source>
-        <translation>A última versão publicada tem um número inválido: %1</translation>
-    </message>
-    <message>
         <source>The release has no checksum; the update was not installed for safety.</source>
         <translation>A versão publicada não tem checksum; por segurança a atualização não foi instalada.</translation>
     </message>
@@ -1335,6 +1315,65 @@
     <message>
         <source>Version %1 exists but has no installer yet.</source>
         <translation>A versão %1 existe mas ainda não tem instalador.</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateDialog</name>
+    <message>
+        <source>Downloaded and verified. VTHOST closes, installs and opens again.</source>
+        <translation>Descarregado e verificado. O VTHOST fecha, instala e volta a abrir.</translation>
+    </message>
+    <message>
+        <source>Downloading...</source>
+        <translation>A descarregar...</translation>
+    </message>
+    <message>
+        <source>Downloading... %1%</source>
+        <translation>A descarregar... %1%</translation>
+    </message>
+    <message>
+        <source>Improvements and fixes.</source>
+        <translation>Melhorias e correções.</translation>
+    </message>
+    <message>
+        <source>Later</source>
+        <translation>Mais tarde</translation>
+    </message>
+    <message>
+        <source>New version %1 available</source>
+        <translation>Nova versão %1 disponível</translation>
+    </message>
+    <message>
+        <source>No notes to show.</source>
+        <translation>Sem notas para mostrar.</translation>
+    </message>
+    <message>
+        <source>Restart and install now</source>
+        <translation>Reiniciar e instalar agora</translation>
+    </message>
+    <message>
+        <source>The update takes a minute or two. The engine stops while it installs and VTHOST opens again at the end. Saved projects are not affected.</source>
+        <translation>A atualização demora um ou dois minutos. O motor pára durante a instalação e o VTHOST volta a abrir no fim. Os projetos guardados não são afetados.</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Tentar de novo</translation>
+    </message>
+    <message>
+        <source>Update available</source>
+        <translation>Atualização disponível</translation>
+    </message>
+    <message>
+        <source>Update now</source>
+        <translation>Atualizar agora</translation>
+    </message>
+    <message>
+        <source>Version %1</source>
+        <translation>Versão %1</translation>
+    </message>
+    <message>
+        <source>You have version %1. What changes:</source>
+        <translation>Tens a versão %1. O que muda:</translation>
     </message>
 </context>
 <context>

@@ -8,6 +8,7 @@
 #include "prefs.h"
 #include "preview_widget.h"
 #include "settings_dialog.h"
+#include "update_dialog.h"
 #include "waveform_view.h"
 #include "vthost/core/paths.h"
 
@@ -161,6 +162,30 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(updater_, &UpdateChecker::checkFailed, this, [this](const QString& err) {
         if (updateCheckIsManual_) QMessageBox::warning(this, tr("Updates"), err);
     });
+    connect(updater_, &UpdateChecker::downloadProgress, this, [this](qint64 rec, qint64 total) {
+        if (updateDialog_) updateDialog_->setProgress(rec, total);
+        if (total > 0 && availableUpdate_)
+            setUpdateLabel(tr("Downloading VTHOST %1... %2%").arg(availableUpdate_->version).arg(rec * 100 / total));
+    });
+    connect(updater_, &UpdateChecker::downloadFailed, this, [this](const QString& err) {
+        downloading_ = false;
+        if (updateDialog_) updateDialog_->setFailed(err);
+        if (availableUpdate_)
+            setUpdateLabel(tr("Version %1 available — <a href=\"#\">see what's new</a>").arg(availableUpdate_->version));
+    });
+    connect(updater_, &UpdateChecker::downloadReady, this, [this](const QString& path) {
+        downloading_ = false;
+        readyInstaller_ = path;
+        if (updateDialog_) updateDialog_->setReady();
+        if (availableUpdate_)
+            setUpdateLabel(tr("Version %1 ready — <a href=\"#\">restart and install</a>").arg(availableUpdate_->version));
+    });
+    // Enquanto o Studio está aberto, procura de 30 em 30 minutos (se a opção estiver ligada).
+    updateTimer_.setInterval(30 * 60 * 1000);
+    connect(&updateTimer_, &QTimer::timeout, this, [this] {
+        if (SettingsDialog::checkUpdatesOnStartup() && !downloading_ && readyInstaller_.isEmpty()) checkForUpdates(false);
+    });
+    updateTimer_.start();
 
     // Alterações ao projecto chegam ao motor agrupadas (no máximo ~12x/s; os pedidos de
     // carregamento são coalescidos: só segue o mais recente).
@@ -414,6 +439,12 @@ void MainWindow::buildUi() {
     statusBar()->addWidget(engineLabel_);
     statusBar()->addWidget(infoLabel_, 1);
     statusBar()->addPermanentWidget(webLabel_);
+    updateLabel_ = new QLabel(this);
+    updateLabel_->setTextFormat(Qt::RichText);
+    updateLabel_->setStyleSheet(QStringLiteral("color: #8cf; padding: 0 8px;"));
+    updateLabel_->setVisible(false);
+    connect(updateLabel_, &QLabel::linkActivated, this, [this](const QString&) { showUpdateDialog(); });
+    statusBar()->addPermanentWidget(updateLabel_);
     onEngineConnection(false);
 }
 
@@ -1227,70 +1258,69 @@ void MainWindow::checkForUpdates(bool userInitiated) {
     updater_->check();
 }
 
+void MainWindow::setUpdateLabel(const QString& html) {
+    updateLabel_->setText(html);
+    updateLabel_->setVisible(!html.isEmpty());
+}
+
 void MainWindow::onUpdateAvailable(const UpdateInfo& info) {
-    if (!updateCheckIsManual_ && QSettings().value(QStringLiteral("updates/skipVersion")).toString() == info.version)
-        return;
+    const bool newVersion = !availableUpdate_ || availableUpdate_->version != info.version;
+    availableUpdate_ = info;
+    if (newVersion) readyInstaller_.clear();
+    if (!downloading_ && readyInstaller_.isEmpty())
+        setUpdateLabel(tr("Version %1 available — <a href=\"#\">see what's new</a>").arg(info.version));
+    // A janela abre sozinha uma vez por versão, mas nunca em Show Mode nem com uma cue no ar
+    // (não pode aparecer por cima do show). O aviso no rodapé fica sempre.
+    const bool showBusy = showMode_ || playingCue_ >= 0;
+    if (updateCheckIsManual_ || (!promptedVersions_.contains(info.version) && !showBusy)) {
+        promptedVersions_.insert(info.version);
+        showUpdateDialog();
+    }
+}
 
-    QMessageBox box(this);
-    box.setWindowTitle(tr("Update available"));
-    box.setIcon(QMessageBox::Information);
-    box.setText(tr("VTHOST %1 is available (you have %2).").arg(info.version, appinfo::kVersion));
-    if (!info.notes.trimmed().isEmpty()) box.setDetailedText(info.notes);
-    auto* now = box.addButton(tr("Update now"), QMessageBox::AcceptRole);
-    box.addButton(tr("Later"), QMessageBox::RejectRole);
-    auto* skip = box.addButton(tr("Skip this version"), QMessageBox::DestructiveRole);
-    box.exec();
-    if (box.clickedButton() == skip) {
-        QSettings().setValue(QStringLiteral("updates/skipVersion"), info.version);
+void MainWindow::showUpdateDialog() {
+    if (!availableUpdate_) return;
+    if (updateDialog_) {
+        updateDialog_->raise();
+        updateDialog_->activateWindow();
         return;
     }
-    if (box.clickedButton() != now) return;
+    auto* dlg = new UpdateDialog(*availableUpdate_, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    updateDialog_ = dlg;
+    if (!readyInstaller_.isEmpty()) dlg->setReady();
+    connect(dlg, &UpdateDialog::updateNowRequested, this, [this] {
+        if (showMode_) {
+            if (updateDialog_) updateDialog_->setFailed(tr("Turn off Show Mode before updating."));
+            return;
+        }
+        if (!readyInstaller_.isEmpty()) {
+            if (updateDialog_) updateDialog_->setReady();
+            return;
+        }
+        if (downloading_ || !availableUpdate_) return;
+        downloading_ = true;
+        updater_->download(*availableUpdate_);
+    });
+    connect(dlg, &UpdateDialog::installNowRequested, this, [this] {
+        if (readyInstaller_.isEmpty()) return;
+        installUpdate(readyInstaller_, false);
+    });
+    dlg->show();
+}
+
+void MainWindow::installUpdate(const QString& installerPath, bool ask) {
     if (showMode_) {
         QMessageBox::warning(this, tr("Update"), tr("Turn off Show Mode before updating."));
         return;
     }
-    downloadUpdate(info);
-}
-
-void MainWindow::downloadUpdate(const UpdateInfo& info) {
-    auto* progress = new QProgressDialog(tr("Downloading VTHOST %1...").arg(info.version), tr("Cancel"), 0, 100, this);
-    progress->setWindowTitle(tr("Update"));
-    progress->setWindowModality(Qt::WindowModal);
-    progress->setMinimumDuration(0);
-    progress->setAutoClose(false);
-    progress->setAutoReset(false);
-    progress->setValue(0);
-
-    auto conns = std::make_shared<QList<QMetaObject::Connection>>();
-    auto cleanup = [progress, conns] {
-        for (const auto& c : *conns) QObject::disconnect(c);
-        progress->deleteLater();
-    };
-    *conns << connect(progress, &QProgressDialog::canceled, updater_, &UpdateChecker::cancelDownload);
-    *conns << connect(updater_, &UpdateChecker::downloadProgress, progress, [progress](qint64 rec, qint64 total) {
-        if (total > 0) progress->setValue(static_cast<int>(rec * 100 / total));
-    });
-    *conns << connect(updater_, &UpdateChecker::downloadFailed, this, [this, cleanup](const QString& err) {
-        cleanup();
-        QMessageBox::warning(this, tr("Update"), err);
-    });
-    *conns << connect(updater_, &UpdateChecker::downloadReady, this, [this, cleanup](const QString& path) {
-        cleanup();
-        installUpdate(path);
-    });
-    progress->show();
-    updater_->download(info);
-}
-
-void MainWindow::installUpdate(const QString& installerPath) {
-    if (showMode_) {
-        QMessageBox::warning(this, tr("Update"), tr("Turn off Show Mode before updating."));
-        return;
+    // O motor pára durante a instalação: confirma sempre se houver uma cue no ar.
+    if (ask || playingCue_ >= 0) {
+        const auto b = QMessageBox::question(
+            this, tr("Update"),
+            tr("The update is ready. The engine will stop and the outputs will go dark while it installs. Install now?"));
+        if (b != QMessageBox::Yes) return;
     }
-    const auto b = QMessageBox::question(
-        this, tr("Update"),
-        tr("The update is ready. The engine will stop and the outputs will go dark while it installs. Install now?"));
-    if (b != QMessageBox::Yes) return;
     if (!confirmDiscard()) return;
     dirty_ = false; // já tratado: não perguntar outra vez ao fechar
 
