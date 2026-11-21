@@ -195,20 +195,24 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         tabs->addTab(page, tr("Updates"));
     }
 
-    // ---- Countdown (Workspace, janela de countdown e página web na rede local)
+    // ---- Countdown (preview, janela de countdown e página web)
     {
         auto* page = new QWidget(tabs);
         auto* f = new QFormLayout(page);
         f->addRow(tr("Orange when less than:"), dspin(page, "countdown/warnSeconds", 30.0, 0.0, 3600.0, tr(" s")));
         f->addRow(tr("Red when less than:"), dspin(page, "countdown/dangerSeconds", 10.0, 0.0, 3600.0, tr(" s")));
-        f->addRow(QString(), check(page, tr("Show the countdown on a web page for the local network"),
-                                   "countdown/webEnabled", true));
-        auto* port = new QSpinBox(page);
-        port->setRange(1024, 65535);
-        port->setValue(prefs::countdownWebPort());
-        savers_.push_back([port] { prefs::set("countdown/webPort", port->value()); });
-        f->addRow(tr("Port:"), port);
-        // Placa de rede: a página só fica acessível na rede dessa placa (ex. a rede do
+        f->addRow(QString(), note(tr("The countdown shows the time left of the cue on air (all repetitions). It appears "
+                                     "on the preview, in the countdown window (Window menu) and on the web page "
+                                     "(Preferences → Network)."),
+                                  page));
+        tabs->addTab(page, tr("Countdown"));
+    }
+
+    // ---- Rede: placa de rede e serviços na rede (página do countdown; no futuro SMPTE, Companion...)
+    {
+        auto* page = new QWidget(tabs);
+        auto* f = new QFormLayout(page);
+        // Placa de rede: os serviços só ficam acessíveis na rede dessa placa (ex. a rede do
         // público/técnicos), nunca nas outras redes do PC (sistemas de controlo, etc.).
         auto* nic = new QComboBox(page);
         nic->addItem(tr("All network cards"), QString());
@@ -227,12 +231,22 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         nic->setCurrentIndex(std::max(0, nic->findData(savedNic)));
         savers_.push_back([nic] { prefs::set("countdown/bindAddress", nic->currentData().toString()); });
         f->addRow(tr("Network card:"), nic);
-        f->addRow(QString(), note(tr("Open Show → Countdown on the network to see the address (e.g. "
-                                     "http://192.168.1.20:8088). The page is read-only: it cannot control the show. "
-                                     "The countdown shows the time left of the longest video in the cue on air, "
-                                     "or the time until the next cue when the cue advances after a fixed time."),
+        f->addRow(QString(), note(tr("Only this network card is used: people on the other networks of this PC "
+                                     "(e.g. a control system) cannot reach VTHOST."),
                                   page));
-        tabs->addTab(page, tr("Countdown"));
+        auto* web = new QLabel(QStringLiteral("<b>%1</b>").arg(tr("Countdown web page")), page);
+        f->addRow(web);
+        f->addRow(QString(), check(page, tr("Show the countdown on a web page for the local network"),
+                                   "countdown/webEnabled", true));
+        auto* port = new QSpinBox(page);
+        port->setRange(1024, 65535);
+        port->setValue(prefs::countdownWebPort());
+        savers_.push_back([port] { prefs::set("countdown/webPort", port->value()); });
+        f->addRow(tr("Port:"), port);
+        f->addRow(QString(), note(tr("Open Window → Countdown on the network to see the address (e.g. "
+                                     "http://192.168.1.20:8088). The page is read-only: it cannot control the show."),
+                                  page));
+        tabs->addTab(page, tr("Network"));
     }
 
     // ---- Atalhos (só leitura): todos os atalhos do VTHOST Studio.
@@ -272,7 +286,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
                 QStringLiteral(" / ") + keys(QKeySequence(Qt::CTRL | Qt::Key_1)));
         row(gShow, tr("Loop the playlist"), keys(QKeySequence(Qt::CTRL | Qt::Key_R)));
         row(gShow, tr("Show Mode (lock editing)"), keys(QKeySequence(Qt::CTRL | Qt::Key_L)));
-        row(gShow, tr("Countdown window"), keys(QKeySequence(Qt::CTRL | Qt::Key_T)));
+        row(gShow, tr("Countdown window (Window menu)"), keys(QKeySequence(Qt::CTRL | Qt::Key_T)));
         row(gShow, tr("Countdown window full screen"), tr("Double-click or %1").arg(keys(QKeySequence(Qt::Key_F11))));
 
         auto* gFile = group(tr("File"));

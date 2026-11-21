@@ -42,6 +42,8 @@ void CuePlayer::start(const Cue& cue, int index, const StartOptions& opts) {
     retire(prev_); // um crossfade de cada vez
     const auto now = Clock::now();
     const bool crossfade = !opts.cut && cue.crossfade > 0.0 && cur_.active && (cur_.hasFrame || cur_.clock.started);
+    // Transição a partir do nada (layer vazia): a imagem aparece com a mesma duração.
+    const bool fadeFromEmpty = !opts.cut && cue.crossfade > 0.0 && !crossfade;
     if (cur_.active) {
         if (crossfade) {
             prev_ = std::move(cur_);
@@ -62,7 +64,7 @@ void CuePlayer::start(const Cue& cue, int index, const StartOptions& opts) {
     cur_.fadeInEnabled = !opts.cut;
     cur_.pendingPause = opts.paused;
     cur_.startedAt = now;
-    if (crossfade) {
+    if (crossfade || fadeFromEmpty) {
         cur_.trans = Trans::In;
         cur_.transStart = now;
         cur_.transSeconds = cue.crossfade;
@@ -212,7 +214,7 @@ float CuePlayer::opacity(const Slot& s) const {
     return static_cast<float>(a);
 }
 
-void CuePlayer::updateSlot(Slot& s, const Project& project) {
+void CuePlayer::updateSlot(Slot& s, double normalizeTargetLufs, double masterDb) {
     if (!s.active) return;
     const auto now = Clock::now();
     if (s.video && !s.clock.started) {
@@ -247,32 +249,36 @@ void CuePlayer::updateSlot(Slot& s, const Project& project) {
     if (s.audioHandle) {
         double gain = 0.0;
         if (!s.cue.muted && s.clock.started)
-            gain = dbToLinear(s.cue.gainDb(project.normalizeTargetLufs) + project.masterVolumeDb) * opacity(s);
+            gain = dbToLinear(s.cue.gainDb(normalizeTargetLufs) + masterDb) * opacity(s);
         audio_.updateSource(s.audioHandle, s.clock, static_cast<float>(gain));
     }
 }
 
-void CuePlayer::update(const Project& project) {
-    updateSlot(cur_, project);
+void CuePlayer::update(double normalizeTargetLufs, double masterDb) {
+    updateSlot(cur_, normalizeTargetLufs, masterDb);
     if (prev_.active) {
         const double p = prev_.transSeconds > 0.0
                              ? std::chrono::duration<double>(Clock::now() - prev_.transStart).count() / prev_.transSeconds
                              : 1.0;
         if (p >= 1.0) retire(prev_);
-        else updateSlot(prev_, project);
+        else updateSlot(prev_, normalizeTargetLufs, masterDb);
     }
 }
 
-void CuePlayer::draw() {
+void CuePlayer::draw(const LayerProps* props, float extra) {
     for (const Slot* s : {&prev_, &cur_}) {
         if (!s->active || !s->hasFrame) continue;
-        const float a = opacity(*s);
+        const float a = opacity(*s) * extra;
         if (a <= 0.0f) continue;
         LayerProps p;
-        p.fit = s->cue.fit;
-        p.scale = s->cue.scale;
-        p.posX = s->cue.posX;
-        p.posY = s->cue.posY;
+        if (props) {
+            p = *props;
+        } else {
+            p.fit = s->cue.fit;
+            p.scale = s->cue.scale;
+            p.posX = s->cue.posX;
+            p.posY = s->cue.posY;
+        }
         renderer_.drawLayer(s->tex, p, a);
     }
 }

@@ -19,7 +19,7 @@ namespace {
 constexpr int kMargin = 0;
 } // namespace
 
-PreviewWidget::PreviewWidget(QWidget* parent) : QWidget(parent) {
+PreviewWidget::PreviewWidget(QWidget* parent, int slot) : QWidget(parent), slot_(slot) {
     setMinimumSize(320, 200);
     setMouseTracking(false);
     timer_.setInterval(33);
@@ -39,7 +39,7 @@ bool PreviewWidget::openMapping() {
     if (block_) return true;
     if (lastOpenAttempt_.isValid() && lastOpenAttempt_.elapsed() < 1000) return false;
     lastOpenAttempt_.start();
-    HANDLE h = OpenFileMappingW(FILE_MAP_READ, FALSE, kPreviewName);
+    HANDLE h = OpenFileMappingW(FILE_MAP_READ, FALSE, slot_ == 1 ? kPreviewName2 : kPreviewName);
     if (!h) return false;
     const void* view = MapViewOfFile(h, FILE_MAP_READ, 0, 0, kPreviewBlockBytes);
     if (!view) {
@@ -126,7 +126,7 @@ void PreviewWidget::paintEvent(QPaintEvent*) {
     } else {
         p.fillRect(cr, Qt::black);
         p.setPen(QColor(120, 120, 120));
-        p.drawText(cr, Qt::AlignCenter, tr("No signal from the engine"));
+        p.drawText(cr, Qt::AlignCenter, idleText_.isEmpty() ? tr("No signal from the engine") : idleText_);
     }
 
     // Tempos nos cantos (como no Mitti): caixa preta, letra branca monoespaçada.
