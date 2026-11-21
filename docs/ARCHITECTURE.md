@@ -36,9 +36,11 @@
 
 **Núcleo** (`src/core`): portátil, sem Windows nem Qt, testado em Linux com ASan/UBSan e em Windows. Projeto (parser tolerante, converte projetos 0.6), protocolo, medidor de loudness (BS.1770 / EBU R128), countdown, escrita atómica, log, estado do show.
 
-## Projeto (formato 2)
+## Projeto (formato 3)
 
 `cues`: id estável (`Q1`...), ID visível, nome, ficheiro, cor, notas, In/Out, velocidade (25–400 %), repetições (0 = infinito), pausa no início/fim, apagar no fim, fade in/out, crossfade, "ir para", mute, volume (dB), normalização (LUFS e pico medidos pelo Studio) e geometria (ajuste, escala, X/Y). `outputs`: ecrã, janela ou NDI. Também: resolução, repetir a playlist, volume geral.
+
+`compositions` (CUEPLAYER): id, nome, resolução, opacidade e volume master, `layers` (a primeira é a de baixo: opacidade, blend, transform, transição, volume, V/A/Solo/Bypass) e `columns` com `cells` (layer → clip: ficheiro, In/Out, velocidade, fim loop/hold/clear, volume, normalização). Cada output tem `width`/`height` e `slices`: fonte (`media`, composição ou layer), recorte da fonte (`in`), retângulo no screen (centro, tamanho, rotação, espelho, proporção), cantos, malha, cor e soft edge. Projetos antigos ganham um slice de ecrã inteiro com o MEDIAPLAYER.
 
 Ganho de áudio de uma cue = volume + normalização (alvo − LUFS medidos, ±20 dB, limitado para o pico não passar de −1 dBFS) + volume geral, vezes os fades.
 
@@ -53,9 +55,13 @@ Ganho de áudio de uma cue = volume + normalização (alvo − LUFS medidos, ±2
 
 O Studio pede a lista de ecrãs ao motor (`list_displays`); se o motor estiver desligado usa os ecrãs vistos pelo Qt.
 
+## Canvases e slices
+
+Tudo o que se desenha é um canvas no motor: `C1` (MEDIAPLAYER), `comp:<id>` (cada composição, layers de baixo para cima), `layer:<comp>:<layer>` (só quando um slice mostra uma layer sozinha), `pv` (clip no monitor PREVIEW do CUEPLAYER) e `ndi:<output>` (o screen NDI composto). Cada layer de uma composição é um `CuePlayer` (o mesmo do MEDIAPLAYER: crossfade, fades, hold, áudio), alimentado por `clipToCue()`. `sliceToMapping()` (núcleo, testado) converte um slice no `OutputMapping` de sempre (região da fonte, 4 cantos, malha, soft edge, cor), por isso slices reutilizam o pipeline de warp. A janela de cada screen desenha a lista de slices por ordem. Edições ao vivo vão por `set_comp_layer`, `set_comp_props` e `set_output` (sem recarregar o projeto, coalescidas no Studio).
+
 ## Preview (Workspace)
 
-O motor reduz o canvas para no máximo 960×540, copia-o para a CPU de forma assíncrona (anel de 3 texturas staging, `D3D11_MAP_FLAG_DO_NOT_WAIT`, nunca espera pela GPU) e escreve-o a ~30 fps no bloco partilhado `Local\VTHOST_Preview` (`src/core/include/vthost/core/preview.h`). A sincronização é um seqlock: o motor nunca espera pelo Studio; o Studio descarta cópias apanhadas a meio. É exatamente a imagem que sai para os outputs.
+O motor reduz o canvas para no máximo 960×540, copia-o para a CPU de forma assíncrona (anel de 3 texturas staging, `D3D11_MAP_FLAG_DO_NOT_WAIT`, nunca espera pela GPU) e escreve-o a ~30 fps no bloco partilhado `Local\VTHOST_Preview` (`src/core/include/vthost/core/preview.h`). A sincronização é um seqlock: o motor nunca espera pelo Studio; o Studio descarta cópias apanhadas a meio. É exatamente a imagem que sai para os outputs. No CUEPLAYER o mesmo bloco mostra a composição escolhida (PROGRAM, `set_preview_source`) e um segundo bloco, `Local\VTHOST_Preview2`, o clip em PREVIEW.
 
 ## Studio (estilo Mitti)
 

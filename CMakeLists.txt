@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(VTHOST
-    VERSION 0.7.3
+    VERSION 0.8.0
     DESCRIPTION "VTHOST - media server / video player para espetáculos"
     LANGUAGES CXX)
 

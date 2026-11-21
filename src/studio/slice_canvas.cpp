@@ -1,4 +1,4 @@
-#include "output_editor.h"
+#include "slice_canvas.h"
 
 #include "vthost/core/mapping.h"
 

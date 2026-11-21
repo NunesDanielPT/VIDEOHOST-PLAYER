@@ -205,10 +205,13 @@ CuePlayerPage::CuePlayerPage(Project* project, EngineClient* engine, MediaCache*
     connect(grid_, &CompGrid::filesDropped, this, &CuePlayerPage::onFilesDropped);
     connect(grid_, &CompGrid::clipMoved, this, &CuePlayerPage::onClipMoved);
     connect(grid_, &CompGrid::addColumnRequested, this, [this] { addColumn(-1); });
-    connect(media_, &MediaCache::updated, grid_, [this](const QString&) {
+    auto mediaChanged = [this](const QString& path) {
         grid_->update();
-        loadForms();
-    });
+        const Clip* k = clip(selLayer_, selColumn_);
+        if (k && qs(k->path) == path) loadForms(); // só a info do clip selecionado muda no formulário
+    };
+    connect(media_, &MediaCache::updated, grid_, mediaChanged);
+    connect(media_, &MediaCache::audioAnalyzed, grid_, mediaChanged);
 
     refresh();
 }

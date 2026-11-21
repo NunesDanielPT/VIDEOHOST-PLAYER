@@ -41,8 +41,8 @@ qt_add_executable(vthost-studio WIN32
     comp_grid.h
     cue_player_page.cpp
     cue_player_page.h
-    output_editor.cpp
-    output_editor.h
+    slice_canvas.cpp
+    slice_canvas.h
 )
 target_link_libraries(vthost-studio PRIVATE vthost_core Qt6::Widgets Qt6::Network)
 if(WIN32)

@@ -1,6 +1,6 @@
 #include "outputs_dialog.h"
 
-#include "output_editor.h"
+#include "slice_canvas.h"
 
 #include <QCheckBox>
 #include <QComboBox>
