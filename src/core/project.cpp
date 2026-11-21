@@ -78,6 +78,7 @@ void Cue::clamp() {
     posX = clampFinite(posX, -100000.0, 100000.0, 0.0);
     posY = clampFinite(posY, -100000.0, 100000.0, 0.0);
     if (!isValidCueColor(color)) color.clear();
+    if (thumbTime && (!std::isfinite(*thumbTime) || *thumbTime < 0.0 || *thumbTime > kMaxMediaSeconds)) thumbTime.reset();
     if (label.size() > 32) label.resize(32);
 }
 
@@ -188,6 +189,7 @@ Cue cueFromJson(const json& c) {
     q.path = getString(c, "path");
     q.color = getString(c, "color");
     q.notes = getString(c, "notes");
+    q.thumbTime = getOptNumber(c, "thumb");
     q.inPoint = getNumber(c, "in", 0.0);
     q.outPoint = getNumber(c, "out", 0.0);
     q.speed = getNumber(c, "speed", 1.0);
@@ -239,6 +241,7 @@ json cueToJson(const Cue& q) {
            {"y", q.posY}};
     if (q.loudness) c["loudness"] = *q.loudness;
     if (q.peakDb) c["peakDb"] = *q.peakDb;
+    if (q.thumbTime) c["thumb"] = *q.thumbTime;
     return c;
 }
 

@@ -45,12 +45,15 @@ signals:
     void cueMoved(int from, int to);
     void deleteRequested(int index);
     void contextMenuRequested(int index, const QPoint& globalPos);
+    void thumbnailRequested(int index);
+    void spacePressed(); // ESPAÇO com a playlist em foco = play/pausa (não mexe na seleção) // botão da câmara: miniatura = ponto actual da cue no ar
 
 protected:
     void dragEnterEvent(QDragEnterEvent* e) override;
     void dragMoveEvent(QDragMoveEvent* e) override;
     void dropEvent(QDropEvent* e) override;
     void keyPressEvent(QKeyEvent* e) override;
+    bool event(QEvent* e) override;
     void mouseDoubleClickEvent(QMouseEvent* e) override;
     void contextMenuEvent(QContextMenuEvent* e) override;
 
@@ -73,6 +76,7 @@ public:
     bool editorEvent(QEvent* e, QAbstractItemModel* model, const QStyleOptionViewItem& opt, const QModelIndex& idx) override;
 
     static QRect iconRect(const QRect& row, int i);
+    static QRect thumbButtonRect(const QRect& row);
 
 private:
     PlaylistView* view_;

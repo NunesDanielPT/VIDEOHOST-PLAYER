@@ -33,6 +33,7 @@ struct Cue {
     std::string path;   // caminho absoluto (UTF-8)
     std::string color;  // "" ou uma de kCueColors
     std::string notes;
+    std::optional<double> thumbTime; // miniatura escolhida (segundos no ficheiro); vazio = automática
 
     // Trim e reprodução.
     double inPoint = 0.0;  // segundos dentro do ficheiro

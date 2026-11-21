@@ -229,6 +229,7 @@ static void testProject() {
     a.label = "INTRO";
     a.color = "red";
     a.notes = "entrada do apresentador";
+    a.thumbTime = 12.25;
     a.inPoint = 1.5;
     a.outPoint = 21.5;
     a.speed = 2.0;
@@ -260,6 +261,7 @@ static void testProject() {
     CHECK(q.name == p.name && q.loopPlaylist && q.cues.size() == 2 && q.outputs.size() == 1);
     const Cue& x = q.cues[0];
     CHECK(x.id == "Q1" && x.label == "INTRO" && x.color == "red" && x.notes == a.notes);
+    CHECK(x.thumbTime && *x.thumbTime == 12.25 && !q.cues[1].thumbTime);
     CHECK(x.inPoint == 1.5 && x.outPoint == 21.5 && x.speed == 2.0 && x.playCount == 3);
     CHECK(x.pauseAtStart && !x.pauseAtEnd && x.fadeIn == 0.5 && x.fadeOut == 1.0 && x.crossfade == 2.0);
     CHECK(x.volumeDb == -3.0 && x.loudness && *x.loudness == -20.0 && x.peakDb && *x.peakDb == -6.0);
@@ -301,7 +303,7 @@ static void testProjectTolerance() {
     const std::string bad = R"({
       "format":"vthost-project","version":2,"width":999999,"height":"x",
       "cues":[{"id":"Q1","path":"a.mp4","in":-5,"out":3,"speed":99,"playCount":-2,"fadeIn":1e9,
-               "volumeDb":80,"color":"azul","goto":"QX","loudness":"alto","scale":0},
+               "volumeDb":80,"color":"azul","goto":"QX","loudness":"alto","scale":0,"thumb":-3},
               {"id":"Q1","path":"b.mp4"},{"path":""},5,
               {"path":"c.mp4","out":0.01}],
       "outputs":[{"id":"O1","monitor":-5},{"id":"O1"}]
@@ -314,7 +316,7 @@ static void testProjectTolerance() {
     CHECK(p.cues.size() == 3);
     const Cue& a = p.cues[0];
     CHECK(a.inPoint == 0.0 && a.outPoint == 3.0 && a.speed == 4.0 && a.playCount == 0 && a.fadeIn == 60.0);
-    CHECK(a.volumeDb == 12.0 && a.color.empty() && a.gotoCue.empty() && !a.loudness && a.scale == 0.01);
+    CHECK(a.volumeDb == 12.0 && a.color.empty() && a.gotoCue.empty() && !a.loudness && a.scale == 0.01 && !a.thumbTime);
     CHECK(p.cues[1].id != "Q1" && !p.cues[1].id.empty()); // id repetido recebe um novo
     CHECK(p.cues[2].outPoint == 0.0);                      // trim minúsculo anulado
     CHECK(p.outputs.size() == 1 && p.outputs[0].monitor == 0);

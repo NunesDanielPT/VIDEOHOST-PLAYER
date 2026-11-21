@@ -332,6 +332,10 @@
         <translation>Áudio: %1</translation>
     </message>
     <message>
+        <source>Automatic thumbnail</source>
+        <translation>Miniatura automática</translation>
+    </message>
+    <message>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
@@ -552,6 +556,10 @@
         <translation>Não foi possível tocar: %1</translation>
     </message>
     <message>
+        <source>Play the cue first: the thumbnail is taken from the position on air.</source>
+        <translation>Toque a cue primeiro: a miniatura é tirada da posição que está no ar.</translation>
+    </message>
+    <message>
         <source>Play the selected cue</source>
         <translation>Tocar a cue selecionada</translation>
     </message>
@@ -676,6 +684,14 @@
     <message>
         <source>The update is ready. The engine will stop and the outputs will go dark while it installs. Install now?</source>
         <translation>A atualização está pronta. O motor vai parar e as saídas ficam a negro durante a instalação. Instalar agora?</translation>
+    </message>
+    <message>
+        <source>Thumbnail from the playing position</source>
+        <translation>Miniatura da posição em reprodução</translation>
+    </message>
+    <message>
+        <source>Thumbnail updated (%1).</source>
+        <translation>Miniatura atualizada (%1).</translation>
     </message>
     <message>
         <source>Turn off Show Mode before updating.</source>
@@ -1110,8 +1126,8 @@
         <translation>Saídas</translation>
     </message>
     <message>
-        <source>Play / pause</source>
-        <translation>Play / pausa</translation>
+        <source>Play / pause (stopped: starts the selected cue)</source>
+        <translation>Play / pausa (parado: arranca a cue selecionada)</translation>
     </message>
     <message>
         <source>Play the selected cue</source>

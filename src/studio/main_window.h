@@ -82,6 +82,8 @@ private:
     void seekTo(double fileTime);
     void toggleLoopPlaylist();
     void setMasterVolume(double db);
+    double playingMediaTime() const; // posição no ficheiro da cue no ar (-1 = nada)
+    void thumbnailFromPlayhead();    // Ctrl+P / botão da câmara
 
     // Desfazer / refazer (Ctrl+Z / Ctrl+Shift+Z): instantâneos do projecto.
     void recordUndo();

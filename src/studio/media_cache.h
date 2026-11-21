@@ -51,6 +51,8 @@ public:
 
     // Forma de onda e loudness (pede a análise se ainda não existir).
     AudioAnalysis audio(const QString& path);
+    // Miniatura num instante escolhido (segundos no ficheiro); vazia enquanto é gerada.
+    QImage thumbnail(const QString& path, double at);
     // Esquece o que se sabe do ficheiro (ex. foi substituído): volta a analisar.
     void forget(const QString& path);
 
@@ -64,6 +66,8 @@ private:
     QHash<QString, MediaInfo> cache_;
     QSet<QString> inFlight_;
     QHash<QString, AudioAnalysis> audio_;
+    QHash<QString, QImage> thumbs_; // "caminho|tempo" -> miniatura escolhida
+    QSet<QString> thumbsInFlight_;
     QSet<QString> audioInFlight_;
     QThreadPool pool_;      // miniaturas
     QThreadPool audioPool_; // análise de som (pesada): 1 thread, prioridade baixa

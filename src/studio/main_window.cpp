@@ -92,6 +92,42 @@ QIcon cueIcon(CueIcon kind) {
     return QIcon(pm);
 }
 
+// Ícones da barra de transporte, desenhados em cor clara (os do sistema ficam pretos no tema escuro).
+enum class TIcon { Play, Pause, Stop, Prev, Next };
+QIcon transportIcon(TIcon kind, const QColor& color) {
+    QPixmap pm(64, 64);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Qt::NoPen);
+    p.setBrush(color);
+    switch (kind) {
+    case TIcon::Play:
+        p.drawPolygon(QPolygonF({QPointF(18, 10), QPointF(54, 32), QPointF(18, 54)}));
+        break;
+    case TIcon::Pause:
+        p.drawRoundedRect(QRectF(15, 10, 12, 44), 2, 2);
+        p.drawRoundedRect(QRectF(37, 10, 12, 44), 2, 2);
+        break;
+    case TIcon::Stop:
+        p.drawRoundedRect(QRectF(13, 13, 38, 38), 3, 3);
+        break;
+    case TIcon::Prev:
+        p.drawRect(QRectF(10, 14, 6, 36));
+        p.drawPolygon(QPolygonF({QPointF(36, 14), QPointF(16, 32), QPointF(36, 50)}));
+        p.drawPolygon(QPolygonF({QPointF(56, 14), QPointF(36, 32), QPointF(56, 50)}));
+        break;
+    case TIcon::Next:
+        p.drawRect(QRectF(48, 14, 6, 36));
+        p.drawPolygon(QPolygonF({QPointF(8, 14), QPointF(28, 32), QPointF(8, 50)}));
+        p.drawPolygon(QPolygonF({QPointF(28, 14), QPointF(48, 32), QPointF(28, 50)}));
+        break;
+    }
+    return QIcon(pm);
+}
+
+const QColor kIconLight(225, 225, 225);
+
 bool isImageFile(const QString& path) {
     static const QStringList ext = {QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"),
                                     QStringLiteral("bmp"), QStringLiteral("tif"), QStringLiteral("tiff"),
@@ -171,13 +207,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             timecode_->setStyleSheet(QStringLiteral("color: #777;"));
         }
         // Cabeça de leitura na forma de onda (só se a cue selecionada for a que está no ar).
-        double head = -1.0;
-        if (q && selectedCue() == idx && c.active) {
-            head = statusMediaTime_;
-            if (c.running) head += countdownClock_.elapsed() / 1000.0 * q->speed;
-            const double out = q->effectiveOut(media_->info(qs(q->path)).duration);
-            if (out > 0.0 && head > out) head = c.loops ? q->inPoint + std::fmod(head - q->inPoint, std::max(0.01, out - q->inPoint)) : out;
-        }
+        const double head = q && selectedCue() == idx && c.active ? playingMediaTime() : -1.0;
         waveform_->setPlayhead(head);
         inspector_->setPlayhead(head);
         if (q && c.active && c.duration > 0.0) playlist_->setPlaying(idx, std::clamp(c.elapsed / c.duration, 0.0, 1.0), qs(c.state));
@@ -238,11 +268,11 @@ QWidget* MainWindow::buildTransportBar() {
         l->addWidget(b);
         return b;
     };
-    playBtn_ = button(style()->standardIcon(QStyle::SP_MediaPlay), tr("Play / pause (Space)"), 36, [this] { playPause(); });
-    button(style()->standardIcon(QStyle::SP_MediaStop), tr("Stop (Esc)"), 24, [this] { stopPlayback(); });
+    playBtn_ = button(transportIcon(TIcon::Play, kBlue), tr("Play / pause (Space)"), 34, [this] { playPause(); });
+    button(transportIcon(TIcon::Stop, kIconLight), tr("Stop (Esc)"), 22, [this] { stopPlayback(); });
     l->addSpacing(6);
-    button(style()->standardIcon(QStyle::SP_MediaSkipBackward), tr("Previous cue (Ctrl+Left)"), 22, [this] { previousCue(); });
-    button(style()->standardIcon(QStyle::SP_MediaSkipForward), tr("Next cue (Ctrl+Right)"), 22, [this] { nextCue(); });
+    button(transportIcon(TIcon::Prev, kIconLight), tr("Previous cue (Ctrl+Left)"), 20, [this] { previousCue(); });
+    button(transportIcon(TIcon::Next, kIconLight), tr("Next cue (Ctrl+Right)"), 20, [this] { nextCue(); });
     loopBtn_ = button(cueIcon(CueIcon::Loop), tr("Loop the playlist (Ctrl+R)"), 22, [this] { toggleLoopPlaylist(); });
     loopBtn_->setCheckable(true);
     l->addSpacing(10);
@@ -319,6 +349,8 @@ void MainWindow::buildUi() {
     connect(playlist_, &PlaylistView::cueMoved, this, &MainWindow::moveCue);
     connect(playlist_, &PlaylistView::deleteRequested, this, &MainWindow::deleteCue);
     connect(playlist_, &PlaylistView::contextMenuRequested, this, &MainWindow::showCueMenu);
+    connect(playlist_, &PlaylistView::thumbnailRequested, this, [this](int) { thumbnailFromPlayhead(); });
+    connect(playlist_, &PlaylistView::spacePressed, this, &MainWindow::playPause);
 
     preview_ = new PreviewWidget(this);
     connect(preview_, &PreviewWidget::doubleClicked, this, &MainWindow::openCountdownWindow);
@@ -407,6 +439,8 @@ void MainWindow::buildMenus() {
     edit->addSeparator();
     editActions_ << edit->addAction(tr("Duplicate cue"), QKeySequence(Qt::CTRL | Qt::Key_D), this,
                                     [this] { duplicateCue(selectedCue()); })
+                 << edit->addAction(tr("Thumbnail from the playing position"), QKeySequence(Qt::CTRL | Qt::Key_P), this,
+                                    [this] { thumbnailFromPlayhead(); })
                  << edit->addAction(tr("Replace file..."), this, [this] { replaceFile(selectedCue()); })
                  << edit->addAction(tr("Delete cue"), this, [this] { deleteCue(selectedCue()); });
 
@@ -720,6 +754,16 @@ void MainWindow::showCueMenu(int index, const QPoint& globalPos) {
     QList<QAction*> edit;
     edit << menu.addAction(tr("Add media..."), this, &MainWindow::addMedia);
     if (valid) {
+        QAction* fromHead = menu.addAction(tr("Thumbnail from the playing position"), this, [this] { thumbnailFromPlayhead(); });
+        fromHead->setEnabled(index == playingCue_);
+        QAction* autoThumb = menu.addAction(tr("Automatic thumbnail"), this, [this, index] {
+            project_.cues[static_cast<std::size_t>(index)].thumbTime.reset();
+            playlist_->refresh();
+            markChanged();
+        });
+        autoThumb->setEnabled(project_.cues[static_cast<std::size_t>(index)].thumbTime.has_value());
+        edit << fromHead << autoThumb;
+        menu.addSeparator();
         edit << menu.addAction(tr("Duplicate"), this, [this, index] { duplicateCue(index); })
              << menu.addAction(tr("Replace file..."), this, [this, index] { replaceFile(index); });
         menu.addAction(tr("Show in Explorer"), this, [this, index] {
@@ -773,6 +817,33 @@ void MainWindow::applyAnalysis(const QString& path) {
     playlist_->refresh();
 }
 
+double MainWindow::playingMediaTime() const {
+    if (playingCue_ < 0 || playingCue_ >= static_cast<int>(project_.cues.size()) || !countdown_.active) return -1.0;
+    const Cue& q = project_.cues[static_cast<std::size_t>(playingCue_)];
+    double t = statusMediaTime_;
+    if (countdown_.running) t += countdownClock_.elapsed() / 1000.0 * q.speed;
+    const double out = q.effectiveOut(media_->info(qs(q.path)).duration);
+    if (out > 0.0 && t > out)
+        t = countdown_.loops ? q.inPoint + std::fmod(t - q.inPoint, std::max(0.01, out - q.inPoint)) : out;
+    return t;
+}
+
+void MainWindow::thumbnailFromPlayhead() {
+    // Só a cue que está a tocar: a miniatura passa a ser o frame que está no ar agora.
+    if (showMode_) return;
+    const double t = playingMediaTime();
+    if (t < 0.0) {
+        infoLabel_->setText(tr("Play the cue first: the thumbnail is taken from the position on air."));
+        return;
+    }
+    Cue& q = project_.cues[static_cast<std::size_t>(playingCue_)];
+    q.thumbTime = t;
+    media_->thumbnail(qs(q.path), t);
+    playlist_->refresh();
+    markChanged();
+    infoLabel_->setText(tr("Thumbnail updated (%1).").arg(formatTimecode(t, media_->info(qs(q.path)).fps)));
+}
+
 // ------------------------------------------------------------------ reprodução
 
 void MainWindow::playCue(int index) {
@@ -795,20 +866,29 @@ void MainWindow::playCue(int index) {
 }
 
 void MainWindow::playPause() {
-    const QString state = engine_->hasStatus() ? qs(engine_->lastStatus().state) : QString();
     if (!engine_->isConnected()) {
         infoLabel_->setText(tr("The engine is not running."));
         return;
     }
-    if (state == QStringLiteral("playing") || state == QStringLiteral("paused") || state == QStringLiteral("loading") ||
-        state == QStringLiteral("ended")) {
+    const QString state = engine_->hasStatus() ? qs(engine_->lastStatus().state) : QString();
+    const int sel = selectedCue();
+    // A tocar / em pausa / a carregar: ESPAÇO = play/pausa da cue no ar.
+    if (state == QStringLiteral("playing") || state == QStringLiteral("paused") || state == QStringLiteral("loading")) {
         protocol::Command c;
         c.type = protocol::CommandType::Transport;
         c.action = protocol::TransportAction::Toggle;
         engine_->send(c);
         return;
     }
-    const int sel = selectedCue();
+    // Parada no último frame: se escolheu outra cue, toca essa; senão segue para a próxima.
+    if (state == QStringLiteral("ended") && (sel < 0 || sel == playingCue_)) {
+        protocol::Command c;
+        c.type = protocol::CommandType::Transport;
+        c.action = protocol::TransportAction::Toggle;
+        engine_->send(c);
+        return;
+    }
+    // Parado: ESPAÇO arranca a cue selecionada (ou a primeira).
     playCue(sel >= 0 ? sel : 0);
 }
 
@@ -970,7 +1050,7 @@ void MainWindow::onEngineStatus() {
     refreshCountdown();
     if (playingCue_ != previous && playingCue_ >= 0 && prefs::selectionFollowsPlayback()) playlist_->selectIndex(playingCue_);
     playlist_->setPlaying(playingCue_, countdown_.duration > 0.0 ? countdown_.elapsed / countdown_.duration : 0.0, qs(s.state));
-    playBtn_->setIcon(style()->standardIcon(s.state == "playing" ? QStyle::SP_MediaPause : QStyle::SP_MediaPlay));
+    playBtn_->setIcon(transportIcon(s.state == "playing" ? TIcon::Pause : TIcon::Play, kBlue));
     if (playingCue_ >= 0 && playingCue_ < static_cast<int>(project_.cues.size())) {
         const Cue& q = project_.cues[static_cast<std::size_t>(playingCue_)];
         QString t = (q.label.empty() ? QString::number(playingCue_ + 1) : qs(q.label)) + QStringLiteral("  ") + qs(q.displayName());

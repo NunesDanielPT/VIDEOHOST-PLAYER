@@ -66,7 +66,7 @@ int interruptCb(void* opaque) {
     return d->timer.elapsed() > d->limitMs ? 1 : 0;
 }
 
-MediaInfo probe(const QString& path) {
+MediaInfo probe(const QString& path, std::optional<double> thumbAt = std::nullopt) {
     MediaInfo info;
     info.ready = true;
     Deadline deadline;
@@ -149,34 +149,75 @@ MediaInfo probe(const QString& path) {
             return avcodec_receive_frame(cc, frame) >= 0;
         };
 
-        // Miniatura a ~10% (evita o preto do primeiro frame), no máximo a 2 s.
-        bool got = false;
-        if (!info.still && info.duration > 1.0) {
-            const double at = std::min(2.0, info.duration * 0.1);
-            const int64_t ts = (st->start_time != AV_NOPTS_VALUE ? st->start_time : 0) +
-                               static_cast<int64_t>(at / av_q2d(st->time_base));
-            if (av_seek_frame(fmt, si, ts, AVSEEK_FLAG_BACKWARD) >= 0) {
-                avcodec_flush_buffers(cc);
-                got = decodeOne();
+        const double tb = av_q2d(st->time_base);
+        const int64_t base = st->start_time != AV_NOPTS_VALUE ? st->start_time : 0;
+        const double frameDur = info.fps > 1.0 ? 1.0 / info.fps : 0.04;
+        // Frame exacto no instante t (salta para o keyframe anterior e descodifica até lá).
+        auto decodeAt = [&](double t) -> bool {
+            if (av_seek_frame(fmt, si, base + static_cast<int64_t>(std::max(0.0, t) / tb), AVSEEK_FLAG_BACKWARD) < 0)
+                return false;
+            avcodec_flush_buffers(cc);
+            for (int k = 0; k < 900; ++k) {
+                if (!decodeOne()) return false;
+                const int64_t pts = frame->best_effort_timestamp;
+                const double ft = pts != AV_NOPTS_VALUE ? (pts - base) * tb : t;
+                if (ft + frameDur * 0.5 >= t) return true;
+                av_frame_unref(frame);
             }
-            if (!got) { // o salto falhou: volta ao início
-                av_seek_frame(fmt, si, st->start_time != AV_NOPTS_VALUE ? st->start_time : 0, AVSEEK_FLAG_BACKWARD);
-                avcodec_flush_buffers(cc);
+            return true; // perto o suficiente
+        };
+        auto toImage = [&]() -> QImage {
+            if (frame->width <= 0 || frame->height <= 0) return {};
+            const double sc = std::min(static_cast<double>(kThumbW) / frame->width, static_cast<double>(kThumbH) / frame->height);
+            const int tw = std::max(2, static_cast<int>(frame->width * sc));
+            const int th = std::max(2, static_cast<int>(frame->height * sc));
+            sws = sws_getCachedContext(sws, frame->width, frame->height, static_cast<AVPixelFormat>(frame->format), tw, th,
+                                       AV_PIX_FMT_BGRA, SWS_BILINEAR, nullptr, nullptr, nullptr);
+            if (!sws) return {};
+            QImage out(tw, th, QImage::Format_RGB32);
+            uint8_t* dst[4] = {out.bits(), nullptr, nullptr, nullptr};
+            int dstStride[4] = {static_cast<int>(out.bytesPerLine()), 0, 0, 0};
+            sws_scale(sws, frame->data, frame->linesize, 0, frame->height, dst, dstStride);
+            return out;
+        };
+        // Brilho médio (0..255): para não escolher um frame preto (vídeos que começam com fade in).
+        auto brightness = [](const QImage& im) {
+            if (im.isNull()) return 0.0;
+            double sum = 0.0;
+            int n = 0;
+            for (int y = 0; y < im.height(); y += 4) {
+                const auto* line = reinterpret_cast<const QRgb*>(im.constScanLine(y));
+                for (int x = 0; x < im.width(); x += 4, ++n) sum += qGray(line[x]);
+            }
+            return n > 0 ? sum / n : 0.0;
+        };
+
+        QImage img;
+        if (thumbAt && !info.still) {
+            // Miniatura escolhida pelo utilizador (ponto da cue em reprodução).
+            if (decodeAt(*thumbAt)) img = toImage();
+        } else if (!info.still && info.duration > 1.0) {
+            // Automática: primeiro frame com imagem entre alguns pontos do vídeo.
+            double best = -1.0;
+            for (double at : {std::min(2.0, info.duration * 0.1), info.duration * 0.15, info.duration * 0.35,
+                              info.duration * 0.6}) {
+                if (!decodeAt(at)) continue;
+                QImage cand = toImage();
+                av_frame_unref(frame);
+                const double b = brightness(cand);
+                if (b > best) {
+                    best = b;
+                    img = cand;
+                }
+                if (b > 18.0) break;
             }
         }
-        if (!got) got = decodeOne();
-        if (!got || frame->width <= 0 || frame->height <= 0) break;
-
-        const double s = std::min(static_cast<double>(kThumbW) / frame->width, static_cast<double>(kThumbH) / frame->height);
-        const int tw = std::max(2, static_cast<int>(frame->width * s));
-        const int th = std::max(2, static_cast<int>(frame->height * s));
-        sws = sws_getContext(frame->width, frame->height, static_cast<AVPixelFormat>(frame->format), tw, th,
-                             AV_PIX_FMT_BGRA, SWS_BILINEAR, nullptr, nullptr, nullptr);
-        if (!sws) break;
-        QImage img(tw, th, QImage::Format_RGB32);
-        uint8_t* dst[4] = {img.bits(), nullptr, nullptr, nullptr};
-        int dstStride[4] = {static_cast<int>(img.bytesPerLine()), 0, 0, 0};
-        sws_scale(sws, frame->data, frame->linesize, 0, frame->height, dst, dstStride);
+        if (img.isNull()) {
+            av_seek_frame(fmt, si, base, AVSEEK_FLAG_BACKWARD);
+            avcodec_flush_buffers(cc);
+            if (decodeOne()) img = toImage();
+        }
+        if (img.isNull()) break;
         info.thumb = img;
         info.ok = true;
     } while (false);
@@ -285,7 +326,7 @@ AudioAnalysis analyzeAudio(const QString& path) {
     return a;
 }
 #else
-MediaInfo probe(const QString& path) {
+MediaInfo probe(const QString& path, std::optional<double> = std::nullopt) {
     MediaInfo info;
     info.ready = true;
     QImage img(path);
@@ -383,4 +424,29 @@ void MediaCache::finished(const QString& path, const MediaInfo& info) {
 void MediaCache::forget(const QString& path) {
     cache_.remove(path);
     audio_.remove(path);
+}
+
+QImage MediaCache::thumbnail(const QString& path, double at) {
+    const QString key = path + QStringLiteral("|") + QString::number(at, 'f', 3);
+    auto it = thumbs_.find(key);
+    if (it != thumbs_.end()) return it.value();
+    if (!thumbsInFlight_.contains(key) && QFileInfo::exists(path)) {
+        thumbsInFlight_.insert(key);
+        QPointer<MediaCache> self(this);
+        pool_.start([self, path, key, at] {
+            QImage img;
+            try {
+                img = probe(path, at).thumb;
+            } catch (...) {
+            }
+            if (self)
+                QMetaObject::invokeMethod(self.data(), [self, path, key, img] {
+                    if (!self) return;
+                    self->thumbsInFlight_.remove(key);
+                    self->thumbs_.insert(key, img);
+                    emit self->updated(path);
+                }, Qt::QueuedConnection);
+        });
+    }
+    return {};
 }

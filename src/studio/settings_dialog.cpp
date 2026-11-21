@@ -241,7 +241,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         const QString shift = QStringLiteral("Shift");
 
         auto* gShow = group(tr("Playback"));
-        row(gShow, tr("Play / pause"), keys(QKeySequence(Qt::Key_Space)));
+        row(gShow, tr("Play / pause (stopped: starts the selected cue)"), keys(QKeySequence(Qt::Key_Space)));
         row(gShow, tr("Play the selected cue"), tr("Enter / double-click"));
         row(gShow, tr("Play without transition (cut)"), tr("%1 + Enter / double-click").arg(shift));
         row(gShow, tr("Stop (black)"), keys(QKeySequence(Qt::Key_Escape)));

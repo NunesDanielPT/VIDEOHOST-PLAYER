@@ -246,7 +246,23 @@ void PlaylistView::dropEvent(QDropEvent* e) {
     e->ignore();
 }
 
+bool PlaylistView::event(QEvent* e) {
+    // A lista não "come" o ESPAÇO: fica para o play/pausa.
+    if (e->type() == QEvent::ShortcutOverride) {
+        auto* ke = static_cast<QKeyEvent*>(e);
+        if (ke->key() == Qt::Key_Space && ke->modifiers() == Qt::NoModifier) {
+            e->ignore();
+            return false;
+        }
+    }
+    return QListWidget::event(e);
+}
+
 void PlaylistView::keyPressEvent(QKeyEvent* e) {
+    if (e->key() == Qt::Key_Space && e->modifiers() == Qt::NoModifier) {
+        emit spacePressed();
+        return;
+    }
     if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && currentRow() >= 0) {
         emit playRequested(currentRow());
         return;
@@ -265,6 +281,7 @@ void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
     const QRect row = visualRect(idx);
     for (int i = 0; i < static_cast<int>(CueIcon::Count); ++i)
         if (CueDelegate::iconRect(row, i).contains(e->position().toPoint())) return;
+    if (CueDelegate::thumbButtonRect(row).contains(e->position().toPoint())) return;
     emit playRequested(idx.row());
 }
 
@@ -279,6 +296,10 @@ void PlaylistView::contextMenuEvent(QContextMenuEvent* e) {
 CueDelegate::CueDelegate(PlaylistView* view) : QStyledItemDelegate(view), view_(view) {}
 
 QSize CueDelegate::sizeHint(const QStyleOptionViewItem&, const QModelIndex&) const { return {300, kRowHeight}; }
+
+QRect CueDelegate::thumbButtonRect(const QRect& row) {
+    return {row.left() + kThumbX + kThumbW - 26, row.top() + kThumbY + 3, 23, 18};
+}
 
 QRect CueDelegate::iconRect(const QRect& row, int i) {
     return {row.left() + kInfoX + i * 25, row.top() + 62, 23, 22};
@@ -328,13 +349,34 @@ void CueDelegate::paint(QPainter* p, const QStyleOptionViewItem& opt, const QMod
     // Miniatura.
     const QRect th(r.left() + kThumbX, r.top() + kThumbY, kThumbW, kThumbH);
     p->fillRect(th, Qt::black);
-    if (!info.thumb.isNull()) {
-        const QSize sz = info.thumb.size().scaled(th.size(), Qt::KeepAspectRatio);
+    // Miniatura escolhida pelo utilizador (ponto do vídeo) ou a automática.
+    QImage thumb = info.thumb;
+    if (q.thumbTime) {
+        const QImage chosen = view_->media_->thumbnail(qs(q.path), *q.thumbTime);
+        if (!chosen.isNull()) thumb = chosen;
+    }
+    if (!thumb.isNull()) {
+        const QSize sz = thumb.size().scaled(th.size(), Qt::KeepAspectRatio);
         p->drawImage(QRect(th.center().x() - sz.width() / 2, th.center().y() - sz.height() / 2, sz.width(), sz.height()),
-                     info.thumb);
+                     thumb);
     } else if (info.ready && info.ok && info.hasAudio) {
         p->setPen(QColor(120, 120, 120));
         paintCueIcon(p, QRectF(th.center().x() - 14, th.center().y() - 12, 28, 24), CueIcon::Audio, false);
+    }
+    if (playing && view_->editable_ && !info.still && info.ok && !info.thumb.isNull()) {
+        // Botão da câmara: a miniatura passa a ser o ponto actual do vídeo.
+        const QRect cb = thumbButtonRect(r);
+        p->setPen(Qt::NoPen);
+        p->setBrush(QColor(0, 0, 0, 170));
+        p->drawRoundedRect(cb, 3, 3);
+        p->setBrush(Qt::NoBrush);
+        p->setPen(QPen(QColor(235, 235, 235), 1.4));
+        const QRectF body(cb.left() + 4.5, cb.top() + 5.5, cb.width() - 9, cb.height() - 9);
+        p->drawRoundedRect(body, 1.5, 1.5);
+        p->drawLine(QPointF(body.center().x() - 2.5, body.top()), QPointF(body.center().x() - 1.5, body.top() - 2));
+        p->drawLine(QPointF(body.center().x() - 1.5, body.top() - 2), QPointF(body.center().x() + 2.5, body.top() - 2));
+        p->drawLine(QPointF(body.center().x() + 2.5, body.top() - 2), QPointF(body.center().x() + 3.5, body.top()));
+        p->drawEllipse(body.center(), 2.6, 2.6);
     }
     if (playing) {
         p->fillRect(QRect(th.left(), th.bottom() - 3, th.width(), 4), QColor(0, 0, 0, 180));
@@ -389,6 +431,10 @@ bool CueDelegate::editorEvent(QEvent* e, QAbstractItemModel*, const QStyleOption
     if (e->type() != QEvent::MouseButtonRelease) return false;
     auto* me = static_cast<QMouseEvent*>(e);
     if (me->button() != Qt::LeftButton) return false;
+    if (idx.row() == view_->playing_ && view_->editable_ && thumbButtonRect(opt.rect).contains(me->position().toPoint())) {
+        emit view_->thumbnailRequested(idx.row());
+        return true;
+    }
     for (int k = 0; k < static_cast<int>(CueIcon::Count); ++k)
         if (iconRect(opt.rect, k).contains(me->position().toPoint())) {
             if (!view_->editable_) return true;
