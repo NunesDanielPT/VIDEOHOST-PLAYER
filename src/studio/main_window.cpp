@@ -78,9 +78,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         if (updateCheckIsManual_) QMessageBox::warning(this, tr("Updates"), err);
     });
 
-    // Alterações ao projecto chegam ao motor agrupadas (no máximo ~3x/s).
+    // Alterações ao projecto chegam ao motor agrupadas (no máximo ~12x/s; os pedidos de
+    // carregamento são coalescidos: só segue o mais recente).
     pushTimer_.setSingleShot(true);
-    pushTimer_.setInterval(300);
+    pushTimer_.setInterval(80);
     connect(&pushTimer_, &QTimer::timeout, this, &MainWindow::pushToEngine);
 
     buildUi();
@@ -125,6 +126,7 @@ void MainWindow::buildUi() {
 
     preview_ = new PreviewWidget(this);
     connect(preview_, &PreviewWidget::layerDragged, this, &MainWindow::onLayerDragged);
+    connect(preview_, &PreviewWidget::cornerDragged, this, &MainWindow::onCornerDragged);
     // Workspace: escolha do canvas mostrado + atalhos para saídas e test card.
     auto* workspace = new QWidget(this);
     auto* wl = new QVBoxLayout(workspace);
@@ -406,9 +408,7 @@ void MainWindow::pushToEngine() {
     protocol::Command c;
     c.type = protocol::CommandType::LoadProject;
     c.path = ss(livePath());
-    engine_->send(c, [this](const protocol::ParsedResponse& r) {
-        if (!r.ok) infoLabel_->setText(tr("Engine: %1").arg(qs(r.error)));
-    });
+    engine_->sendLatest(QStringLiteral("load"), c);
 }
 
 void MainWindow::setProject(Project p, const QString& path) {
@@ -1026,7 +1026,7 @@ void MainWindow::applyLayerProps(int row, const LayerProps& props, bool persist)
     c.type = protocol::CommandType::SetLayerProps;
     c.layer = l.id;
     c.props = l.props;
-    engine_->send(c);
+    engine_->sendLatest(QStringLiteral("props:") + qs(l.id), c);
     if (persist) {
         dirty_ = true;
         updateTitle();
@@ -1036,6 +1036,17 @@ void MainWindow::applyLayerProps(int row, const LayerProps& props, bool persist)
 }
 
 void MainWindow::onPropsChanged(const LayerProps& props) { applyLayerProps(selectedLayer_, props, true); }
+
+void MainWindow::onCornerDragged(int corner, double dx, double dy, bool finished) {
+    if (selectedLayer_ < 0 || selectedLayer_ >= static_cast<int>(project_.layers.size()) || corner < 0 || corner > 3) return;
+    if (project_.layers[static_cast<std::size_t>(selectedLayer_)].locked) return;
+    if (!dragStartProps_) dragStartProps_ = project_.layers[static_cast<std::size_t>(selectedLayer_)].props;
+    LayerProps p = *dragStartProps_;
+    p.cornerPin[static_cast<std::size_t>(corner)].x += dx;
+    p.cornerPin[static_cast<std::size_t>(corner)].y += dy;
+    applyLayerProps(selectedLayer_, p, finished);
+    if (finished) dragStartProps_.reset();
+}
 
 void MainWindow::onLayerDragged(double dx, double dy, bool finished) {
     if (selectedLayer_ < 0 || selectedLayer_ >= static_cast<int>(project_.layers.size())) return;

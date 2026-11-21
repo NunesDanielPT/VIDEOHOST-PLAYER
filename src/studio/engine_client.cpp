@@ -80,6 +80,24 @@ void EngineClient::send(const protocol::Command& command, Callback callback) {
     pending_.push_back({std::move(callback), clock_.elapsed()});
 }
 
+void EngineClient::sendLatest(const QString& key, const protocol::Command& command) {
+    Coalesced& st = coalesced_[key];
+    if (st.inFlight) {
+        st.next = command; // substitui o que estava à espera
+        return;
+    }
+    st.inFlight = true;
+    send(command, [this, key](const protocol::ParsedResponse&) {
+        Coalesced& s2 = coalesced_[key];
+        s2.inFlight = false;
+        if (s2.next) {
+            const protocol::Command n = *s2.next;
+            s2.next.reset();
+            sendLatest(key, n);
+        }
+    });
+}
+
 void EngineClient::onReadyRead() {
     buffer_.append(socket_.readAll());
     if (buffer_.size() > static_cast<qsizetype>(protocol::kMaxLineBytes) * 4) {

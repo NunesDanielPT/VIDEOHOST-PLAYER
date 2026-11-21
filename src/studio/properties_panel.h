@@ -1,5 +1,6 @@
 #pragma once
 // Properties: propriedades da layer selecionada, aplicadas ao vivo.
+// Secções (como no Millumin): Layer, Mapping (corner pin), Efeitos, Máscaras.
 
 #include "vthost/core/project.h"
 
@@ -8,10 +9,10 @@
 #include <utility>
 #include <vector>
 
+class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
-class QPushButton;
 
 class PropertiesPanel : public QWidget {
     Q_OBJECT
@@ -33,21 +34,40 @@ signals:
 
 private:
     vthost::LayerProps current() const;
-    QWidget* makeSection(const QString& title, QWidget* content, bool expanded);
+    QWidget* makeSection(const QString& key, const QString& title, QWidget* content, bool expandedByDefault);
+    void emitChange();
 
     QLabel* title_;
-    QComboBox* blend_;
+    QWidget* body_;
+    // Layer
     QComboBox* canvas_;
+    QComboBox* blend_;
+    QComboBox* fit_;
     QDoubleSpinBox* opacity_;
     QDoubleSpinBox* posX_;
     QDoubleSpinBox* posY_;
     QDoubleSpinBox* scale_;
     QDoubleSpinBox* rotation_;
-    QPushButton* reset_;
-    QWidget* body_;
+    QCheckBox* flipH_;
+    QCheckBox* flipV_;
+    // Mapping
+    QDoubleSpinBox* pin_[8];
+    // Efeitos
+    QDoubleSpinBox* brightness_;
+    QDoubleSpinBox* contrast_;
+    QDoubleSpinBox* saturation_;
+    QDoubleSpinBox* gamma_;
+    QDoubleSpinBox* hue_;
+    QCheckBox* invert_;
+    // Máscaras
+    QDoubleSpinBox* crop_[4];
+    QDoubleSpinBox* feather_;
+
     bool editable_ = true;
     bool hasLayer_ = false;
     bool locked_ = false;
+    bool loading_ = false;
     double originX_ = 0.0;
     double originY_ = 0.0;
+    vthost::LayerProps last_;
 };

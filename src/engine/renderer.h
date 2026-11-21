@@ -104,6 +104,10 @@ private:
     ComPtr<IDXGIFactory2> factory_;
     ComPtr<ID3D11VertexShader> vs_;
     ComPtr<ID3D11PixelShader> ps_;
+    ComPtr<ID3D11VertexShader> layerVs_;   // layers: malha (corner pin) + efeitos + máscara
+    ComPtr<ID3D11PixelShader> layerPs_;
+    ComPtr<ID3D11Buffer> layerCbuffer_;
+    ComPtr<ID3D11Buffer> layerVb_;         // dinâmico
     ComPtr<ID3D11VertexShader> outVs_;
     ComPtr<ID3D11PixelShader> outPs_;
     ComPtr<ID3D11InputLayout> outLayout_;

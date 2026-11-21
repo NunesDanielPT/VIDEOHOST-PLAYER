@@ -2,6 +2,7 @@
 
 #include "vthost/core/atomic_file.h"
 #include "mapping_json.h"
+#include "props_json.h"
 
 #include <algorithm>
 #include <cmath>
@@ -37,14 +38,48 @@ void LayerProps::clamp() {
     posY = std::clamp(fin(posY, 0.0), -100000.0, 100000.0);
     scale = std::clamp(fin(scale, 1.0), 0.01, 10.0);
     rotation = std::clamp(fin(rotation, 0.0), -3600.0, 3600.0);
+    for (auto& c : cornerPin) {
+        c.x = std::clamp(fin(c.x, 0.0), -100000.0, 100000.0);
+        c.y = std::clamp(fin(c.y, 0.0), -100000.0, 100000.0);
+    }
+    brightness = std::clamp(fin(brightness, 0.0), -1.0, 1.0);
+    contrast = std::clamp(fin(contrast, 1.0), 0.0, 3.0);
+    saturation = std::clamp(fin(saturation, 1.0), 0.0, 3.0);
+    gamma = std::clamp(fin(gamma, 1.0), 0.2, 5.0);
+    hue = std::clamp(fin(hue, 0.0), -180.0, 180.0);
+    cropLeft = std::clamp(fin(cropLeft, 0.0), 0.0, 1.0);
+    cropRight = std::clamp(fin(cropRight, 0.0), 0.0, 1.0);
+    cropTop = std::clamp(fin(cropTop, 0.0), 0.0, 1.0);
+    cropBottom = std::clamp(fin(cropBottom, 0.0), 0.0, 1.0);
+    feather = std::clamp(fin(feather, 0.0), 0.0, 0.5);
+}
+
+const char* toString(FitMode m) {
+    switch (m) {
+    case FitMode::Fit: return "fit";
+    case FitMode::Fill: return "fill";
+    case FitMode::Stretch: return "stretch";
+    case FitMode::Native: return "native";
+    }
+    return "fit";
+}
+
+FitMode fitModeFromString(const std::string& s) {
+    if (s == "fill") return FitMode::Fill;
+    if (s == "stretch") return FitMode::Stretch;
+    if (s == "native") return FitMode::Native;
+    return FitMode::Fit;
 }
 
 LayerQuad computeLayerQuad(const LayerProps& p, int mediaW, int mediaH, int canvasW, int canvasH) {
     LayerQuad q{canvasW / 2.0, canvasH / 2.0, canvasW / 2.0, canvasH / 2.0, 0.0};
-    if (mediaW > 0 && mediaH > 0 && canvasW > 0 && canvasH > 0) {
-        const double fit = std::min(static_cast<double>(canvasW) / mediaW, static_cast<double>(canvasH) / mediaH);
-        q.halfW = mediaW * fit / 2.0;
-        q.halfH = mediaH * fit / 2.0;
+    if (mediaW > 0 && mediaH > 0 && canvasW > 0 && canvasH > 0 && p.fit != FitMode::Stretch) {
+        const double sx = static_cast<double>(canvasW) / mediaW, sy = static_cast<double>(canvasH) / mediaH;
+        double f = std::min(sx, sy);
+        if (p.fit == FitMode::Fill) f = std::max(sx, sy);
+        else if (p.fit == FitMode::Native) f = 1.0;
+        q.halfW = mediaW * f / 2.0;
+        q.halfH = mediaH * f / 2.0;
     }
     q.halfW *= p.scale;
     q.halfH *= p.scale;
@@ -52,6 +87,18 @@ LayerQuad computeLayerQuad(const LayerProps& p, int mediaW, int mediaH, int canv
     q.cy += p.posY;
     q.rotationRad = p.rotation * 3.14159265358979323846 / 180.0;
     return q;
+}
+
+std::array<WarpPoint, 4> computeLayerCorners(const LayerProps& p, int mediaW, int mediaH, int canvasW, int canvasH) {
+    const LayerQuad q = computeLayerQuad(p, mediaW, mediaH, canvasW, canvasH);
+    const double c = std::cos(q.rotationRad), s = std::sin(q.rotationRad);
+    const double local[4][2] = {{-q.halfW, -q.halfH}, {q.halfW, -q.halfH}, {q.halfW, q.halfH}, {-q.halfW, q.halfH}};
+    std::array<WarpPoint, 4> out{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        out[i].x = q.cx + local[i][0] * c - local[i][1] * s + p.cornerPin[i].x;
+        out[i].y = q.cy + local[i][0] * s + local[i][1] * c + p.cornerPin[i].y;
+    }
+    return out;
 }
 
 double Timeline::duration() const {
@@ -264,13 +311,7 @@ ParseResult parseProject(const std::string& text) {
                 it.name = getString(l, "name", it.id);
                 it.canvasId = getString(l, "canvas");
                 if (!it.canvasId.empty() && !canvasIds.count(it.canvasId)) it.canvasId.clear();
-                it.props.opacity = getNumber(l, "opacity", 1.0);
-                it.props.blend = blendModeFromString(getString(l, "blend", "normal"));
-                it.props.posX = getNumber(l, "x", 0.0);
-                it.props.posY = getNumber(l, "y", 0.0);
-                it.props.scale = getNumber(l, "scale", 1.0);
-                it.props.rotation = getNumber(l, "rotation", 0.0);
-                it.props.clamp();
+                propsFromJson(l, it.props);
                 it.visible = getBool(l, "visible", true);
                 it.locked = getBool(l, "locked", false);
                 p.layers.push_back(std::move(it));
@@ -394,11 +435,12 @@ std::string serializeProject(const Project& p) {
     for (const auto& m : p.media)
         j["media"].push_back({{"id", m.id}, {"path", m.path}, {"loopMode", toString(m.loopMode)}});
     j["layers"] = json::array();
-    for (const auto& l : p.layers)
-        j["layers"].push_back({{"id", l.id}, {"name", l.name}, {"canvas", l.canvasId}, {"opacity", l.props.opacity},
-                               {"blend", toString(l.props.blend)}, {"x", l.props.posX}, {"y", l.props.posY},
-                               {"scale", l.props.scale}, {"rotation", l.props.rotation}, {"visible", l.visible},
-                               {"locked", l.locked}});
+    for (const auto& l : p.layers) {
+        json lj = propsToJson(l.props);
+        lj.update(json{{"id", l.id}, {"name", l.name}, {"canvas", l.canvasId}, {"visible", l.visible},
+                       {"locked", l.locked}});
+        j["layers"].push_back(std::move(lj));
+    }
     j["columns"] = json::array();
     for (const auto& c : p.columns) {
         json cells = json::object();

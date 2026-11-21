@@ -95,6 +95,7 @@ private:
     void updateSelectionViews();
     void onPropsChanged(const vthost::LayerProps& props);
     void onLayerDragged(double dx, double dy, bool finished);
+    void onCornerDragged(int corner, double dx, double dy, bool finished);
     void applyLayerProps(int row, const vthost::LayerProps& props, bool persist);
 
     // Show

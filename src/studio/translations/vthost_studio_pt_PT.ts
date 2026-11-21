@@ -211,10 +211,6 @@
         <translation>O motor foi reiniciado e o espetáculo retomado</translation>
     </message>
     <message>
-        <source>Engine: %1</source>
-        <translation>Motor: %1</translation>
-    </message>
-    <message>
         <source>Engine: connected</source>
         <translation>Motor: ligado</translation>
     </message>
@@ -865,8 +861,8 @@
         <translation>(bloqueada)</translation>
     </message>
     <message>
-        <source>Coming in a future version.</source>
-        <translation>Disponível numa próxima versão.</translation>
+        <source>Drag the orange corners of the layer in the Workspace to pin it onto a surface.</source>
+        <translation>Arraste os cantos laranja da layer no Workspace para a encaixar numa superfície.</translation>
     </message>
     <message>
         <source>Effects</source>
@@ -897,6 +893,18 @@
         <translation>Repor</translation>
     </message>
     <message>
+        <source>Reset corners</source>
+        <translation>Repor cantos</translation>
+    </message>
+    <message>
+        <source>Reset effects</source>
+        <translation>Repor efeitos</translation>
+    </message>
+    <message>
+        <source>Reset mask</source>
+        <translation>Repor máscara</translation>
+    </message>
+    <message>
         <source>add</source>
         <translation>add</translation>
     </message>
@@ -905,12 +913,84 @@
         <translation>modo de mistura</translation>
     </message>
     <message>
+        <source>bottom left</source>
+        <translation>inf. esquerdo</translation>
+    </message>
+    <message>
+        <source>bottom right</source>
+        <translation>inf. direito</translation>
+    </message>
+    <message>
+        <source>brightness</source>
+        <translation>brilho</translation>
+    </message>
+    <message>
         <source>canvas</source>
         <translation>canvas</translation>
     </message>
     <message>
+        <source>constraint</source>
+        <translation>ajuste</translation>
+    </message>
+    <message>
+        <source>contrast</source>
+        <translation>contraste</translation>
+    </message>
+    <message>
+        <source>crop bottom</source>
+        <translation>recorte baixo</translation>
+    </message>
+    <message>
+        <source>crop left</source>
+        <translation>recorte esquerda</translation>
+    </message>
+    <message>
+        <source>crop right</source>
+        <translation>recorte direita</translation>
+    </message>
+    <message>
+        <source>crop top</source>
+        <translation>recorte cima</translation>
+    </message>
+    <message>
+        <source>feather</source>
+        <translation>suavizar contorno</translation>
+    </message>
+    <message>
+        <source>fill canvas (crop)</source>
+        <translation>encher o canvas (corta)</translation>
+    </message>
+    <message>
+        <source>fit to canvas</source>
+        <translation>caber no canvas</translation>
+    </message>
+    <message>
+        <source>flip</source>
+        <translation>espelhar</translation>
+    </message>
+    <message>
+        <source>gamma</source>
+        <translation>gama</translation>
+    </message>
+    <message>
+        <source>horizontal</source>
+        <translation>horizontal</translation>
+    </message>
+    <message>
+        <source>hue</source>
+        <translation>matiz</translation>
+    </message>
+    <message>
+        <source>invert colors</source>
+        <translation>inverter cores</translation>
+    </message>
+    <message>
         <source>multiply</source>
         <translation>multiply</translation>
+    </message>
+    <message>
+        <source>native size</source>
+        <translation>tamanho real</translation>
     </message>
     <message>
         <source>normal</source>
@@ -929,12 +1009,32 @@
         <translation>rotação</translation>
     </message>
     <message>
+        <source>saturation</source>
+        <translation>saturação</translation>
+    </message>
+    <message>
         <source>scale</source>
         <translation>escala</translation>
     </message>
     <message>
         <source>screen</source>
         <translation>screen</translation>
+    </message>
+    <message>
+        <source>stretch to canvas</source>
+        <translation>esticar para o canvas</translation>
+    </message>
+    <message>
+        <source>top left</source>
+        <translation>sup. esquerdo</translation>
+    </message>
+    <message>
+        <source>top right</source>
+        <translation>sup. direito</translation>
+    </message>
+    <message>
+        <source>vertical</source>
+        <translation>vertical</translation>
     </message>
 </context>
 <context>

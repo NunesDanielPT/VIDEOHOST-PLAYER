@@ -46,6 +46,79 @@ float4 PSMain(VSOut i) : SV_Target {
 }
 )";
 
+// ---- Layers no canvas: malha (cantos/corner pin), efeitos de cor, máscara e blend
+constexpr char kLayerMeshShader[] = R"(
+cbuffer LayerFx : register(b0) {
+    float opacity;
+    uint mode;          // 0 normal, 1 add, 2 multiply, 3 screen
+    float2 flip;        // 1 = espelhar
+    float4 crop;        // esquerda, direita, cima, baixo (0..1)
+    float feather;
+    float brightness;
+    float contrast;
+    float saturation;
+    float gammaV;
+    float hue;          // radianos
+    float invert;
+    float pad;
+};
+Texture2D tex : register(t0);
+SamplerState smp : register(s0);
+
+struct VSIn { float2 pos : POSITION; float2 uv : TEXCOORD0; };
+struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
+
+VSOut VSMain(VSIn v) {
+    VSOut o;
+    o.pos = float4(v.pos.x * 2.0 - 1.0, 1.0 - v.pos.y * 2.0, 0.0, 1.0);
+    o.uv = v.uv;
+    return o;
+}
+
+float4 PSMain(VSOut i) : SV_Target {
+    float2 uv = i.uv;
+    if (flip.x > 0.5) uv.x = 1.0 - uv.x;
+    if (flip.y > 0.5) uv.y = 1.0 - uv.y;
+    float4 c = tex.Sample(smp, uv);
+    float3 rgb = c.rgb;
+    if (invert > 0.5) rgb = 1.0 - rgb;
+    rgb = (rgb - 0.5) * contrast + 0.5 + brightness;
+    float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
+    rgb = lerp(float3(luma, luma, luma), rgb, saturation);
+    if (abs(hue) > 0.0001) {
+        float3 k = float3(0.57735, 0.57735, 0.57735);
+        float ca = cos(hue), sa = sin(hue);
+        rgb = rgb * ca + cross(k, rgb) * sa + k * dot(k, rgb) * (1.0 - ca);
+    }
+    rgb = pow(saturate(rgb), 1.0 / gammaV);
+    // Máscara de recorte com contorno suave.
+    float f = max(feather, 0.0001);
+    float m = smoothstep(crop.x, crop.x + f, i.uv.x) * smoothstep(crop.y, crop.y + f, 1.0 - i.uv.x) *
+              smoothstep(crop.z, crop.z + f, i.uv.y) * smoothstep(crop.w, crop.w + f, 1.0 - i.uv.y);
+    float a = saturate(c.a * opacity * m);
+    if (mode == 2) return float4(lerp(float3(1, 1, 1), rgb, a), 1.0);
+    return float4(rgb * a, a); // alfa pré-multiplicado
+}
+)";
+
+struct alignas(16) LayerFx {
+    float opacity;
+    unsigned mode;
+    float flip[2];
+    float crop[4];
+    float feather;
+    float brightness;
+    float contrast;
+    float saturation;
+    float gamma;
+    float hue;
+    float invert;
+    float pad;
+};
+
+constexpr int kLayerGrid = 16;
+constexpr UINT kLayerMaxVerts = kLayerGrid * kLayerGrid * 6;
+
 // ---- Saídas: região do canvas + warp (malha) + soft-edge + brilho + test card
 constexpr char kOutputShader[] = R"(
 cbuffer OutParams : register(b0) {
@@ -228,8 +301,10 @@ bool Renderer::init(std::string* error) {
         log::info(std::string("GPU: ") + name);
     }
 
-    ComPtr<ID3DBlob> vsb, psb, ovsb, opsb;
-    if (!compile(kLayerShader, sizeof(kLayerShader) - 1, "VSMain", "vs_4_0", vsb, error) ||
+    ComPtr<ID3DBlob> vsb, psb, ovsb, opsb, lvsb, lpsb;
+    if (!compile(kLayerMeshShader, sizeof(kLayerMeshShader) - 1, "VSMain", "vs_4_0", lvsb, error) ||
+        !compile(kLayerMeshShader, sizeof(kLayerMeshShader) - 1, "PSMain", "ps_4_0", lpsb, error) ||
+        !compile(kLayerShader, sizeof(kLayerShader) - 1, "VSMain", "vs_4_0", vsb, error) ||
         !compile(kLayerShader, sizeof(kLayerShader) - 1, "PSMain", "ps_4_0", psb, error) ||
         !compile(kOutputShader, sizeof(kOutputShader) - 1, "VSMain", "vs_4_0", ovsb, error) ||
         !compile(kOutputShader, sizeof(kOutputShader) - 1, "PSMain", "ps_4_0", opsb, error))
@@ -242,12 +317,21 @@ bool Renderer::init(std::string* error) {
         FAILED(device_->CreatePixelShader(psb->GetBufferPointer(), psb->GetBufferSize(), nullptr, &ps_)) ||
         FAILED(device_->CreateVertexShader(ovsb->GetBufferPointer(), ovsb->GetBufferSize(), nullptr, &outVs_)) ||
         FAILED(device_->CreatePixelShader(opsb->GetBufferPointer(), opsb->GetBufferSize(), nullptr, &outPs_)) ||
+        FAILED(device_->CreateVertexShader(lvsb->GetBufferPointer(), lvsb->GetBufferSize(), nullptr, &layerVs_)) ||
+        FAILED(device_->CreatePixelShader(lpsb->GetBufferPointer(), lpsb->GetBufferSize(), nullptr, &layerPs_)) ||
         FAILED(device_->CreateInputLayout(layout, 2, ovsb->GetBufferPointer(), ovsb->GetBufferSize(), &outLayout_))) {
         if (error) *error = "falha a criar shaders";
         return false;
     }
+    D3D11_BUFFER_DESC vbd{};
+    vbd.ByteWidth = kLayerMaxVerts * sizeof(WarpVertex);
+    vbd.Usage = D3D11_USAGE_DYNAMIC;
+    vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    vbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     if (!makeCBuffer(device_.Get(), sizeof(Params), cbuffer_) ||
-        !makeCBuffer(device_.Get(), sizeof(OutParams), outCbuffer_)) {
+        !makeCBuffer(device_.Get(), sizeof(OutParams), outCbuffer_) ||
+        !makeCBuffer(device_.Get(), sizeof(LayerFx), layerCbuffer_) ||
+        FAILED(device_->CreateBuffer(&vbd, nullptr, &layerVb_))) {
         if (error) *error = "falha a criar constant buffers";
         return false;
     }
@@ -349,18 +433,61 @@ void Renderer::drawLayer(const GpuTexture& tex, const LayerProps& props, float e
     const float opacity = static_cast<float>(props.opacity) * extraOpacity;
     if (!tex.valid() || !current_ || opacity <= 0.0f) return;
     const int cw = current_->w, ch = current_->h;
-    const LayerQuad q = computeLayerQuad(props, tex.width, tex.height, cw, ch);
-    const double c = std::cos(q.rotationRad), s = std::sin(q.rotationRad);
-    const double local[4][2] = {{-q.halfW, -q.halfH}, {q.halfW, -q.halfH}, {-q.halfW, q.halfH}, {q.halfW, q.halfH}};
-    float corners[4][2];
-    for (int i = 0; i < 4; ++i) {
-        const double x = q.cx + local[i][0] * c - local[i][1] * s;
-        const double y = q.cy + local[i][0] * s + local[i][1] * c;
-        corners[i][0] = static_cast<float>(x / cw * 2.0 - 1.0);
-        corners[i][1] = static_cast<float>(1.0 - y / ch * 2.0);
-    }
+
+    // Cantos finais (ajuste, escala, posição, rotação, corner pin) -> malha por
+    // homografia, para a imagem não "partir" na diagonal com o corner pin.
+    const auto corners = computeLayerCorners(props, tex.width, tex.height, cw, ch);
+    OutputMapping m;
+    m.mode = WarpMode::Perspective;
+    for (std::size_t i = 0; i < 4; ++i) m.corners[i] = {corners[i].x / cw, corners[i].y / ch};
+    bool pinned = false;
+    for (const auto& c : props.cornerPin) pinned = pinned || c.x != 0.0 || c.y != 0.0;
+    const std::vector<WarpVertex> verts = buildWarpGrid(m, pinned ? kLayerGrid : 1);
+    if (verts.empty() || verts.size() > kLayerMaxVerts) return;
+
+    D3D11_MAPPED_SUBRESOURCE vm{};
+    if (FAILED(ctx_->Map(layerVb_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &vm))) return;
+    std::memcpy(vm.pData, verts.data(), verts.size() * sizeof(WarpVertex));
+    ctx_->Unmap(layerVb_.Get(), 0);
+
+    LayerFx fx{};
+    fx.opacity = std::clamp(opacity, 0.0f, 1.0f);
+    fx.mode = static_cast<unsigned>(props.blend);
+    fx.flip[0] = props.flipH ? 1.f : 0.f;
+    fx.flip[1] = props.flipV ? 1.f : 0.f;
+    fx.crop[0] = static_cast<float>(props.cropLeft);
+    fx.crop[1] = static_cast<float>(props.cropRight);
+    fx.crop[2] = static_cast<float>(props.cropTop);
+    fx.crop[3] = static_cast<float>(props.cropBottom);
+    fx.feather = static_cast<float>(props.feather);
+    fx.brightness = static_cast<float>(props.brightness);
+    fx.contrast = static_cast<float>(props.contrast);
+    fx.saturation = static_cast<float>(props.saturation);
+    fx.gamma = static_cast<float>(props.gamma);
+    fx.hue = static_cast<float>(props.hue * 3.14159265358979323846 / 180.0);
+    fx.invert = props.invert ? 1.f : 0.f;
+    D3D11_MAPPED_SUBRESOURCE cm{};
+    if (FAILED(ctx_->Map(layerCbuffer_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &cm))) return;
+    std::memcpy(cm.pData, &fx, sizeof(fx));
+    ctx_->Unmap(layerCbuffer_.Get(), 0);
+
     setBlend(props.blend, false);
-    drawQuad(tex.srv.Get(), corners, std::clamp(opacity, 0.0f, 1.0f), static_cast<unsigned>(props.blend));
+    const UINT stride = sizeof(WarpVertex), offset = 0;
+    ID3D11Buffer* vb = layerVb_.Get();
+    ID3D11Buffer* cb = layerCbuffer_.Get();
+    ID3D11ShaderResourceView* srv = tex.srv.Get();
+    ID3D11SamplerState* smp = sampler_.Get();
+    ctx_->IASetInputLayout(outLayout_.Get()); // mesmo formato de vértice das saídas
+    ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx_->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+    ctx_->VSSetShader(layerVs_.Get(), nullptr, 0);
+    ctx_->VSSetConstantBuffers(0, 1, &cb);
+    ctx_->PSSetShader(layerPs_.Get(), nullptr, 0);
+    ctx_->PSSetConstantBuffers(0, 1, &cb);
+    ctx_->PSSetShaderResources(0, 1, &srv);
+    ctx_->PSSetSamplers(0, 1, &smp);
+    ctx_->RSSetState(raster_.Get());
+    ctx_->Draw(static_cast<UINT>(verts.size()), 0);
 }
 
 void Renderer::drawQuad(ID3D11ShaderResourceView* srv, const float corners[4][2], float opacity, unsigned mode) {

@@ -7,6 +7,7 @@
 
 #include <QElapsedTimer>
 #include <QImage>
+#include <QPolygonF>
 #include <QTimer>
 #include <QWidget>
 
@@ -27,6 +28,8 @@ public:
 signals:
     // Deslocamento pedido pelo utilizador (píxeis do canvas).
     void layerDragged(double dx, double dy, bool finished);
+    // Arrastar um canto laranja = corner pin desse canto (0..3: sup-esq, sup-dir, inf-dir, inf-esq).
+    void cornerDragged(int corner, double dx, double dy, bool finished);
 
 protected:
     void paintEvent(QPaintEvent* e) override;
@@ -56,5 +59,7 @@ private:
     int selMediaH_ = 0;
     bool editable_ = true;
     bool dragging_ = false;
+    int dragCorner_ = -1;
     QPointF dragStart_;
+    QPolygonF handles_; // cantos da layer selecionada no ecrã (para o rato)
 };

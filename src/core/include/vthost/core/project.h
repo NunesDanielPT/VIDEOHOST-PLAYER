@@ -46,14 +46,43 @@ struct MediaItem {
     bool loops() const { return loopMode == LoopMode::Infinite; }
 };
 
+// Como a media se ajusta ao canvas (as "constraints" do Millumin).
+enum class FitMode {
+    Fit,     // cabe inteira no canvas, sem cortar (omissão)
+    Fill,    // enche o canvas, corta o que sobra
+    Stretch, // estica para o tamanho do canvas
+    Native,  // tamanho real em píxeis
+};
+const char* toString(FitMode m);
+FitMode fitModeFromString(const std::string& s);
+
 // Propriedades de uma layer que podem mudar ao vivo (Properties no Studio).
 struct LayerProps {
     double opacity = 1.0;  // 0..1
     BlendMode blend = BlendMode::Normal;
     double posX = 0.0;     // deslocamento em píxeis do canvas (0,0 = centrado)
     double posY = 0.0;
-    double scale = 1.0;    // 1 = encaixa no canvas mantendo a proporção; 0.01..10
+    double scale = 1.0;    // 1 = tamanho dado pelo ajuste (fit); 0.01..10
     double rotation = 0.0; // graus, -3600..3600
+    FitMode fit = FitMode::Fit;
+    bool flipH = false;
+    bool flipV = false;
+
+    // Mapping da layer (corner pin): deslocamento de cada canto em píxeis do
+    // canvas, por ordem sup-esq, sup-dir, inf-dir, inf-esq.
+    std::array<WarpPoint, 4> cornerPin{};
+
+    // Efeitos de cor.
+    double brightness = 0.0; // -1..1
+    double contrast = 1.0;   // 0..3
+    double saturation = 1.0; // 0..3
+    double gamma = 1.0;      // 0.2..5
+    double hue = 0.0;        // graus, -180..180
+    bool invert = false;
+
+    // Máscara: recorte de cada lado (fração da media, 0..1) com contorno suave.
+    double cropLeft = 0.0, cropRight = 0.0, cropTop = 0.0, cropBottom = 0.0;
+    double feather = 0.0; // 0..0.5
 
     friend bool operator==(const LayerProps&, const LayerProps&) = default;
     void clamp();
@@ -65,6 +94,10 @@ struct LayerQuad {
     double cx, cy, halfW, halfH, rotationRad;
 };
 LayerQuad computeLayerQuad(const LayerProps& p, int mediaW, int mediaH, int canvasW, int canvasH);
+
+// Os 4 cantos finais da layer em píxeis do canvas (sup-esq, sup-dir, inf-dir,
+// inf-esq): ajuste + escala + posição + rotação + corner pin.
+std::array<WarpPoint, 4> computeLayerCorners(const LayerProps& p, int mediaW, int mediaH, int canvasW, int canvasH);
 
 // Canvas: superfície de composição com resolução própria. Cada layer pertence a
 // um canvas; cada saída mostra uma região de um canvas.

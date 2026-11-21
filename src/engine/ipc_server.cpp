@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <vector>
 
 namespace vthost {
 namespace {
@@ -131,30 +132,36 @@ void IpcServer::serveClient(HANDLE pipe) {
         if (got == 0) continue;
         pending.append(buf, got);
 
-        std::size_t nl;
-        while ((nl = pending.find('\n')) != std::string::npos) {
-            std::string line = pending.substr(0, nl);
-            pending.erase(0, nl + 1);
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (line.empty()) continue;
-
-            std::future<std::string> fut;
-            {
+        // Todas as linhas completas vão para a fila de uma vez: o motor executa-as
+        // no mesmo frame (antes era uma por frame, o que acumulava atraso ao
+        // arrastar pontos de warp ou faders).
+        std::vector<std::future<std::string>> futures;
+        {
+            std::lock_guard lock(mutex_);
+            std::size_t nl;
+            while ((nl = pending.find('\n')) != std::string::npos) {
+                std::string line = pending.substr(0, nl);
+                pending.erase(0, nl + 1);
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                if (line.empty()) continue;
                 Request req;
                 req.line = std::move(line);
-                fut = req.reply.get_future();
-                std::lock_guard lock(mutex_);
+                futures.push_back(req.reply.get_future());
                 queue_.push_back(std::move(req));
             }
-            std::string reply;
-            if (fut.wait_for(std::chrono::seconds(5)) == std::future_status::ready) {
-                reply = fut.get();
-            } else {
-                reply = protocol::errorResponse("motor ocupado (timeout)");
-                log::warn("IPC: pedido sem resposta em 5 s");
+        }
+        if (!futures.empty()) {
+            std::string replies;
+            for (auto& fut : futures) {
+                if (fut.wait_for(std::chrono::seconds(5)) == std::future_status::ready) {
+                    replies += fut.get();
+                } else {
+                    replies += protocol::errorResponse("motor ocupado (timeout)");
+                    log::warn("IPC: pedido sem resposta em 5 s");
+                }
+                replies += '\n';
             }
-            reply += '\n';
-            if (!writeAll(pipe, reply)) return;
+            if (!writeAll(pipe, replies)) return;
         }
         if (pending.size() > protocol::kMaxLineBytes) {
             writeAll(pipe, protocol::errorResponse("mensagem demasiado grande") + "\n");

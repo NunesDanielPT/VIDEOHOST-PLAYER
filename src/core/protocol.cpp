@@ -1,6 +1,7 @@
 #include "vthost/core/protocol.h"
 
 #include "mapping_json.h"
+#include "props_json.h"
 
 #include <algorithm>
 #include <cmath>
@@ -72,13 +73,7 @@ ParsedCommand parseCommand(const std::string& line) {
                 r.error = "set_layer_props: faltam 'layer'/'props'";
                 return r;
             }
-            c.props.opacity = num(*pr, "opacity").value_or(1.0);
-            c.props.blend = blendModeFromString(str(*pr, "blend"));
-            c.props.posX = num(*pr, "x").value_or(0.0);
-            c.props.posY = num(*pr, "y").value_or(0.0);
-            c.props.scale = num(*pr, "scale").value_or(1.0);
-            c.props.rotation = num(*pr, "rotation").value_or(0.0);
-            c.props.clamp();
+            propsFromJson(*pr, c.props);
         } else if (cmd == "set_layer_visible") {
             c.type = CommandType::SetLayerVisible;
             c.layer = str(j, "layer");
@@ -173,13 +168,7 @@ std::string serializeCommand(const Command& c) {
     case CommandType::SetLayerProps:
         j = {{"cmd", "set_layer_props"},
              {"layer", c.layer},
-             {"props",
-              {{"opacity", c.props.opacity},
-               {"blend", toString(c.props.blend)},
-               {"x", c.props.posX},
-               {"y", c.props.posY},
-               {"scale", c.props.scale},
-               {"rotation", c.props.rotation}}}};
+             {"props", propsToJson(c.props)}};
         break;
     case CommandType::SetLayerVisible:
         j = {{"cmd", "set_layer_visible"}, {"layer", c.layer}, {"on", c.on}};

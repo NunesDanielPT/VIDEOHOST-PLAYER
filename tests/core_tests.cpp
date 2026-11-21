@@ -429,8 +429,70 @@ static void testMapping() {
     CHECK(pc.command && pc.command->canvas == "C2");
 }
 
+static void testLayerProps() {
+    LayerProps p;
+    p.fit = FitMode::Fill;
+    p.flipH = true;
+    p.cornerPin[2] = {12.5, -4};
+    p.brightness = 0.2;
+    p.contrast = 1.4;
+    p.saturation = 0;
+    p.gamma = 1.8;
+    p.hue = 90;
+    p.invert = true;
+    p.cropLeft = 0.1;
+    p.cropBottom = 0.25;
+    p.feather = 0.05;
+    // Projeto
+    Project pr = Project::makeDefault();
+    pr.layers[0].props = p;
+    auto r = parseProject(serializeProject(pr));
+    CHECK(r.project && r.project->layers[0].props == p);
+    // Protocolo
+    protocol::Command c;
+    c.type = protocol::CommandType::SetLayerProps;
+    c.layer = "L1";
+    c.props = p;
+    auto b = protocol::parseCommand(protocol::serializeCommand(c));
+    CHECK(b.command && b.command->props == p);
+    // Estado do show
+    ShowState st;
+    st.layers.push_back({"L1", "m", 1.0, p});
+    ShowState back;
+    CHECK(parseShowState(serializeShowState(st), back) && back.layers[0].props == p);
+    // Valores absurdos
+    LayerProps bad;
+    bad.contrast = 99;
+    bad.cropLeft = -1;
+    bad.feather = 3;
+    bad.clamp();
+    CHECK(bad.contrast == 3.0 && bad.cropLeft == 0.0 && bad.feather == 0.5);
+
+    // Ajustes: media 4:3 em canvas 16:9.
+    LayerProps f;
+    auto q = computeLayerQuad(f, 1440, 1080, 1920, 1080);
+    CHECK(q.halfW == 720 && q.halfH == 540);
+    f.fit = FitMode::Fill;
+    q = computeLayerQuad(f, 1440, 1080, 1920, 1080);
+    CHECK(q.halfW == 960 && q.halfH == 720);
+    f.fit = FitMode::Stretch;
+    q = computeLayerQuad(f, 1440, 1080, 1920, 1080);
+    CHECK(q.halfW == 960 && q.halfH == 540);
+    f.fit = FitMode::Native;
+    q = computeLayerQuad(f, 640, 360, 1920, 1080);
+    CHECK(q.halfW == 320 && q.halfH == 180);
+    // Cantos com corner pin.
+    LayerProps g;
+    g.fit = FitMode::Stretch;
+    g.cornerPin[1] = {10, 20};
+    auto cs = computeLayerCorners(g, 100, 100, 1920, 1080);
+    CHECK(near(cs[0].x, 0) && near(cs[0].y, 0) && near(cs[1].x, 1930) && near(cs[1].y, 20) && near(cs[2].x, 1920) &&
+          near(cs[3].y, 1080));
+}
+
 int main() {
     testMapping();
+    testLayerProps();
     testVersion();
     testTimelineAndQuad();
     testProjectRoundTrip();

@@ -846,7 +846,7 @@ void OutputsDialog::editMapping() {
         c.type = protocol::CommandType::SetOutputMapping;
         c.output = outId;
         c.mapping = m;
-        engine->send(c);
+        engine->sendLatest(QStringLiteral("map:") + QString::fromStdString(outId), c);
     };
     // O test card ajuda a alinhar: liga-se ao abrir o editor (e volta ao estado anterior no fim).
     const bool hadTestCard = testCard_->isChecked();

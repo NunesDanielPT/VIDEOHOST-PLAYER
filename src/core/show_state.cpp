@@ -2,6 +2,7 @@
 
 #include "vthost/core/atomic_file.h"
 #include "vthost/core/paths.h"
+#include "props_json.h"
 
 #include <algorithm>
 #include <cmath>
@@ -16,10 +17,11 @@ namespace vthost {
 std::string serializeShowState(const ShowState& s) {
     json layers = json::array();
     for (const auto& l : s.layers)
-        layers.push_back({{"layer", l.layerId}, {"media", l.mediaId}, {"position", l.positionSeconds},
-                          {"opacity", l.props.opacity}, {"blend", toString(l.props.blend)},
-                          {"x", l.props.posX}, {"y", l.props.posY}, {"scale", l.props.scale},
-                          {"rotation", l.props.rotation}});
+    {
+        json lj = propsToJson(l.props);
+        lj.update(json{{"layer", l.layerId}, {"media", l.mediaId}, {"position", l.positionSeconds}});
+        layers.push_back(std::move(lj));
+    }
     json j = {{"format", "vthost-show-state"},
               {"projectPath", s.projectPath},
               {"showMode", s.showMode},
@@ -52,13 +54,7 @@ bool parseShowState(const std::string& text, ShowState& out) {
                 lp.mediaId = l.value("media", "");
                 double pos = l.value("position", 0.0);
                 lp.positionSeconds = std::isfinite(pos) ? std::max(0.0, pos) : 0.0;
-                lp.props.opacity = l.value("opacity", 1.0);
-                lp.props.blend = blendModeFromString(l.value("blend", "normal"));
-                lp.props.posX = l.value("x", 0.0);
-                lp.props.posY = l.value("y", 0.0);
-                lp.props.scale = l.value("scale", 1.0);
-                lp.props.rotation = l.value("rotation", 0.0);
-                lp.props.clamp();
+                propsFromJson(l, lp.props);
                 if (!lp.layerId.empty()) s.layers.push_back(std::move(lp));
             }
         }

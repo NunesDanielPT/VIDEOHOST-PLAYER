@@ -147,19 +147,18 @@ void PreviewWidget::paintEvent(QPaintEvent*) {
     p.drawText(tagRect, Qt::AlignCenter, tag);
 
     // Contorno da layer selecionada.
+    handles_.clear();
     if (selection_) {
-        const LayerQuad q = computeLayerQuad(*selection_, selMediaW_, selMediaH_, canvasW_, canvasH_);
+        const auto corners = computeLayerCorners(*selection_, selMediaW_, selMediaH_, canvasW_, canvasH_);
         const double s = cr.width() / canvasW_;
-        const double c = std::cos(q.rotationRad), sn = std::sin(q.rotationRad);
-        const double local[4][2] = {{-q.halfW, -q.halfH}, {q.halfW, -q.halfH}, {q.halfW, q.halfH}, {-q.halfW, q.halfH}};
-        QPolygonF poly;
-        for (const auto& l : local)
-            poly << QPointF(cr.left() + (q.cx + l[0] * c - l[1] * sn) * s, cr.top() + (q.cy + l[0] * sn + l[1] * c) * s);
+        for (const auto& c : corners) handles_ << QPointF(cr.left() + c.x * s, cr.top() + c.y * s);
         p.setPen(QPen(kOrange, 1.5, Qt::DashLine));
-        p.drawPolygon(poly);
+        p.setBrush(Qt::NoBrush);
+        p.drawPolygon(handles_);
+        // Pegas dos cantos: arrastar = corner pin (mapping da layer).
+        p.setPen(QPen(Qt::black, 1));
         p.setBrush(kOrange);
-        p.setPen(Qt::NoPen);
-        for (const QPointF& pt : poly) p.drawRect(QRectF(pt.x() - 3, pt.y() - 3, 6, 6));
+        for (const QPointF& pt : handles_) p.drawRect(QRectF(pt.x() - 5, pt.y() - 5, 10, 10));
     }
 
     // Rodapé: resolução e fps.
@@ -177,7 +176,11 @@ void PreviewWidget::paintEvent(QPaintEvent*) {
 }
 
 void PreviewWidget::mousePressEvent(QMouseEvent* e) {
-    if (e->button() == Qt::LeftButton && editable_ && selection_ && canvasRect().contains(e->position())) {
+    if (e->button() != Qt::LeftButton || !editable_ || !selection_) return;
+    dragCorner_ = -1;
+    for (int i = 0; i < handles_.size(); ++i)
+        if (QLineF(handles_[i], e->position()).length() <= 9.0) dragCorner_ = i;
+    if (dragCorner_ >= 0 || canvasRect().contains(e->position())) {
         dragging_ = true;
         dragStart_ = e->position();
     }
@@ -189,7 +192,8 @@ void PreviewWidget::mouseMoveEvent(QMouseEvent* e) {
     if (cr.width() <= 0) return;
     const double s = canvasW_ / cr.width();
     const QPointF d = (e->position() - dragStart_) * s;
-    emit layerDragged(d.x(), d.y(), false);
+    if (dragCorner_ >= 0) emit cornerDragged(dragCorner_, d.x(), d.y(), false);
+    else emit layerDragged(d.x(), d.y(), false);
 }
 
 void PreviewWidget::mouseReleaseEvent(QMouseEvent* e) {
@@ -199,5 +203,7 @@ void PreviewWidget::mouseReleaseEvent(QMouseEvent* e) {
     if (cr.width() <= 0) return;
     const double s = canvasW_ / cr.width();
     const QPointF d = (e->position() - dragStart_) * s;
-    emit layerDragged(d.x(), d.y(), true);
+    if (dragCorner_ >= 0) emit cornerDragged(dragCorner_, d.x(), d.y(), true);
+    else emit layerDragged(d.x(), d.y(), true);
+    dragCorner_ = -1;
 }
