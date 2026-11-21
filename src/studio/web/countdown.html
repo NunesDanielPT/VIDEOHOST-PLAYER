@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>VTHOST · Countdown</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #eee;
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; user-select: none; }
+  #title { font-size: min(7vw, 9vh); color: #ccc; max-width: 94vw; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  #time { font-size: min(30vw, 48vh); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em; margin: 2vh 0; transition: color .3s; }
+  #next { font-size: min(5vw, 6vh); color: #999; min-height: 1.3em; max-width: 94vw; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  #bar { width: 90vw; height: max(6px, 1.6vh); background: #2a2a2a; border-radius: 99px; margin-top: 3vh; overflow: hidden; }
+  #fill { height: 100%; width: 0; background: currentColor; transition: background .3s; }
+  #foot { position: fixed; bottom: 1.2vh; left: 0; right: 0; font-size: 12px; color: #555; }
+  .warn { color: #ffaa00; } .danger { color: #ff463c; } .paused { color: #78b4ff; } .idle { color: #666; }
+  .danger.blink { animation: blink 1s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+  #offline { position: fixed; top: 0; left: 0; right: 0; background: #a00; color: #fff; padding: 6px;
+    font-size: 15px; display: none; }
+</style>
+</head>
+<body>
+<div id="offline"></div>
+<div id="title"></div>
+<div id="time" class="idle">--:--</div>
+<div id="next"></div>
+<div id="bar"><div id="fill"></div></div>
+<div id="foot">VTHOST</div>
+<script>
+(function () {
+  "use strict";
+  var pt = (navigator.language || "pt").toLowerCase().indexOf("pt") === 0;
+  var T = pt ? { next: "A seguir: ", paused: "Em pausa", idle: "Nada no ar", offline: "Sem ligação ao VTHOST…" }
+             : { next: "Next: ", paused: "Paused", idle: "Nothing on air", offline: "Not connected to VTHOST…" };
+  var WARN = 30, DANGER = 10;
+  var state = null, receivedAt = 0, failures = 0;
+  var el = function (id) { return document.getElementById(id); };
+
+  function fmt(s) {
+    if (!(s > 0)) s = 0;
+    var t = Math.ceil(s - 1e-6), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, x = t % 60;
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return (h > 0 ? h + ":" + p(m) : p(m)) + ":" + p(x);
+  }
+
+  function render() {
+    var time = el("time"), cls = "idle", text = "--:--", frac = 0, sub = "";
+    if (state && state.active) {
+      var dt = state.running ? (Date.now() - receivedAt) / 1000 : 0;
+      var elapsed = state.elapsed + dt, rem;
+      if (state.duration > 0) {
+        if (elapsed > state.duration) elapsed = state.loops ? elapsed % state.duration : state.duration;
+        rem = Math.max(0, state.duration - elapsed);
+        frac = Math.min(1, elapsed / state.duration);
+      } else {
+        rem = Math.max(0, state.remaining - dt);
+      }
+      text = "-" + fmt(rem);
+      cls = !state.running ? "paused" : rem <= DANGER ? "danger blink" : rem <= WARN ? "warn" : "";
+      if (!state.running) sub = T.paused;
+      else if (state.next) sub = T.next + state.next;
+    } else if (state) {
+      sub = T.idle;
+    }
+    time.textContent = text;
+    time.className = cls;
+    el("fill").style.width = (frac * 100).toFixed(2) + "%";
+    el("bar").className = cls.replace(" blink", "");
+    el("next").textContent = sub;
+    requestAnimationFrame(render);
+  }
+
+  function apply(s) {
+    state = s;
+    receivedAt = Date.now();
+    if (typeof s.warn === "number") WARN = s.warn;
+    if (typeof s.danger === "number") DANGER = s.danger;
+    var title = "";
+    if (s.mode === "timeline") title = s.cue || "";
+    else if (s.cueNumber > 0) title = (s.cueNumber < 10 ? "0" : "") + s.cueNumber + "  " + (s.cue || "");
+    el("title").textContent = title;
+    el("foot").textContent = "VTHOST" + (s.project ? " · " + s.project : "");
+    document.title = (s.active ? fmt(s.remaining) + " · " : "") + "VTHOST";
+  }
+
+  function poll() {
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 2000);
+    fetch("/api/countdown", { cache: "no-store", signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { return r.json(); })
+      .then(function (s) { failures = 0; el("offline").style.display = "none"; apply(s); })
+      .catch(function () {
+        if (++failures >= 3) { el("offline").textContent = T.offline; el("offline").style.display = "block"; }
+      })
+      .then(function () { clearTimeout(timer); setTimeout(poll, 250); });
+  }
+
+  // Ecrã ligado (telemóveis/tablets): pede para não apagar.
+  try { if (navigator.wakeLock) navigator.wakeLock.request("screen").catch(function () {}); } catch (e) {}
+  document.addEventListener("dblclick", function () {
+    var d = document.documentElement;
+    if (!document.fullscreenElement && d.requestFullscreen) d.requestFullscreen().catch(function () {});
+    else if (document.exitFullscreen) document.exitFullscreen();
+  });
+  poll();
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>

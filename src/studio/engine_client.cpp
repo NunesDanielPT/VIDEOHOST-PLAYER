@@ -10,7 +10,7 @@
 using namespace vthost;
 
 namespace {
-constexpr int kPollMs = 500;
+constexpr int kPollMs = 250; // estado do motor (countdown, barra de tempo)
 constexpr int kReconnectMs = 1000;
 constexpr qint64 kReplyTimeoutMs = 6000;
 } // namespace

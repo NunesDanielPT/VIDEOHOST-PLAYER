@@ -1,6 +1,8 @@
 #include "main_window.h"
 
 #include "app_info.h"
+#include "countdown_server.h"
+#include "countdown_view.h"
 #include "cue_dialog.h"
 #include "dashboard_table.h"
 #include "layer_header.h"
@@ -20,7 +22,10 @@
 #include <QComboBox>
 #include <QToolButton>
 #include <QCloseEvent>
+#include <QClipboard>
 #include <QDesktopServices>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -44,6 +49,8 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
 
 using namespace vthost;
@@ -86,6 +93,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     pushTimer_.setSingleShot(true);
     pushTimer_.setInterval(80);
     connect(&pushTimer_, &QTimer::timeout, this, &MainWindow::pushToEngine);
+
+    // Countdown: o servidor web responde com o estado interpolado no momento do pedido.
+    countdownServer_ = new CountdownServer(
+        [this] {
+            QByteArray j = QByteArray::fromStdString(countdownJson(currentCountdown(), project_.name));
+            if (j.endsWith('}')) {
+                j.chop(1);
+                j += ",\"warn\":" + QByteArray::number(prefs::countdownWarnSeconds()) +
+                     ",\"danger\":" + QByteArray::number(prefs::countdownDangerSeconds()) + "}";
+            }
+            return j;
+        },
+        this);
+    countdownClock_.start();
+    countdownTimer_.setInterval(100);
+    connect(&countdownTimer_, &QTimer::timeout, this, &MainWindow::refreshCountdown);
+    countdownTimer_.start();
 
     buildUi();
     buildMenus();
@@ -154,9 +178,14 @@ void MainWindow::buildUi() {
         c.on = on;
         engine_->send(c);
     });
+    countdownView_ = new CountdownView(true, workspace);
+    countdownView_->setFixedSize(250, 40);
+    connect(countdownView_, &CountdownView::doubleClicked, this, &MainWindow::openCountdownWindow);
     wbar->addWidget(new QLabel(tr("Canvas:"), workspace));
     wbar->addWidget(canvasSelect_);
     wbar->addStretch();
+    wbar->addWidget(countdownView_);
+    wbar->addSpacing(8);
     wbar->addWidget(testBtn);
     wbar->addWidget(outputsBtn);
     wl->addLayout(wbar);
@@ -326,6 +355,9 @@ void MainWindow::buildUi() {
     infoLabel_ = new QLabel(this);
     statusBar()->addWidget(engineLabel_);
     statusBar()->addWidget(infoLabel_, 1);
+    webLabel_ = new QLabel(this);
+    webLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    statusBar()->addPermanentWidget(webLabel_);
     onEngineConnection(false);
 }
 
@@ -375,6 +407,10 @@ void MainWindow::buildMenus() {
     aPrev->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Space));
     aPrev->setShortcutContext(Qt::ApplicationShortcut);
     show->addAction(tr("Stop all"), this, &MainWindow::stopAll);
+    show->addSeparator();
+    auto* aCountdown = show->addAction(tr("Countdown window"), this, &MainWindow::openCountdownWindow);
+    aCountdown->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
+    show->addAction(tr("Countdown on the network..."), this, &MainWindow::showCountdownWebInfo);
     show->addSeparator();
     showModeAction_ = show->addAction(tr("Show Mode (lock editing)"));
     showModeAction_->setCheckable(true);
@@ -1157,6 +1193,7 @@ void MainWindow::sendEngineSettings() {
 
 void MainWindow::applyPreferences() {
     sendEngineSettings();
+    applyCountdownServer();
     timelinePanel_->timeline()->setSnapEnabled(prefs::timelineSnap());
     timelinePanel_->timeline()->setFollowPlayhead(prefs::followPlayhead());
     refreshDashboard();
@@ -1234,6 +1271,7 @@ void MainWindow::stopEngine() {
 
 void MainWindow::onEngineConnection(bool connected) {
     engineLabel_->setText(connected ? tr("Engine: connected") : tr("Engine: offline"));
+    if (!connected) countdown_ = Countdown{};
     updateTransport();
     engineLabel_->setStyleSheet(connected ? QStringLiteral("color: #3c3; padding: 0 8px;")
                                           : QStringLiteral("color: #e44; padding: 0 8px;"));
@@ -1288,6 +1326,10 @@ void MainWindow::onEngineStatus() {
     preview_->setFps(s.fps);
     updateSelectionViews();
     updateTransport();
+    countdown_ = computeCountdown(project_, s, prefs::loopBoard());
+    countdownClock_.restart();
+    refreshCountdown();
+    updateCellProgress();
 
     QStringList problems;
     for (const auto& o : s.outputs)
@@ -1411,6 +1453,109 @@ void MainWindow::updateTransport() {
     transport_->setUnavailable(tr("No video on layer %1").arg(qs(layer.name)));
 }
 
+void MainWindow::updateCellProgress() {
+    if (!engine_->hasStatus() || activeColumn_ < 0 || activeColumn_ >= dashboard_->columnCount()) return;
+    const auto& s = engine_->lastStatus();
+    const auto& cells = project_.columns[static_cast<std::size_t>(activeColumn_)].cells;
+    for (int r = 0; r < dashboard_->rowCount() && r < static_cast<int>(project_.layers.size()); ++r) {
+        QTableWidgetItem* item = dashboard_->item(r, activeColumn_);
+        if (!item) continue;
+        double prog = -1.0;
+        const std::string& lid = project_.layers[static_cast<std::size_t>(r)].id;
+        auto cell = cells.find(lid);
+        for (const auto& ls : s.layers)
+            if (ls.id == lid && cell != cells.end() && ls.mediaId == cell->second && ls.duration > 0.0)
+                prog = std::clamp(ls.position / ls.duration, 0.0, 1.0);
+        const QVariant old = item->data(DashboardTable::kProgressRole);
+        if (!old.isValid() || std::abs(old.toDouble() - prog) > 0.002) item->setData(DashboardTable::kProgressRole, prog);
+    }
+}
+
+// ------------------------------------------------------------------ countdown
+
+Countdown MainWindow::currentCountdown() const {
+    if (!engine_->isConnected()) return {};
+    return advanceCountdown(countdown_, countdownClock_.elapsed() / 1000.0);
+}
+
+void MainWindow::refreshCountdown() {
+    const Countdown c = currentCountdown();
+    if (countdownView_) countdownView_->setCountdown(c);
+    if (countdownWindow_ && countdownWindow_->isVisible()) countdownWindow_->setCountdown(c);
+}
+
+void MainWindow::openCountdownWindow() {
+    if (!countdownWindow_) countdownWindow_ = new CountdownWindow(this);
+    countdownWindow_->setCountdown(currentCountdown());
+    countdownWindow_->show();
+    countdownWindow_->raise();
+    countdownWindow_->activateWindow();
+}
+
+void MainWindow::applyCountdownServer() {
+    const bool want = prefs::countdownWebEnabled();
+    const auto port = static_cast<quint16>(std::clamp(prefs::countdownWebPort(), 1024, 65535));
+    if (!want) {
+        countdownServer_->stop();
+        webLabel_->clear();
+        return;
+    }
+    if (!countdownServer_->isRunning() || countdownServer_->port() != port) {
+        QString err;
+        if (!countdownServer_->start(port, &err)) {
+            webLabel_->setText(tr("Countdown web: port %1 unavailable").arg(port));
+            webLabel_->setToolTip(err);
+            return;
+        }
+    }
+    const QStringList urls = countdownServer_->urls();
+    webLabel_->setText(tr("Countdown: %1").arg(urls.value(0)));
+    webLabel_->setToolTip(tr("Anyone on the same network can open this address in a browser:\n%1").arg(urls.join('\n')));
+}
+
+void MainWindow::showCountdownWebInfo() {
+    applyCountdownServer();
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Countdown on the network"));
+    auto* l = new QVBoxLayout(&dlg);
+    if (!countdownServer_->isRunning()) {
+        l->addWidget(new QLabel(prefs::countdownWebEnabled()
+                                    ? tr("The countdown page could not start on port %1. Choose another port in "
+                                         "Preferences → Countdown.").arg(prefs::countdownWebPort())
+                                    : tr("The countdown page is turned off. Turn it on in Preferences → Countdown."),
+                                &dlg));
+    } else {
+        const QStringList urls = countdownServer_->urls();
+        auto* text = new QLabel(tr("People on the same network (Wi-Fi or cable) can follow the countdown on a "
+                                   "phone, tablet or computer by opening this address in the browser:"),
+                                &dlg);
+        text->setWordWrap(true);
+        l->addWidget(text);
+        for (const QString& u : urls) {
+            auto* row = new QHBoxLayout;
+            auto* link = new QLabel(QStringLiteral("<a href=\"%1\" style=\"font-size:16pt\">%1</a>").arg(u), &dlg);
+            link->setOpenExternalLinks(true);
+            link->setTextInteractionFlags(Qt::TextBrowserInteraction);
+            auto* copy = new QPushButton(tr("Copy"), &dlg);
+            connect(copy, &QPushButton::clicked, &dlg, [u] { QApplication::clipboard()->setText(u); });
+            row->addWidget(link, 1);
+            row->addWidget(copy);
+            l->addLayout(row);
+        }
+        auto* hint = new QLabel(tr("If Windows asks, allow VTHOST Studio on private networks. "
+                                   "Double-click the page to go full screen."),
+                                &dlg);
+        hint->setWordWrap(true);
+        hint->setStyleSheet(QStringLiteral("color: gray;"));
+        l->addWidget(hint);
+    }
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    l->addWidget(buttons);
+    dlg.setMinimumWidth(480);
+    dlg.exec();
+}
+
 // ------------------------------------------------------------------ vista
 
 void MainWindow::refreshAll() {
@@ -1473,12 +1618,15 @@ void MainWindow::refreshDashboard() {
                 if (const MediaItem* m = project_.findMedia(it->second)) {
                     const QString path = qs(m->path);
                     item->setText(QFileInfo(path).completeBaseName());
-                    item->setToolTip(QDir::toNativeSeparators(path));
+                    QString tip = QDir::toNativeSeparators(path);
                     const MediaInfo info = media_->info(path);
-                    if (info.ok && !info.thumb.isNull()) item->setIcon(QIcon(QPixmap::fromImage(info.thumb)));
+                    if (info.ok && !info.thumb.isNull()) item->setData(DashboardTable::kThumbRole, info.thumb);
+                    else if (info.ready && !info.ok)
+                        tip += QStringLiteral("\n") + tr("No thumbnail (%1)").arg(info.error);
+                    item->setToolTip(tip);
                 }
             }
-            if (c == activeColumn_) item->setBackground(kActiveColumn.darker(220));
+            item->setData(DashboardTable::kActiveRole, c == activeColumn_);
             dashboard_->setItem(r, c, item);
         }
     }

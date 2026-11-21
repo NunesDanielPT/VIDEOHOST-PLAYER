@@ -63,6 +63,8 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [x] Barra de tempo no Workspace: decorrido/restante, saltar arrastando, pausa por layer
 - [x] Desfazer/refazer (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y), até 100 passos
 - [x] Lista de todos os atalhos nas Preferências
+- [x] Countdown (0.6.1): no Workspace, janela própria (ecrã inteiro para o palco) e página web na rede local
+- [x] Miniaturas nas células do Dashboard (como no Millumin), com barra de progresso na cue no ar
 
 ## Fase 3.5 — Áudio (0.7.0)
 - [ ] Som por layer (WASAPI), escolha da placa de som

@@ -20,6 +20,19 @@ namespace {
 constexpr int kThumbW = 192;
 constexpr int kThumbH = 108;
 
+// Imagens que o FFmpeg não abre (ex. alguns PNG/JPG): tenta pelo Qt.
+void qtImageFallback(const QString& path, MediaInfo& info) {
+    QImage img(path);
+    if (img.isNull()) return;
+    info.ok = true;
+    info.still = true;
+    info.duration = 0.0;
+    info.width = img.width();
+    info.height = img.height();
+    info.thumb = img.scaled(kThumbW, kThumbH, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    info.error.clear();
+}
+
 #ifdef VTHOST_HAVE_FFMPEG
 struct Deadline {
     QElapsedTimer timer;
@@ -44,6 +57,7 @@ MediaInfo probe(const QString& path) {
     const QByteArray p = path.toUtf8();
     if (avformat_open_input(&fmt, p.constData(), nullptr, nullptr) < 0) {
         info.error = QStringLiteral("open");
+        qtImageFallback(path, info);
         return info; // avformat_open_input liberta fmt em caso de erro
     }
     AVCodecContext* cc = nullptr;
@@ -59,7 +73,7 @@ MediaInfo probe(const QString& path) {
         AVStream* st = fmt->streams[si];
         cc = avcodec_alloc_context3(codec);
         if (!cc || avcodec_parameters_to_context(cc, st->codecpar) < 0) break;
-        cc->thread_count = 2;
+        cc->thread_count = 1; // um frame só: sem atraso de frame-threading
         if (avcodec_open2(cc, codec, nullptr) < 0) break;
 
         info.width = cc->width;
@@ -69,25 +83,41 @@ MediaInfo probe(const QString& path) {
         info.still = info.duration <= 0.05 || st->nb_frames == 1;
         if (info.still) info.duration = 0.0;
 
+        // Descodifica o primeiro frame a partir da posição actual (envia/recebe como
+        // manda a API do FFmpeg: um pacote pode não dar frame e um frame pode exigir vários).
+        auto decodeOne = [&]() -> bool {
+            for (int guard = 0; guard < 3000; ++guard) {
+                const int rr = av_read_frame(fmt, pkt);
+                if (rr < 0) break; // fim do ficheiro: drena abaixo
+                if (pkt->stream_index == si) {
+                    const int sr = avcodec_send_packet(cc, pkt);
+                    av_packet_unref(pkt);
+                    if (avcodec_receive_frame(cc, frame) >= 0) return true;
+                    if (sr < 0 && sr != AVERROR(EAGAIN)) continue; // pacote estragado: tenta o seguinte
+                } else {
+                    av_packet_unref(pkt);
+                }
+            }
+            avcodec_send_packet(cc, nullptr);
+            return avcodec_receive_frame(cc, frame) >= 0;
+        };
+
         // Miniatura a ~10% (evita o preto do primeiro frame), no máximo a 2 s.
+        bool got = false;
         if (!info.still && info.duration > 1.0) {
             const double at = std::min(2.0, info.duration * 0.1);
             const int64_t ts = (st->start_time != AV_NOPTS_VALUE ? st->start_time : 0) +
                                static_cast<int64_t>(at / av_q2d(st->time_base));
-            if (av_seek_frame(fmt, si, ts, AVSEEK_FLAG_BACKWARD) >= 0) avcodec_flush_buffers(cc);
+            if (av_seek_frame(fmt, si, ts, AVSEEK_FLAG_BACKWARD) >= 0) {
+                avcodec_flush_buffers(cc);
+                got = decodeOne();
+            }
+            if (!got) { // o salto falhou: volta ao início
+                av_seek_frame(fmt, si, st->start_time != AV_NOPTS_VALUE ? st->start_time : 0, AVSEEK_FLAG_BACKWARD);
+                avcodec_flush_buffers(cc);
+            }
         }
-
-        bool got = false;
-        int guard = 0;
-        while (!got && guard++ < 500 && av_read_frame(fmt, pkt) >= 0) {
-            if (pkt->stream_index == si && avcodec_send_packet(cc, pkt) >= 0)
-                got = avcodec_receive_frame(cc, frame) >= 0;
-            av_packet_unref(pkt);
-        }
-        if (!got) {
-            avcodec_send_packet(cc, nullptr);
-            got = avcodec_receive_frame(cc, frame) >= 0;
-        }
+        if (!got) got = decodeOne();
         if (!got || frame->width <= 0 || frame->height <= 0) break;
 
         const double s = std::min(static_cast<double>(kThumbW) / frame->width, static_cast<double>(kThumbH) / frame->height);
@@ -109,6 +139,7 @@ MediaInfo probe(const QString& path) {
     av_packet_free(&pkt);
     avcodec_free_context(&cc);
     avformat_close_input(&fmt);
+    if (!info.ok) qtImageFallback(path, info);
     if (!info.ok && info.error.isEmpty()) info.error = QStringLiteral("decode");
     return info;
 }

@@ -2,6 +2,7 @@
 // sai com código != 0 (o CTest/CI marca a build como falhada).
 
 #include "vthost/core/atomic_file.h"
+#include "vthost/core/countdown.h"
 #include "vthost/core/mapping.h"
 #include "vthost/core/preview.h"
 #include "vthost/core/project.h"
@@ -567,7 +568,51 @@ static void testCues() {
           sr.status->layers[0].paused);
 }
 
+static void testCountdown() {
+    Project p = Project::makeDefault();
+    p.media.push_back({"m1", "C:/v/Abertura.mp4", LoopMode::OnceFreeze});
+    p.media.push_back({"m2", "C:/v/loop.mov", LoopMode::Infinite});
+    const std::string l1 = p.layers[0].id, l2 = p.layers[1].id;
+    p.columns[0].cells[l1] = "m1";
+    p.columns[0].cells[l2] = "m2";
+    protocol::EngineStatus s;
+    CHECK(!computeCountdown(p, s, false).active); // nada no ar
+    s.activeColumn = 0;
+    s.layers.push_back({l1, "m1", "playing", 20.0, "", 80.0, false});
+    s.layers.push_back({l2, "m2", "playing", 5.0, "", 10.0, false});
+    auto c = computeCountdown(p, s, false);
+    CHECK(c.active && c.mode == "cue" && c.remaining == 60.0 && c.duration == 80.0 && c.running);
+    CHECK(c.mediaName == "Abertura" && c.cueNumber == 1 && c.nextName == p.columns[1].name && !c.loops);
+    auto a = advanceCountdown(c, 2.5);
+    CHECK(std::abs(a.remaining - 57.5) < 1e-9);
+    CHECK(advanceCountdown(c, 500).remaining == 0.0);
+    s.layers[0].paused = true;
+    CHECK(!computeCountdown(p, s, false).running);
+    CHECK(advanceCountdown(computeCountdown(p, s, false), 3).remaining == 60.0);
+    // Cue com tempo: conta até à cue seguinte.
+    p.columns[0].follow = FollowMode::Timer;
+    p.columns[0].followSeconds = 30.0;
+    s.activeColumnTime = 12.0;
+    c = computeCountdown(p, s, false);
+    CHECK(c.mode == "timer" && c.remaining == 18.0);
+    // Última cue sem loop: sem "a seguir".
+    s.activeColumn = 3;
+    CHECK(computeCountdown(p, s, false).nextName.empty());
+    // Timeline.
+    s.timelineId = "T1";
+    if (p.timelines.empty()) p.timelines.push_back({"T1", "Timeline 1", {}, {}});
+    p.timelines[0].clips.push_back({"c1", l1, "m1", 0.0, 40.0});
+    s.timelineTime = 10.0;
+    s.timelinePlaying = true;
+    c = computeCountdown(p, s, false);
+    CHECK(c.mode == "timeline" && c.remaining == 30.0);
+    CHECK(formatCountdown(0.2) == "00:01" && formatCountdown(61) == "01:01" && formatCountdown(3725) == "1:02:05");
+    CHECK(formatCountdown(-4) == "00:00" && formatCountdown(std::nan("")) == "00:00");
+    CHECK(countdownJson(c, "Show").find("\"remaining\":30") != std::string::npos);
+}
+
 int main() {
+    testCountdown();
     testCues();
     testMapping();
     testLayerProps();

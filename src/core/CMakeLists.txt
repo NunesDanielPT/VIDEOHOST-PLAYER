@@ -1,6 +1,7 @@
 # Núcleo portátil: sem Windows, sem Qt. Partilhado por motor, watchdog e Studio.
 add_library(vthost_core STATIC
     atomic_file.cpp
+    countdown.cpp
     log.cpp
     mapping.cpp
     paths.cpp

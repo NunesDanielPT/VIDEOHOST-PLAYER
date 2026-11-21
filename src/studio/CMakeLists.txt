@@ -37,6 +37,10 @@ qt_add_executable(vthost-studio WIN32
     properties_panel.h
     timeline_panel.cpp
     timeline_panel.h
+    countdown_server.cpp
+    countdown_server.h
+    countdown_view.cpp
+    countdown_view.h
     cue_dialog.cpp
     cue_dialog.h
     transport_bar.cpp
@@ -56,6 +60,12 @@ qt_add_resources(vthost-studio "branding"
     PREFIX "/branding"
     BASE "${CMAKE_SOURCE_DIR}/assets/logo"
     FILES "${CMAKE_SOURCE_DIR}/assets/logo/vthost-icon-256.png" "${CMAKE_SOURCE_DIR}/assets/logo/vthost-logo.png")
+
+# Página do countdown servida na rede local (Show → Countdown na rede).
+qt_add_resources(vthost-studio "web"
+    PREFIX "/web"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/web"
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/web/countdown.html")
 
 # Miniaturas e duração das media: o Studio usa as mesmas DLLs do FFmpeg que o motor.
 find_package(FFmpeg QUIET)

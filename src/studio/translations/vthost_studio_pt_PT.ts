@@ -2,6 +2,29 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="pt_PT" sourcelanguage="en">
 <context>
+    <name>CountdownView</name>
+    <message>
+        <source>Countdown of what is on air. Double-click to open the countdown window.</source>
+        <translation>Countdown do que está no ar. Duplo clique para abrir a janela de countdown.</translation>
+    </message>
+    <message>
+        <source>Next: %1</source>
+        <translation>A seguir: %1</translation>
+    </message>
+    <message>
+        <source>Nothing on air</source>
+        <translation>Nada no ar</translation>
+    </message>
+    <message>
+        <source>Paused</source>
+        <translation>Em pausa</translation>
+    </message>
+    <message>
+        <source>VTHOST - Countdown</source>
+        <translation>VTHOST - Countdown</translation>
+    </message>
+</context>
+<context>
     <name>CueDialog</name>
     <message>
         <source> s</source>
@@ -186,6 +209,12 @@
         <translation>Adicionar media...</translation>
     </message>
     <message>
+        <source>Anyone on the same network can open this address in a browser:
+%1</source>
+        <translation>Qualquer pessoa na mesma rede pode abrir este endereço no browser:
+%1</translation>
+    </message>
+    <message>
         <source>At the end of the media</source>
         <translation>No fim da media</translation>
     </message>
@@ -222,6 +251,10 @@
         <translation>Ligado a um espetáculo em curso.</translation>
     </message>
     <message>
+        <source>Copy</source>
+        <translation>Copiar</translation>
+    </message>
+    <message>
         <source>Could not open the project:
 %1</source>
         <translation>Não foi possível abrir o projeto:
@@ -244,6 +277,26 @@
     <message>
         <source>Could not write live project: %1</source>
         <translation>Não foi possível escrever o projeto ao vivo: %1</translation>
+    </message>
+    <message>
+        <source>Countdown on the network</source>
+        <translation>Countdown na rede</translation>
+    </message>
+    <message>
+        <source>Countdown on the network...</source>
+        <translation>Countdown na rede...</translation>
+    </message>
+    <message>
+        <source>Countdown web: port %1 unavailable</source>
+        <translation>Countdown web: porta %1 indisponível</translation>
+    </message>
+    <message>
+        <source>Countdown window</source>
+        <translation>Janela de countdown</translation>
+    </message>
+    <message>
+        <source>Countdown: %1</source>
+        <translation>Countdown: %1</translation>
     </message>
     <message>
         <source>Cue %1</source>
@@ -346,6 +399,10 @@
         <translation>Esconder layer</translation>
     </message>
     <message>
+        <source>If Windows asks, allow VTHOST Studio on private networks. Double-click the page to go full screen.</source>
+        <translation>Se o Windows perguntar, permita o VTHOST Studio em redes privadas. Duplo clique na página para ecrã inteiro.</translation>
+    </message>
+    <message>
         <source>Insert column after</source>
         <translation>Inserir coluna depois</translation>
     </message>
@@ -402,6 +459,10 @@
         <translation>Ainda não foi publicada nenhuma versão.</translation>
     </message>
     <message>
+        <source>No thumbnail (%1)</source>
+        <translation>Sem miniatura (%1)</translation>
+    </message>
+    <message>
         <source>No video on layer %1</source>
         <translation>Sem vídeo na layer %1</translation>
     </message>
@@ -424,6 +485,10 @@
     <message>
         <source>Outputs...</source>
         <translation>Saídas...</translation>
+    </message>
+    <message>
+        <source>People on the same network (Wi-Fi or cable) can follow the countdown on a phone, tablet or computer by opening this address in the browser:</source>
+        <translation>Quem estiver na mesma rede (Wi-Fi ou cabo) pode acompanhar o countdown no telemóvel, tablet ou computador abrindo este endereço no browser:</translation>
     </message>
     <message>
         <source>Place selected media</source>
@@ -548,6 +613,14 @@
     <message>
         <source>Test card</source>
         <translation>Test card</translation>
+    </message>
+    <message>
+        <source>The countdown page could not start on port %1. Choose another port in Preferences → Countdown.</source>
+        <translation>Não foi possível iniciar a página do countdown na porta %1. Escolha outra porta em Preferências → Countdown.</translation>
+    </message>
+    <message>
+        <source>The countdown page is turned off. Turn it on in Preferences → Countdown.</source>
+        <translation>A página do countdown está desligada. Ligue-a em Preferências → Countdown.</translation>
     </message>
     <message>
         <source>The project has unsaved changes. Save them?</source>
@@ -1171,6 +1244,10 @@
 <context>
     <name>SettingsDialog</name>
     <message>
+        <source> s</source>
+        <translation> s</translation>
+    </message>
+    <message>
         <source>%1 + arrow keys</source>
         <translation>%1 + setas</translation>
     </message>
@@ -1263,6 +1340,18 @@
         <translation>Profundidade de cor:</translation>
     </message>
     <message>
+        <source>Countdown</source>
+        <translation>Countdown</translation>
+    </message>
+    <message>
+        <source>Countdown window</source>
+        <translation>Janela de countdown</translation>
+    </message>
+    <message>
+        <source>Countdown window full screen</source>
+        <translation>Janela de countdown em ecrã inteiro</translation>
+    </message>
+    <message>
         <source>Created by %1</source>
         <translation>Criado por %1</translation>
     </message>
@@ -1289,6 +1378,10 @@
     <message>
         <source>Double-click on the layer name</source>
         <translation>Duplo clique no nome da layer</translation>
+    </message>
+    <message>
+        <source>Double-click or %1</source>
+        <translation>Duplo clique ou %1</translation>
     </message>
     <message>
         <source>Duration of images dropped on the timeline:</source>
@@ -1387,6 +1480,10 @@
         <translation>Desligado</translation>
     </message>
     <message>
+        <source>Open Show → Countdown on the network to see the address (e.g. http://192.168.1.20:8088). The page is read-only: it cannot control the show. The countdown shows the time left of the longest video in the cue on air, or the time until the next cue when the cue advances after a fixed time.</source>
+        <translation>Abra Show → Countdown na rede para ver o endereço (ex. http://192.168.1.20:8088). A página é só de leitura: não controla o show. O countdown mostra o tempo que falta do vídeo mais longo da cue no ar, ou o tempo até à cue seguinte quando a cue avança ao fim de um tempo fixo.</translation>
+    </message>
+    <message>
         <source>Open project</source>
         <translation>Abrir projeto</translation>
     </message>
@@ -1395,12 +1492,20 @@
         <translation>Abrir o último projeto ao arrancar</translation>
     </message>
     <message>
+        <source>Orange when less than:</source>
+        <translation>Laranja quando faltar menos de:</translation>
+    </message>
+    <message>
         <source>Outputs and canvases</source>
         <translation>Saídas e canvas</translation>
     </message>
     <message>
         <source>Place the selected media in a cell</source>
         <translation>Pôr a media selecionada numa célula</translation>
+    </message>
+    <message>
+        <source>Port:</source>
+        <translation>Porta:</translation>
     </message>
     <message>
         <source>Preferences</source>
@@ -1413,6 +1518,10 @@
     <message>
         <source>Quit</source>
         <translation>Sair</translation>
+    </message>
+    <message>
+        <source>Red when less than:</source>
+        <translation>Vermelho quando faltar menos de:</translation>
     </message>
     <message>
         <source>Redo</source>
@@ -1469,6 +1578,10 @@
     <message>
         <source>Show the column index</source>
         <translation>Mostrar o número das colunas</translation>
+    </message>
+    <message>
+        <source>Show the countdown on a web page for the local network</source>
+        <translation>Mostrar o countdown numa página web para a rede local</translation>
     </message>
     <message>
         <source>Show the outline of the selected layer</source>

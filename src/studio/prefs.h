@@ -43,6 +43,12 @@ inline bool vsync() { return get("engine/vsync", true); }
 inline int previewFps() { return get("engine/previewFps", 30); }
 inline QString enginePriority() { return get("engine/priority", QStringLiteral("above_normal")); }
 
+// Countdown
+inline double countdownWarnSeconds() { return get("countdown/warnSeconds", 30.0); }   // laranja
+inline double countdownDangerSeconds() { return get("countdown/dangerSeconds", 10.0); } // vermelho
+inline bool countdownWebEnabled() { return get("countdown/webEnabled", true); }
+inline int countdownWebPort() { return get("countdown/webPort", 8088); }
+
 // Show Mode
 inline bool confirmLeaveShowMode() { return get("show/confirmLeave", true); }
 

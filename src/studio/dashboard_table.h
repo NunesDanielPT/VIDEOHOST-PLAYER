@@ -7,6 +7,11 @@
 class DashboardTable : public QTableWidget {
     Q_OBJECT
 public:
+    // Dados de cada célula (além do texto = nome da media).
+    static constexpr int kThumbRole = Qt::UserRole + 1;    // QImage: miniatura
+    static constexpr int kActiveRole = Qt::UserRole + 2;   // bool: coluna no ar
+    static constexpr int kProgressRole = Qt::UserRole + 3; // double 0..1 (-1 = sem barra)
+
     explicit DashboardTable(QWidget* parent = nullptr);
     void setEditable(bool editable) { editable_ = editable; }
 

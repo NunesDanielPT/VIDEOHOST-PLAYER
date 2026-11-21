@@ -189,6 +189,27 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab) : QDialog(parent
         tabs->addTab(page, tr("Updates"));
     }
 
+    // ---- Countdown (Workspace, janela de countdown e página web na rede local)
+    {
+        auto* page = new QWidget(tabs);
+        auto* f = new QFormLayout(page);
+        f->addRow(tr("Orange when less than:"), dspin(page, "countdown/warnSeconds", 30.0, 0.0, 3600.0, tr(" s")));
+        f->addRow(tr("Red when less than:"), dspin(page, "countdown/dangerSeconds", 10.0, 0.0, 3600.0, tr(" s")));
+        f->addRow(QString(), check(page, tr("Show the countdown on a web page for the local network"),
+                                   "countdown/webEnabled", true));
+        auto* port = new QSpinBox(page);
+        port->setRange(1024, 65535);
+        port->setValue(prefs::countdownWebPort());
+        savers_.push_back([port] { prefs::set("countdown/webPort", port->value()); });
+        f->addRow(tr("Port:"), port);
+        f->addRow(QString(), note(tr("Open Show → Countdown on the network to see the address (e.g. "
+                                     "http://192.168.1.20:8088). The page is read-only: it cannot control the show. "
+                                     "The countdown shows the time left of the longest video in the cue on air, "
+                                     "or the time until the next cue when the cue advances after a fixed time."),
+                                  page));
+        tabs->addTab(page, tr("Countdown"));
+    }
+
     // ---- Atalhos (só leitura): todos os atalhos do VTHOST Studio.
     {
         auto* page = new QWidget(tabs);
@@ -220,6 +241,8 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab) : QDialog(parent
         row(gShow, tr("GO previous cue"), keys(QKeySequence(Qt::ALT | Qt::Key_Space)));
         row(gShow, tr("GO without transition (cut)"), tr("%1 + click on a column / GO").arg(shift));
         row(gShow, tr("Show Mode (lock editing)"), keys(QKeySequence(Qt::CTRL | Qt::Key_L)));
+        row(gShow, tr("Countdown window"), keys(QKeySequence(Qt::CTRL | Qt::Key_T)));
+        row(gShow, tr("Countdown window full screen"), tr("Double-click or %1").arg(keys(QKeySequence(Qt::Key_F11))));
 
         auto* gFile = group(tr("File"));
         row(gFile, tr("New project"), keys(QKeySequence(QKeySequence::New)));

@@ -103,3 +103,13 @@ Ambos são recusados com uma timeline activa. O estado traz `duration` e `paused
 
 Desfazer/refazer no Studio: instantâneos JSON do projeto (máx. 100), alterações a menos
 de 400 ms umas das outras ficam num só passo; desativado em Show Mode.
+
+## Countdown
+
+`computeCountdown()` (núcleo, testado) decide o que se conta a partir do estado do motor:
+timeline → até ao fim do último clip; cue com avanço por tempo → até à cue seguinte;
+senão → o vídeo com mais tempo por tocar entre as layers da cue. O Studio interpola entre
+estados (`advanceCountdown`) e mostra-o no Workspace, na janela de countdown (Ctrl+T) e numa
+página web servida pelo próprio Studio (`CountdownServer`, QTcpServer, só GET, máx. 64
+ligações, porta 8088 por omissão): `GET /` (página em `src/studio/web/countdown.html`) e
+`GET /api/countdown` (JSON). O motor não é tocado: se o Studio fechar, só a página pára.

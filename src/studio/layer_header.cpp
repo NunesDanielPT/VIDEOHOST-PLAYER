@@ -106,6 +106,7 @@ LayerHeader::LayerHeader(QWidget* parent) : QHeaderView(Qt::Vertical, parent) {
     setHighlightSections(true);
     setDefaultAlignment(Qt::AlignVCenter | Qt::AlignLeft);
     setMinimumWidth(170);
+    setDefaultSectionSize(78); // altura das linhas do Dashboard (miniaturas)
 }
 
 void LayerHeader::setStates(std::vector<RowState> states) {

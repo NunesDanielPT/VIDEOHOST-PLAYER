@@ -8,6 +8,7 @@
 //   └─────────────────────────────────────────────────────┘
 
 #include "engine_client.h"
+#include "vthost/core/countdown.h"
 #include "update_checker.h"
 #include "vthost/core/project.h"
 
@@ -31,6 +32,9 @@ class QSplitter;
 class QTabWidget;
 class TimelinePanel;
 class TransportBar;
+class CountdownView;
+class CountdownWindow;
+class CountdownServer;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -111,6 +115,14 @@ private:
 
     // Barra de tempo do Workspace
     void updateTransport();
+    void updateCellProgress();
+
+    // Countdown (Workspace, janela própria e página web na rede local)
+    vthost::Countdown currentCountdown() const;
+    void refreshCountdown();
+    void openCountdownWindow();
+    void showCountdownWebInfo();
+    void applyCountdownServer();
 
     // Show
     void go(int column);
@@ -167,6 +179,9 @@ private:
     QElapsedTimer lastUndoPush_;  // agrupa alterações seguidas (ex. arrastar um valor)
     bool restoring_ = false;
     std::string transportLayer_;  // layer controlada pela barra de tempo
+    vthost::Countdown countdown_; // último estado (do motor)
+    QElapsedTimer countdownClock_; // tempo desde esse estado (interpolação)
+    QTimer countdownTimer_;
 
     QSplitter* mainSplit_ = nullptr;
     QSplitter* topSplit_ = nullptr;
@@ -179,6 +194,10 @@ private:
     LayerHeader* layerHeader_ = nullptr;
     TimelinePanel* timelinePanel_ = nullptr;
     TransportBar* transport_ = nullptr;
+    CountdownView* countdownView_ = nullptr;
+    CountdownWindow* countdownWindow_ = nullptr;
+    CountdownServer* countdownServer_ = nullptr;
+    QLabel* webLabel_ = nullptr;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;
     QLabel* engineLabel_ = nullptr;
