@@ -1,0 +1,9 @@
+build/
+out/
+dist/
+third_party/
+.vs/
+.vscode/
+*.user
+CMakeUserPresets.json
+*.dmp

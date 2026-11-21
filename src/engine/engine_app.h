@@ -1,0 +1,81 @@
+#pragma once
+
+#include "ipc_server.h"
+#include "layer_player.h"
+#include "output_window.h"
+#include "renderer.h"
+#include "vthost/core/heartbeat.h"
+#include "vthost/core/project.h"
+#include "vthost/core/protocol.h"
+
+#include <chrono>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace vthost {
+
+// Códigos de saída do motor (o watchdog usa-os para decidir o que fazer).
+enum EngineExit : int {
+    kExitRequested = 0,     // shutdown pedido: não relançar
+    kExitTooManyErrors = 3, // falhas seguidas no render loop
+    kExitDeviceLost = 4,    // GPU/driver perdido: relançar recria o dispositivo
+    kExitInitFailed = 5,
+    kExitAlreadyRunning = 10,
+};
+
+class EngineApp {
+public:
+    struct Options {
+        std::string projectPath;
+        bool recover = false;
+    };
+
+    ~EngineApp();
+    int run(const Options& options);
+
+private:
+    using Clock = std::chrono::steady_clock;
+
+    bool initHeartbeat();
+    void beat();
+    void setRunState(EngineRunState s);
+
+    std::string handle(const std::string& line);
+    bool loadProject(const std::string& path, std::string* error);
+    bool go(int column, std::string* error);
+    void stopAll(double fade);
+    void syncLayers();
+    void syncOutputs();
+    void recover();
+    void renderFrame();
+    void saveStateIfDue(bool force = false);
+    protocol::EngineStatus buildStatus() const;
+
+    Renderer renderer_;
+    IpcServer ipc_;
+    Project project_;
+    std::string projectPath_;
+    std::vector<std::unique_ptr<OutputWindow>> outputs_;
+    std::map<std::string, std::unique_ptr<LayerPlayer>> players_;
+    std::map<std::string, double> layerOpacity_;
+    std::vector<std::string> warnings_;
+    bool showMode_ = false;
+    int activeColumn_ = -1;
+    bool running_ = true;
+    int exitCode_ = kExitRequested;
+    bool recovered_ = false;
+
+    HANDLE heartbeatMapping_ = nullptr;
+    HeartbeatBlock* heartbeat_ = nullptr;
+
+    Clock::time_point startTime_ = Clock::now();
+    Clock::time_point lastStateSave_{};
+    Clock::time_point lastMonitorCheck_{};
+    Clock::time_point fpsWindowStart_ = Clock::now();
+    int fpsFrames_ = 0;
+    double fps_ = 0.0;
+};
+
+} // namespace vthost

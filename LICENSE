@@ -1,0 +1,15 @@
+Copyright (c) 2026 Daniel Nunes (github.com/NunesDanielPT)
+Todos os direitos reservados. / All rights reserved.
+
+Este código é publicado apenas para consulta. Não é concedida nenhuma licença
+para copiar, modificar, distribuir ou usar este software sem autorização
+escrita do autor.
+
+This source code is published for reference only. No license is granted to
+copy, modify, distribute or use this software without written permission from
+the author.
+
+Componentes de terceiros / Third-party components:
+- FFmpeg (LGPL 2.1+), distribuído como DLLs separadas e não modificadas.
+- Qt 6 (LGPL 3), distribuído como DLLs separadas.
+- nlohmann/json (MIT).
