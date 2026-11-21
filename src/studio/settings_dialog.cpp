@@ -1,5 +1,7 @@
 #include "settings_dialog.h"
 
+#include <QApplication>
+
 #include "app_info.h"
 #include "engine_client.h"
 #include "prefs.h"
@@ -97,9 +99,9 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         language_->setCurrentIndex(std::max(0, language_->findData(initialLanguage_)));
         f->addRow(tr("Language:"), language_);
         f->addRow(QString(), check(page, tr("Open the last project at startup"), "general/openLastProject", true));
-        f->addRow(QString(), check(page, tr("Start the engine when VTHOST Studio opens"), "general/autoStartEngine", true));
+        f->addRow(QString(), check(page, tr("Start the engine when VIDEOHOST PLAYER opens"), "general/autoStartEngine", true));
         f->addRow(QString(), check(page, tr("Ask before quitting"), "general/confirmQuit", true));
-        f->addRow(QString(), note(tr("Closing VTHOST Studio never stops the engine: the show keeps running."), page));
+        f->addRow(QString(), note(tr("Closing VIDEOHOST PLAYER never stops the engine: the show keeps running."), page));
         tabs->addTab(page, tr("General"));
     }
 
@@ -232,7 +234,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         savers_.push_back([nic] { prefs::set("countdown/bindAddress", nic->currentData().toString()); });
         f->addRow(tr("Network card:"), nic);
         f->addRow(QString(), note(tr("Only this network card is used: people on the other networks of this PC "
-                                     "(e.g. a control system) cannot reach VTHOST."),
+                                     "(e.g. a control system) cannot reach VIDEOHOST PLAYER."),
                                   page));
         auto* web = new QLabel(QStringLiteral("<b>%1</b>").arg(tr("Countdown web page")), page);
         f->addRow(web);
@@ -249,7 +251,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         tabs->addTab(page, tr("Network"));
     }
 
-    // ---- Atalhos (só leitura): todos os atalhos do VTHOST Studio.
+    // ---- Atalhos (só leitura): todos os atalhos do VIDEOHOST PLAYER.
     {
         auto* page = new QWidget(tabs);
         auto* vl = new QVBoxLayout(page);
@@ -321,6 +323,8 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         auto* al = new QVBoxLayout(about);
         auto* title = new QLabel(about);
         title->setPixmap(QPixmap(QStringLiteral(":/branding/vthost-logo.png")).scaledToWidth(380, Qt::SmoothTransformation));
+        auto* appName = new QLabel(appinfo::kName, about);
+        appName->setStyleSheet(QStringLiteral("font-size: 20px; font-weight: bold; letter-spacing: 2px;"));
         auto* version = new QLabel(tr("Version %1").arg(appinfo::kVersion), about);
         auto* desc = new QLabel(tr("Media server and video player for live shows."), about);
         auto* author = new QLabel(tr("Created by %1").arg(QStringLiteral("<b>%1</b>").arg(appinfo::kAuthor)), about);
@@ -344,6 +348,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         for (QLabel* l : {title, version, desc, author, links, copyright, thirdParty}) l->setAlignment(Qt::AlignHCenter);
         al->addStretch();
         al->addWidget(title);
+        al->addWidget(appName);
         al->addWidget(version);
         al->addSpacing(6);
         al->addWidget(desc);
@@ -376,8 +381,12 @@ void SettingsDialog::apply() {
     const QString lang = language_->currentData().toString();
     if (lang != initialLanguage_) {
         QSettings().setValue(kLanguageKey, lang);
-        QMessageBox::information(this, tr("Language"),
-                                 tr("The language will change the next time VTHOST Studio starts."));
+        // A interface só muda de língua ao reabrir: oferece reabrir já (o motor e o show continuam).
+        if (QMessageBox::question(this, tr("Language"),
+                                  tr("The language changes when VIDEOHOST PLAYER opens again. Restart it now? "
+                                     "The engine and the show keep running."),
+                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes) == QMessageBox::Yes)
+            qApp->setProperty("vthostRestart", true);
     }
     emit preferencesChanged();
 }

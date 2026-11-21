@@ -1,6 +1,8 @@
-<p align="center"><img src="assets/logo/vthost-logo.png" alt="VTHOST" width="560"></p>
+<p align="center"><img src="assets/logo/vthost-logo.png" alt="VIDEOHOST PLAYER" width="560"></p>
 
-# VTHOST
+# VIDEOHOST PLAYER
+
+*(antes / formerly VTHOST)*
 
 **PT** · Player de vídeo para espetáculos (playlist de cues, estilo Mitti), em Windows. Feito para **nunca deixar o ecrã cair**: o motor de playback corre num processo próprio, é vigiado por um watchdog e retoma o show automaticamente se alguma coisa falhar.
 
@@ -34,9 +36,9 @@ Fechar ou crashar o Studio **não pára** o show. / Closing or crashing the Stud
 
 ## Instalar / Install
 
-**PT** · Descarregue `VTHOST-Setup-x.y.z.exe` em [Releases](https://github.com/NunesDanielPT/VTHOST/releases/latest) e execute-o. Não precisa de permissões de administrador. O VTHOST Studio procura atualizações sozinho (*Definições → Geral*).
+**PT** · Descarregue `VTHOST-Setup-x.y.z.exe` em [Releases](https://github.com/NunesDanielPT/VIDEOHOST-PLAYER/releases/latest) e execute-o. Não precisa de permissões de administrador. O VTHOST Studio procura atualizações sozinho (*Definições → Geral*).
 
-**EN** · Download `VTHOST-Setup-x.y.z.exe` from [Releases](https://github.com/NunesDanielPT/VTHOST/releases/latest) and run it. No admin rights needed. VTHOST Studio checks for updates automatically (*Settings → General*).
+**EN** · Download `VTHOST-Setup-x.y.z.exe` from [Releases](https://github.com/NunesDanielPT/VIDEOHOST-PLAYER/releases/latest) and run it. No admin rights needed. VTHOST Studio checks for updates automatically (*Settings → General*).
 
 ## Publicar uma versão / Release
 

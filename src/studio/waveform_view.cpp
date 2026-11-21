@@ -100,6 +100,7 @@ void WaveformView::paintEvent(QPaintEvent*) {
     if (!peaks_.isEmpty() && bps_ > 0.0) {
         const int blocks = static_cast<int>(peaks_.size() / 2);
         const double halfH = r.height() / 4.0;
+        const float gain = static_cast<float>(std::pow(10.0, std::clamp(gainDb_, -60.0, 40.0) / 20.0));
         const double midL = r.top() + halfH, midR = r.top() + 3 * halfH;
         for (int px = 0; px < static_cast<int>(r.width()); ++px) {
             const double t0 = static_cast<double>(px) / r.width() * duration_;
@@ -112,13 +113,29 @@ void WaveformView::paintEvent(QPaintEvent*) {
                 rr = std::max(rr, peaks_[2 * b + 1]);
             }
             const bool inside = t0 >= in && t0 <= out;
-            p.setPen(inside ? kGreen : QColor(70, 100, 68));
+            l *= gain;
+            rr *= gain;
             const double x = r.left() + px + 0.5;
+            const bool clip = l > 1.0f || rr > 1.0f;
+            p.setPen(!inside ? QColor(70, 100, 68) : clip ? QColor(220, 70, 60) : kGreen);
+            l = std::min(l, 1.0f);
+            rr = std::min(rr, 1.0f);
             p.drawLine(QPointF(x, midL - l * halfH), QPointF(x, midL + l * halfH));
             p.drawLine(QPointF(x, midR - rr * halfH), QPointF(x, midR + rr * halfH));
         }
         p.setPen(QColor(60, 60, 60));
         p.drawLine(QPointF(r.left(), r.center().y()), QPointF(r.right(), r.center().y()));
+        if (!badge_.isEmpty()) {
+            QFont bf = font();
+            bf.setPixelSize(11);
+            p.setFont(bf);
+            const int w = p.fontMetrics().horizontalAdvance(badge_) + 12;
+            const QRectF br(r.right() - w - 4, r.top() + 4, w, 18);
+            p.fillRect(br, QColor(0, 0, 0, 170));
+            p.setPen(QColor(200, 200, 200));
+            p.drawText(br, Qt::AlignCenter, badge_);
+            p.setFont(f);
+        }
     } else {
         p.setPen(QColor(120, 120, 120));
         p.drawText(r, Qt::AlignCenter,

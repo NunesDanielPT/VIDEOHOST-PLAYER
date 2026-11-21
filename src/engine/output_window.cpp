@@ -48,7 +48,7 @@ OutputWindow::~OutputWindow() {
 
 bool OutputWindow::create() {
     registerClassOnce();
-    hwnd_ = CreateWindowExW(WS_EX_APPWINDOW, kClassName, widen("VTHOST - " + config_.name).c_str(), WS_POPUP,
+    hwnd_ = CreateWindowExW(WS_EX_APPWINDOW, kClassName, widen("VIDEOHOST - " + config_.name).c_str(), WS_POPUP,
                             0, 0, 640, 360, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!hwnd_) {
         error_ = "não foi possível criar a janela";

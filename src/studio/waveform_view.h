@@ -17,6 +17,13 @@ public:
     void setInOut(double in, double out); // out 0 = fim do ficheiro
     void setPlayhead(double fileTime);    // < 0 = escondida (a cue no ar é outra)
     void setEditable(bool editable) { editable_ = editable; }
+    // Ganho da cue (volume + normalização): a onda é desenhada como vai soar, com
+    // um aviso no canto (ex. "Normalizado +4,3 dB"). Vermelho = acima de 0 dBFS.
+    void setGain(double gainDb, const QString& badge) {
+        gainDb_ = gainDb;
+        badge_ = badge;
+        update();
+    }
     QSize sizeHint() const override { return {600, 130}; }
 
 signals:
@@ -40,6 +47,8 @@ private:
     double bps_ = 0.0;
     double duration_ = 0.0;
     bool analyzing_ = false;
+    double gainDb_ = 0.0;
+    QString badge_;
     bool hasAudio_ = true;
     double in_ = 0.0;
     double out_ = 0.0;

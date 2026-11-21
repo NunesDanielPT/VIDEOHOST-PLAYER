@@ -1,4 +1,6 @@
-# VTHOST — instruções para o Claude
+# VIDEOHOST PLAYER (antes VTHOST) — instruções para o Claude
+
+- Nome visível: VIDEOHOST PLAYER; repositório NunesDanielPT/VIDEOHOST-PLAYER. Nomes internos (executáveis vthost-*, pastas de dados, .vthost, definições "VTHOST Studio") ficam iguais para as atualizações continuarem a funcionar.
 
 - Autor: Daniel Nunes (github.com/NunesDanielPT). Comunicar em português de Portugal.
 - Player de vídeo para espetáculos em Windows (playlist de cues); referência funcional: Mitti (só existe para Mac). Até à 0.6 a referência era o Millumin 5. Prioridade número 1: **estabilidade, o output nunca pode cair**.

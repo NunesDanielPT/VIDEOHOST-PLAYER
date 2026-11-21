@@ -91,6 +91,7 @@ private:
     Clock::time_point fpsWindowStart_ = Clock::now();
     int fpsFrames_ = 0;
     double fps_ = 0.0;
+    double renderMs_ = 0.0; // média do tempo de trabalho por frame (sem a espera pelo ecrã)
 };
 
 } // namespace vthost

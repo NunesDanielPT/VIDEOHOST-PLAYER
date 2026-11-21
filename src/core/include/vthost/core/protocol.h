@@ -135,6 +135,11 @@ struct EngineStatus {
     double levelL = 0.0;     // pico recente 0..1
     double levelR = 0.0;
 
+    // Desempenho do motor (rodapé do Studio).
+    double renderMs = 0.0;     // tempo médio para preparar um frame (sem esperar pelo ecrã)
+    double vramUsedMb = 0.0;   // memória de vídeo usada pelo motor
+    double vramBudgetMb = 0.0; // memória de vídeo que o Windows dá ao motor (0 = desconhecido)
+
     std::vector<OutputStatus> outputs;
     std::vector<std::string> warnings;
 };

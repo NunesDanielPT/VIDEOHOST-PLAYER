@@ -27,8 +27,8 @@
         <translation>Em pausa</translation>
     </message>
     <message>
-        <source>VTHOST - Countdown</source>
-        <translation>VTHOST - Countdown</translation>
+        <source>VIDEOHOST PLAYER - Countdown</source>
+        <translation>VIDEOHOST PLAYER - Countdown</translation>
     </message>
 </context>
 <context>
@@ -273,6 +273,10 @@
         <translation>%1 dB</translation>
     </message>
     <message>
+        <source>%1 fps</source>
+        <translation>%1 fps</translation>
+    </message>
+    <message>
         <source>&amp;Edit</source>
         <translation>&amp;Editar</translation>
     </message>
@@ -325,8 +329,12 @@
         <translation>&amp;Janela</translation>
     </message>
     <message>
-        <source>About VTHOST</source>
-        <translation>Sobre o VTHOST</translation>
+        <source>(max ≈ %1)</source>
+        <translation>(máx ≈ %1)</translation>
+    </message>
+    <message>
+        <source>About VIDEOHOST PLAYER</source>
+        <translation>Sobre o VIDEOHOST PLAYER</translation>
     </message>
     <message>
         <source>Add media</source>
@@ -357,6 +365,10 @@
     <message>
         <source>Automatic thumbnail</source>
         <translation>Miniatura automática</translation>
+    </message>
+    <message>
+        <source>CPU %1%</source>
+        <translation>CPU %1%</translation>
     </message>
     <message>
         <source>Check for updates...</source>
@@ -439,8 +451,8 @@
         <translation>Apagar cue</translation>
     </message>
     <message>
-        <source>Downloading VTHOST %1... %2%</source>
-        <translation>A descarregar o VTHOST %1... %2%</translation>
+        <source>Downloading VIDEOHOST PLAYER %1... %2%</source>
+        <translation>A descarregar o VIDEOHOST PLAYER %1... %2%</translation>
     </message>
     <message>
         <source>Duplicate</source>
@@ -487,8 +499,8 @@
         <translation>Verde</translation>
     </message>
     <message>
-        <source>If Windows asks, allow VTHOST Studio on private networks. Double-click the page to go full screen.</source>
-        <translation>Se o Windows perguntar, permita o VTHOST Studio em redes privadas. Duplo clique na página para ecrã inteiro.</translation>
+        <source>If Windows asks, allow VIDEOHOST PLAYER on private networks. Double-click the page to go full screen.</source>
+        <translation>Se o Windows perguntar, permita o VIDEOHOST PLAYER em redes privadas. Duplo clique na página para ecrã inteiro.</translation>
     </message>
     <message>
         <source>Jump to the last %1 seconds of the cue</source>
@@ -539,6 +551,18 @@
         <translation>Nenhuma (cue seguinte)</translation>
     </message>
     <message>
+        <source>Normalization off</source>
+        <translation>Normalização desligada</translation>
+    </message>
+    <message>
+        <source>Normalization: measuring...</source>
+        <translation>Normalização: a medir...</translation>
+    </message>
+    <message>
+        <source>Normalized %1%2 dB (%3 → %4 LUFS)</source>
+        <translation>Normalizado %1%2 dB (%3 → %4 LUFS)</translation>
+    </message>
+    <message>
         <source>Open logs folder</source>
         <translation>Abrir pasta de logs</translation>
     </message>
@@ -547,12 +571,12 @@
         <translation>Abrir projeto</translation>
     </message>
     <message>
-        <source>Output %1 fps</source>
-        <translation>Saída %1 fps</translation>
-    </message>
-    <message>
         <source>Output %1: %2</source>
         <translation>Saída %1: %2</translation>
+    </message>
+    <message>
+        <source>Output: %1 fps. Each frame takes %2 ms to prepare, so the engine could render about %3 fps.</source>
+        <translation>Saída: %1 fps. Cada frame demora %2 ms a preparar, por isso o motor conseguiria cerca de %3 fps.</translation>
     </message>
     <message>
         <source>Outputs...</source>
@@ -611,8 +635,16 @@
         <translation>Sair</translation>
     </message>
     <message>
-        <source>Quit VTHOST Studio? The engine and the show keep running.</source>
-        <translation>Sair do VTHOST Studio? O motor e o espetáculo continuam a correr.</translation>
+        <source>Quit VIDEOHOST PLAYER? The engine and the show keep running.</source>
+        <translation>Sair do VIDEOHOST PLAYER? O motor e o show continuam a correr.</translation>
+    </message>
+    <message>
+        <source>RAM %1%</source>
+        <translation>RAM %1%</translation>
+    </message>
+    <message>
+        <source>RAM: %1 of %2 GB in use on this PC</source>
+        <translation>RAM: %1 de %2 GB em uso neste PC</translation>
     </message>
     <message>
         <source>Red</source>
@@ -741,12 +773,20 @@
         <translation>Atualizações</translation>
     </message>
     <message>
-        <source>VTHOST is up to date (version %1).</source>
-        <translation>O VTHOST está atualizado (versão %1).</translation>
+        <source>VIDEOHOST PLAYER is up to date (version %1).</source>
+        <translation>O VIDEOHOST PLAYER está atualizado (versão %1).</translation>
     </message>
     <message>
-        <source>VTHOST projects (*.vthost)</source>
-        <translation>Projetos VTHOST (*.vthost)</translation>
+        <source>VIDEOHOST PLAYER projects (*.vthost)</source>
+        <translation>Projetos VIDEOHOST PLAYER (*.vthost)</translation>
+    </message>
+    <message>
+        <source>VRAM %1%</source>
+        <translation>VRAM %1%</translation>
+    </message>
+    <message>
+        <source>VRAM: %1 MB used by the engine, %2 MB available to it</source>
+        <translation>VRAM: %1 MB usados pelo motor, %2 MB disponíveis para ele</translation>
     </message>
     <message>
         <source>Version %1 available — &lt;a href="#"&gt;see what's new&lt;/a&gt;</source>
@@ -759,6 +799,10 @@
     <message>
         <source>Yellow</source>
         <translation>Amarelo</translation>
+    </message>
+    <message>
+        <source>limited by the peak</source>
+        <translation>limitado pelo pico</translation>
     </message>
     <message>
         <source>vthost-watchdog was not found next to the Studio.</source>
@@ -872,8 +916,8 @@
         <translation>Tipo:</translation>
     </message>
     <message>
-        <source>VTHOST - &lt;output name&gt;</source>
-        <translation>VTHOST - &lt;nome da saída&gt;</translation>
+        <source>VIDEOHOST - &lt;output name&gt;</source>
+        <translation>VIDEOHOST - &lt;nome da saída&gt;</translation>
     </message>
     <message>
         <source>Waiting for the engine...</source>
@@ -1009,8 +1053,8 @@
         <translation>Procurar atualizações agora</translation>
     </message>
     <message>
-        <source>Closing VTHOST Studio never stops the engine: the show keeps running.</source>
-        <translation>Fechar o VTHOST Studio nunca pára o motor: o espetáculo continua.</translation>
+        <source>Closing VIDEOHOST PLAYER never stops the engine: the show keeps running.</source>
+        <translation>Fechar o VIDEOHOST PLAYER nunca pára o motor: o show continua.</translation>
     </message>
     <message>
         <source>Countdown</source>
@@ -1157,8 +1201,8 @@
         <translation>Desligado</translation>
     </message>
     <message>
-        <source>Only this network card is used: people on the other networks of this PC (e.g. a control system) cannot reach VTHOST.</source>
-        <translation>Só esta placa de rede é usada: quem está nas outras redes deste PC (ex. um sistema de controlo) não chega ao VTHOST.</translation>
+        <source>Only this network card is used: people on the other networks of this PC (e.g. a control system) cannot reach VIDEOHOST PLAYER.</source>
+        <translation>Só esta placa de rede é usada: quem está nas outras redes deste PC (ex. um sistema de controlo) não chega ao VIDEOHOST PLAYER.</translation>
     </message>
     <message>
         <source>Open Window → Countdown on the network to see the address (e.g. http://192.168.1.20:8088). The page is read-only: it cannot control the show.</source>
@@ -1281,8 +1325,8 @@
         <translation>Placa de som:</translation>
     </message>
     <message>
-        <source>Start the engine when VTHOST Studio opens</source>
-        <translation>Iniciar o motor ao abrir o VTHOST Studio</translation>
+        <source>Start the engine when VIDEOHOST PLAYER opens</source>
+        <translation>Arrancar o motor quando o VIDEOHOST PLAYER abre</translation>
     </message>
     <message>
         <source>Stop (black)</source>
@@ -1297,8 +1341,8 @@
         <translation>O countdown mostra o tempo que falta da cue no ar (todas as repetições). Aparece no preview, na janela do countdown (menu Janela) e na página web (Preferências → Rede).</translation>
     </message>
     <message>
-        <source>The language will change the next time VTHOST Studio starts.</source>
-        <translation>O idioma muda da próxima vez que o VTHOST Studio arrancar.</translation>
+        <source>The language changes when VIDEOHOST PLAYER opens again. Restart it now? The engine and the show keep running.</source>
+        <translation>A língua muda quando o VIDEOHOST PLAYER voltar a abrir. Reabrir agora? O motor e o show continuam a correr.</translation>
     </message>
     <message>
         <source>The mouse cursor is always hidden on fullscreen outputs, and Windows sleep and screensaver are blocked while the engine runs.</source>
@@ -1395,8 +1439,8 @@
 <context>
     <name>UpdateDialog</name>
     <message>
-        <source>Downloaded and verified. VTHOST closes, installs and opens again.</source>
-        <translation>Descarregado e verificado. O VTHOST fecha, instala e volta a abrir.</translation>
+        <source>Downloaded and verified. VIDEOHOST PLAYER closes, installs and opens again.</source>
+        <translation>Descarregado e verificado. O VIDEOHOST PLAYER fecha, instala e volta a abrir.</translation>
     </message>
     <message>
         <source>Downloading...</source>
@@ -1427,8 +1471,8 @@
         <translation>Reiniciar e instalar agora</translation>
     </message>
     <message>
-        <source>The update takes a minute or two. The engine stops while it installs and VTHOST opens again at the end. Saved projects are not affected.</source>
-        <translation>A atualização demora um ou dois minutos. O motor pára durante a instalação e o VTHOST volta a abrir no fim. Os projetos guardados não são afetados.</translation>
+        <source>The update takes a minute or two. The engine stops while it installs and VIDEOHOST PLAYER opens again at the end. Saved projects are not affected.</source>
+        <translation>A atualização demora um ou dois minutos. O motor pára enquanto instala e o VIDEOHOST PLAYER volta a abrir no fim. Os projetos gravados não são afetados.</translation>
     </message>
     <message>
         <source>Try again</source>

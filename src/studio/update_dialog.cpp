@@ -31,7 +31,7 @@ UpdateDialog::UpdateDialog(const UpdateInfo& info, QWidget* parent) : QDialog(pa
     progress_->setTextVisible(false);
     progress_->setFixedHeight(6);
     l->addWidget(progress_);
-    status_ = new QLabel(tr("The update takes a minute or two. The engine stops while it installs and VTHOST "
+    status_ = new QLabel(tr("The update takes a minute or two. The engine stops while it installs and VIDEOHOST PLAYER "
                             "opens again at the end. Saved projects are not affected."),
                          this);
     status_->setWordWrap(true);
@@ -78,7 +78,7 @@ void UpdateDialog::setReady() {
     ready_ = true;
     progress_->setValue(100);
     status_->setStyleSheet(QStringLiteral("color: #aaa;"));
-    status_->setText(tr("Downloaded and verified. VTHOST closes, installs and opens again."));
+    status_->setText(tr("Downloaded and verified. VIDEOHOST PLAYER closes, installs and opens again."));
     primary_->setEnabled(true);
     primary_->setText(tr("Restart and install now"));
 }

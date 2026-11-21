@@ -108,7 +108,7 @@ void CountdownView::paintEvent(QPaintEvent*) {
 // ------------------------------------------------------------------ janela
 
 CountdownWindow::CountdownWindow(QWidget* parent) : QWidget(parent, Qt::Window) {
-    setWindowTitle(CountdownView::tr("VTHOST - Countdown")); // contexto do ficheiro (traduções)
+    setWindowTitle(CountdownView::tr("VIDEOHOST PLAYER - Countdown")); // contexto do ficheiro (traduções)
     auto* l = new QVBoxLayout(this);
     l->setContentsMargins(0, 0, 0, 0);
     view_ = new CountdownView(false, this);

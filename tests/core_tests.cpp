@@ -403,6 +403,9 @@ static void testProtocol() {
     s.audioOk = true;
     s.audioDevice = "Altifalantes";
     s.levelL = 0.5;
+    s.renderMs = 2.5;
+    s.vramUsedMb = 512.0;
+    s.vramBudgetMb = 7000.0;
     s.outputs.push_back({"O1", 1, true, "", "display", "OMEN 27"});
     auto r = parseResponse(statusResponse(s));
     CHECK(r.ok && r.status);
@@ -412,6 +415,7 @@ static void testProtocol() {
         CHECK(x.remaining == 26.0 && x.passDuration == 10.0 && x.pass == 1 && x.nextCue == 3 && !x.infinite);
         CHECK(x.audioOk && x.audioDevice == "Altifalantes" && x.levelL == 0.5);
         CHECK(x.outputs.size() == 1 && x.outputs[0].detail == "OMEN 27");
+        CHECK(x.renderMs == 2.5 && x.vramUsedMb == 512.0 && x.vramBudgetMb == 7000.0);
     }
     DisplayInfo d;
     d.id = "\\\\.\\DISPLAY2";

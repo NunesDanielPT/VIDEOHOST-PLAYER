@@ -10,6 +10,7 @@
 #include "engine_client.h"
 #include "media_cache.h"
 #include "playlist_view.h"
+#include "system_stats.h"
 #include "update_checker.h"
 #include "vthost/core/countdown.h"
 #include "vthost/core/project.h"
@@ -182,6 +183,10 @@ private:
     QLabel* engineLabel_ = nullptr;
     QLabel* infoLabel_ = nullptr;
     QLabel* webLabel_ = nullptr;
+    QLabel* perfLabel_ = nullptr; // CPU, RAM, VRAM e fps (discreto, no rodapé)
+    QTimer perfTimer_;
+    SystemStats sysStats_;
+    void updatePerf();
     QAction* showModeAction_ = nullptr;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;

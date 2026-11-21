@@ -41,7 +41,7 @@ UpdateChecker::UpdateChecker(QObject* parent) : QObject(parent) {
 
 QNetworkRequest UpdateChecker::makeRequest(const QUrl& url) const {
     QNetworkRequest req(url);
-    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("VTHOST-Studio/") + appinfo::kVersion);
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("VIDEOHOST-PLAYER/") + appinfo::kVersion);
     req.setRawHeader("Accept", "application/vnd.github+json");
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     return req;
@@ -50,7 +50,12 @@ QNetworkRequest UpdateChecker::makeRequest(const QUrl& url) const {
 void UpdateChecker::check() {
     if (checking_) return;
     checking_ = true;
-    QNetworkRequest req = makeRequest(QUrl(appinfo::kReleasesApi));
+    useLegacyRepo_ = false;
+    request();
+}
+
+void UpdateChecker::request() {
+    QNetworkRequest req = makeRequest(QUrl(appinfo::releasesApi(useLegacyRepo_ ? appinfo::kLegacyRepo : appinfo::kUpdateRepo)));
     req.setTransferTimeout(kApiTimeoutMs);
     QNetworkReply* reply = net_.get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply] { onCheckFinished(reply); });
@@ -58,8 +63,13 @@ void UpdateChecker::check() {
 
 void UpdateChecker::onCheckFinished(QNetworkReply* reply) {
     reply->deleteLater();
-    checking_ = false;
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (status == 404 && !useLegacyRepo_) {
+        useLegacyRepo_ = true; // repositório com o nome novo ainda não existe: tenta o antigo
+        request();
+        return;
+    }
+    checking_ = false;
     if (status == 404) {
         emit upToDate(QString()); // ainda não há releases publicadas
         return;
@@ -116,11 +126,16 @@ void UpdateChecker::onCheckFinished(QNetworkReply* reply) {
     info.notes = rel.value(QStringLiteral("body")).toString().left(20000);
     info.pageUrl = rel.value(QStringLiteral("html_url")).toString();
     const QJsonArray assets = rel.value(QStringLiteral("assets")).toArray();
+    // Instalador com o nome novo; senão o antigo (releases anteriores à mudança de nome).
+    bool hasNewName = false;
+    for (const auto& a : assets)
+        if (a.toObject().value(QStringLiteral("name")).toString().startsWith(appinfo::kInstallerPrefix)) hasNewName = true;
+    const QString prefix = hasNewName ? appinfo::kInstallerPrefix : appinfo::kLegacyInstallerPrefix;
     for (const auto& a : assets) {
         const QJsonObject o = a.toObject();
         const QString name = o.value(QStringLiteral("name")).toString();
         const QUrl url(o.value(QStringLiteral("browser_download_url")).toString());
-        if (name.startsWith(appinfo::kInstallerPrefix) && name.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive)) {
+        if (name.startsWith(prefix) && name.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive)) {
             info.assetName = name;
             info.assetUrl = url;
             info.assetSize = static_cast<qint64>(o.value(QStringLiteral("size")).toDouble());
@@ -173,7 +188,7 @@ void UpdateChecker::download(const UpdateInfo& info) {
 
 void UpdateChecker::startInstallerDownload() {
     const QString dir = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-                            .filePath(QStringLiteral("VTHOST-update"));
+                            .filePath(QStringLiteral("VIDEOHOST-PLAYER-update"));
     QDir(dir).removeRecursively();
     QDir().mkpath(dir);
     file_.setFileName(QDir(dir).filePath(pending_.assetName));

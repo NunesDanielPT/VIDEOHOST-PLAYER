@@ -37,6 +37,8 @@ qt_add_executable(vthost-studio WIN32
     countdown_server.h
     countdown_view.cpp
     countdown_view.h
+    system_stats.cpp
+    system_stats.h
 )
 target_link_libraries(vthost-studio PRIVATE vthost_core Qt6::Widgets Qt6::Network)
 if(WIN32)

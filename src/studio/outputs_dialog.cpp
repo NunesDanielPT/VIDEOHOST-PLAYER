@@ -223,7 +223,7 @@ OutputsDialog::OutputsDialog(int width, int height, const std::vector<Output>& o
         auto* pf = new QFormLayout(page);
         pf->setContentsMargins(0, 0, 0, 0);
         ndiName_ = new QLineEdit(page);
-        ndiName_->setPlaceholderText(tr("VTHOST - <output name>"));
+        ndiName_->setPlaceholderText(tr("VIDEOHOST - <output name>"));
         ndiAlpha_ = new QCheckBox(tr("Send with transparency (alpha)"), page);
         pf->addRow(tr("NDI name:"), ndiName_);
         pf->addRow(QString(), ndiAlpha_);

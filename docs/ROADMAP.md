@@ -77,6 +77,7 @@ Referência funcional: até à 0.6, media servers como o Millumin 5; desde a 0.7
 - [x] 0.7.3: workspaces MEDIAPLAYER / CUEPLAYER (CUEPLAYER em desenvolvimento), escolha da placa de rede da página do countdown, menus arrumados (motor dentro de Saídas, arranca sozinho)
 - [x] 0.8.1: CUEPLAYER retirado (a 0.8.0 tinha-o; vai ser um software próprio). Fica só o player. Separador Rede nas Preferências, menu Definições antes de Ajuda, countdown no menu Janela
 - [x] 0.8.2: VUs L/R ao lado do preview (com pico), preview mostra fps da saída e do vídeo, ID = posição na playlist (escrever um número move a cue)
+- [x] 0.9.0: novo nome VIDEOHOST PLAYER; instalador pergunta a língua (PT/EN) logo no início e o programa abre nessa língua; trocar a língua nas Preferências com reabrir já; rodapé com CPU, RAM, VRAM e fps (com capacidade de render); VUs com dB escritos; a forma de onda mostra o ganho da normalização
 - [x] 0.7.2: atualizações como no MapSim (janela com as novidades de cada versão, progresso, aviso no rodapé, procura de 30 em 30 min); notas das releases geradas pela CI
 - [x] 0.7.1: miniatura escolhida (botão da câmara / Ctrl+P na cue a tocar), miniatura automática evita frames pretos, ícones de transporte claros, ESPAÇO arranca a cue selecionada
 - [ ] Seleção de várias cues para alterar em conjunto

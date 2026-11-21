@@ -125,7 +125,7 @@ void EngineApp::syncOutputs() {
             w->setCanvas(kCanvasId, project_.width, project_.height);
             outputs_.push_back(std::move(w));
         } else if (o.type == OutputType::Ndi) {
-            const std::string name = o.ndiName.empty() ? "VTHOST - " + o.name : o.ndiName;
+            const std::string name = o.ndiName.empty() ? "VIDEOHOST - " + o.name : o.ndiName;
             auto it = std::find_if(oldNdi.begin(), oldNdi.end(), [&](const auto& n) {
                 return n && n->id() == o.id && n->detail() == "NDI: " + name + (o.ndiAlpha ? " (alpha)" : "");
             });
@@ -325,6 +325,8 @@ protocol::EngineStatus EngineApp::buildStatus() const {
     s.audioError = audio_.error();
     s.levelL = audio_.levelL();
     s.levelR = audio_.levelR();
+    s.renderMs = renderMs_;
+    renderer_.videoMemory(s.vramUsedMb, s.vramBudgetMb);
     for (const auto& cfg : project_.outputs) {
         protocol::OutputStatus os;
         os.id = cfg.id;
@@ -408,6 +410,7 @@ void EngineApp::writePreview(const std::uint8_t* data, int rowPitch, int width, 
 // ---------------------------------------------------------------- render loop
 
 void EngineApp::renderFrame() {
+    const auto frameStart = Clock::now();
     player_->update(project_);
     handleCueEnd();
 
@@ -430,6 +433,10 @@ void EngineApp::renderFrame() {
         renderer_.capturePreview(kCanvasId,
                                  [this](const std::uint8_t* d, int pitch, int w, int h) { writePreview(d, pitch, w, h); });
     }
+
+    // Tempo de trabalho do frame (sem a espera pelo ecrã): dá a capacidade de render.
+    const double workMs = std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count();
+    renderMs_ = renderMs_ <= 0.0 ? workMs : renderMs_ * 0.95 + workMs * 0.05;
 
     bool first = true;
     for (auto& o : outputs_) {

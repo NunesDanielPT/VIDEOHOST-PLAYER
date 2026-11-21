@@ -57,13 +57,14 @@ constexpr std::size_t kMaxUndo = 100;
 const QColor kBlue(42, 160, 255);
 
 // Medidor de nível (L/R) da barra de transporte.
-// VUs L/R ao lado do preview: escala em dB (-60..0), marcas discretas e pico
-// que desce devagar. O estado do motor chega 4×/s; a queda é animada aqui.
+// VUs L/R ao lado do preview: escala em dB (-60..0) com números, pico que desce
+// devagar e o valor em dB escrito em cima (actualizado ~3 vezes por segundo, para
+// se conseguir ler). O estado do motor chega 4×/s; a queda é animada aqui.
 class LevelMeter : public QWidget {
 public:
     explicit LevelMeter(QWidget* parent) : QWidget(parent) {
-        setFixedWidth(30);
-        setMinimumHeight(80);
+        setFixedWidth(46);
+        setMinimumHeight(110);
         timer_.setInterval(40);
         QObject::connect(&timer_, &QTimer::timeout, this, [this] { tick(); });
         timer_.start();
@@ -80,32 +81,41 @@ protected:
         QFont f = font();
         f.setPixelSize(9);
         p.setFont(f);
-        const int bottomPad = 14;
-        const int top = 4;
-        const int h = height() - top - bottomPad;
-        // Marcas de dB (discretas).
-        p.setPen(QColor(70, 70, 70));
+        const int topPad = 18;    // valor em dB
+        const int bottomPad = 14; // L / R
+        const int top = topPad;
+        const int h = std::max(10, height() - topPad - bottomPad);
+        auto yFor = [&](double db) { return top + static_cast<int>((1.0 - (db + 60.0) / 60.0) * h); };
+
+        // Valor actual (o mais alto dos dois canais).
+        p.setPen(readout_ > -3.0 ? QColor(220, 90, 80) : QColor(185, 185, 185));
+        p.drawText(QRect(0, 2, width(), topPad - 4), Qt::AlignCenter,
+                   readout_ <= -59.5 ? QStringLiteral("-∞") : QString::number(readout_, 'f', 0));
+
+        // Escala com números (à direita).
         for (int db : {0, -6, -12, -24, -48}) {
-            const int y = top + static_cast<int>((1.0 - (db + 60.0) / 60.0) * h);
-            p.drawLine(0, y, 2, y);
-            p.drawLine(width() - 3, y, width() - 1, y);
+            const int y = yFor(db);
+            p.setPen(QColor(70, 70, 70));
+            p.drawLine(26, y, 28, y);
+            p.setPen(QColor(105, 105, 105));
+            p.drawText(QRect(29, y - 6, width() - 29, 12), Qt::AlignLeft | Qt::AlignVCenter, QString::number(-db));
         }
         for (int ch = 0; ch < 2; ++ch) {
-            const int x = 5 + ch * 11;
+            const int x = 3 + ch * 11;
             const QRect track(x, top, 9, h);
             p.fillRect(track, QColor(34, 34, 34));
             const int lh = static_cast<int>(shown_[ch] * h);
             // Verde até -12, amarelo até -3, vermelho acima (cores suaves).
             for (int y = 0; y < lh; y += 2) {
-                const double fr = static_cast<double>(y) / h;
-                const double db = fr * 60.0 - 60.0;
+                const double db = static_cast<double>(y) / h * 60.0 - 60.0;
                 const QColor c = db > -3.0 ? QColor(210, 70, 60) : db > -12.0 ? QColor(210, 175, 50) : QColor(60, 170, 80);
                 p.fillRect(QRect(x, top + h - y - 1, 9, 1), c);
             }
             const int py = top + h - static_cast<int>(peak_[ch] * h);
             if (peak_[ch] > 0.01) p.fillRect(QRect(x, py, 9, 1), QColor(220, 220, 220));
             p.setPen(QColor(110, 110, 110));
-            p.drawText(QRect(x - 1, height() - bottomPad, 11, bottomPad), Qt::AlignCenter, ch == 0 ? QStringLiteral("L") : QStringLiteral("R"));
+            p.drawText(QRect(x - 1, height() - bottomPad, 11, bottomPad), Qt::AlignCenter,
+                       ch == 0 ? QStringLiteral("L") : QStringLiteral("R"));
         }
     }
 
@@ -130,6 +140,15 @@ private:
                 changed = true;
             }
         }
+        // Número em dB: o máximo dos últimos ~300 ms (lê-se sem saltar).
+        windowMax_ = std::max({windowMax_, target_[0], target_[1]});
+        if (++readoutTicks_ >= 8) {
+            readoutTicks_ = 0;
+            const double next = windowMax_ * 60.0 - 60.0;
+            if (std::abs(next - readout_) > 0.4) changed = true;
+            readout_ = next;
+            windowMax_ = 0.0;
+        }
         if (changed) update();
     }
 
@@ -138,6 +157,9 @@ private:
     double shown_[2] = {0.0, 0.0};
     double peak_[2] = {0.0, 0.0};
     int peakHold_[2] = {0, 0};
+    double windowMax_ = 0.0;
+    double readout_ = -60.0;
+    int readoutTicks_ = 0;
 };
 
 QIcon cueIcon(CueIcon kind) {
@@ -212,7 +234,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         if (!updateCheckIsManual_) return;
         QMessageBox::information(this, tr("Updates"),
                                  latest.isEmpty() ? tr("No releases have been published yet.")
-                                                  : tr("VTHOST is up to date (version %1).").arg(appinfo::kVersion));
+                                                  : tr("VIDEOHOST PLAYER is up to date (version %1).").arg(appinfo::kVersion));
     });
     connect(updater_, &UpdateChecker::checkFailed, this, [this](const QString& err) {
         if (updateCheckIsManual_) QMessageBox::warning(this, tr("Updates"), err);
@@ -220,7 +242,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(updater_, &UpdateChecker::downloadProgress, this, [this](qint64 rec, qint64 total) {
         if (updateDialog_) updateDialog_->setProgress(rec, total);
         if (total > 0 && availableUpdate_)
-            setUpdateLabel(tr("Downloading VTHOST %1... %2%").arg(availableUpdate_->version).arg(rec * 100 / total));
+            setUpdateLabel(tr("Downloading VIDEOHOST PLAYER %1... %2%").arg(availableUpdate_->version).arg(rec * 100 / total));
     });
     connect(updater_, &UpdateChecker::downloadFailed, this, [this](const QString& err) {
         downloading_ = false;
@@ -501,7 +523,13 @@ void MainWindow::buildUi() {
     webLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusBar()->addWidget(engineLabel_);
     statusBar()->addWidget(infoLabel_, 1);
+    perfLabel_ = new QLabel(this);
+    perfLabel_->setStyleSheet(QStringLiteral("color: #8a8a8a; padding: 0 8px;"));
+    statusBar()->addPermanentWidget(perfLabel_);
     statusBar()->addPermanentWidget(webLabel_);
+    perfTimer_.setInterval(1000);
+    connect(&perfTimer_, &QTimer::timeout, this, &MainWindow::updatePerf);
+    perfTimer_.start();
     updateLabel_ = new QLabel(this);
     updateLabel_->setTextFormat(Qt::RichText);
     updateLabel_->setStyleSheet(QStringLiteral("color: #8cf; padding: 0 8px;"));
@@ -591,7 +619,47 @@ void MainWindow::buildMenus() {
     auto* help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("Check for updates..."), this, [this] { checkForUpdates(true); });
     help->addSeparator();
-    help->addAction(tr("About VTHOST"), this, [this] { openSettings(SettingsDialog::kAboutTab); });
+    help->addAction(tr("About VIDEOHOST PLAYER"), this, [this] { openSettings(SettingsDialog::kAboutTab); });
+}
+
+void MainWindow::updatePerf() {
+    // Rodapé: CPU e RAM do PC, VRAM e fps do motor. Fica laranja quando está perto do limite.
+    QStringList parts, tip;
+    bool warn = false;
+    double cpu = 0.0;
+    if (sysStats_.cpuPercent(cpu)) {
+        parts << tr("CPU %1%").arg(qRound(cpu));
+        warn |= cpu > 90.0;
+    }
+    double ramPct = 0.0, ramUsed = 0.0, ramTotal = 0.0;
+    if (sysStats_.ram(ramPct, ramUsed, ramTotal)) {
+        parts << tr("RAM %1%").arg(qRound(ramPct));
+        tip << tr("RAM: %1 of %2 GB in use on this PC").arg(ramUsed, 0, 'f', 1).arg(ramTotal, 0, 'f', 1);
+        warn |= ramPct > 90.0;
+    }
+    if (engine_->isConnected() && engine_->hasStatus()) {
+        const auto& s = engine_->lastStatus();
+        if (s.vramBudgetMb > 0.0) {
+            const double pct = 100.0 * s.vramUsedMb / s.vramBudgetMb;
+            parts << tr("VRAM %1%").arg(qRound(pct));
+            tip << tr("VRAM: %1 MB used by the engine, %2 MB available to it").arg(qRound(s.vramUsedMb)).arg(qRound(s.vramBudgetMb));
+            warn |= pct > 90.0;
+        }
+        QString fps = tr("%1 fps").arg(s.fps, 0, 'f', 0);
+        if (s.renderMs > 0.05) {
+            const double capacity = 1000.0 / s.renderMs;
+            fps += QStringLiteral(" ") + tr("(max ≈ %1)").arg(capacity >= 1000.0 ? QStringLiteral("1000+") : QString::number(qRound(capacity)));
+            tip << tr("Output: %1 fps. Each frame takes %2 ms to prepare, so the engine could render about %3 fps.")
+                       .arg(s.fps, 0, 'f', 1)
+                       .arg(s.renderMs, 0, 'f', 2)
+                       .arg(qRound(capacity));
+            warn |= s.fps > 1.0 && s.renderMs > 800.0 / s.fps; // menos de 20 % de folga
+        }
+        parts << fps;
+    }
+    perfLabel_->setText(parts.join(QStringLiteral("  ·  ")));
+    perfLabel_->setToolTip(tip.join(QStringLiteral("\n")));
+    perfLabel_->setStyleSheet(warn ? QStringLiteral("color: #e0a030; padding: 0 8px;") : QStringLiteral("color: #8a8a8a; padding: 0 8px;"));
 }
 
 // ------------------------------------------------------------------ projecto
@@ -657,7 +725,7 @@ void MainWindow::newProject() {
 
 void MainWindow::closeEvent(QCloseEvent* event) {
     if (prefs::confirmQuit() && !dirty_ &&
-        QMessageBox::question(this, tr("Quit"), tr("Quit VTHOST Studio? The engine and the show keep running.")) !=
+        QMessageBox::question(this, tr("Quit"), tr("Quit VIDEOHOST PLAYER? The engine and the show keep running.")) !=
             QMessageBox::Yes) {
         event->ignore();
         return;
@@ -692,6 +760,7 @@ void MainWindow::updateSelection() {
     if (i < 0) {
         inspector_->setCue(nullptr, -1, &project_, {}, {}, prefs::normalizeTarget());
         waveform_->setData({}, 0.0, 0.0, false, true);
+        waveform_->setGain(0.0, QString());
         return;
     }
     const Cue& q = project_.cues[static_cast<std::size_t>(i)];
@@ -703,6 +772,24 @@ void MainWindow::updateSelection() {
     const double dur = info.duration > 0.0 ? info.duration : q.passSeconds(0.0) * q.speed;
     waveform_->setData(audio.peaks, audio.blocksPerSecond, dur, !audio.ready, info.hasAudio || !info.ready);
     waveform_->setInOut(q.inPoint, q.outPoint);
+    // A onda mostra o som como vai sair (volume + normalização) e diz o que a normalização faz.
+    const double target = prefs::normalizeTarget();
+    QString badge;
+    if (!q.normalize) {
+        badge = tr("Normalization off");
+    } else if (!q.loudness) {
+        badge = audio.ready ? QString() : tr("Normalization: measuring...");
+    } else {
+        const double g = normalizationGainDb(*q.loudness, q.peakDb, target);
+        const double wanted = std::clamp(target - *q.loudness, -20.0, 20.0);
+        badge = tr("Normalized %1%2 dB (%3 → %4 LUFS)")
+                    .arg(g >= 0.0 ? QStringLiteral("+") : QString())
+                    .arg(g, 0, 'f', 1)
+                    .arg(*q.loudness, 0, 'f', 1)
+                    .arg(target, 0, 'f', 0);
+        if (wanted - g > 0.5) badge += QStringLiteral("  ·  ") + tr("limited by the peak");
+    }
+    waveform_->setGain(q.gainDb(target), badge);
 }
 
 void MainWindow::addMedia() {
@@ -1194,11 +1281,11 @@ void MainWindow::onEngineStatus() {
     if (!s.audioError.empty()) problems << tr("Audio: %1").arg(qs(s.audioError));
     for (const auto& w : s.warnings) problems << qs(w);
 
-    QString info = tr("Output %1 fps").arg(s.fps, 0, 'f', 1);
-    if (s.audioOk) info += QStringLiteral("  |  🔊 ") + qs(s.audioDevice);
-    if (s.recovered) info += QStringLiteral("  |  ") + tr("Engine was restarted and the show resumed");
-    if (!problems.isEmpty()) info += QStringLiteral("  |  ⚠ ") + problems.join(QStringLiteral("; "));
-    infoLabel_->setText(info);
+    QStringList info; // os fps estão no rodapé, à direita (updatePerf)
+    if (s.audioOk) info << QStringLiteral("🔊 ") + qs(s.audioDevice);
+    if (s.recovered) info << tr("Engine was restarted and the show resumed");
+    if (!problems.isEmpty()) info << QStringLiteral("⚠ ") + problems.join(QStringLiteral("; "));
+    infoLabel_->setText(info.join(QStringLiteral("  |  ")));
 }
 
 void MainWindow::updateEditingEnabled() {
@@ -1251,6 +1338,9 @@ void MainWindow::openSettings(int tab) {
     connect(&dlg, &SettingsDialog::checkForUpdatesRequested, this, [this] { checkForUpdates(true); });
     connect(&dlg, &SettingsDialog::preferencesChanged, this, &MainWindow::applyPreferences);
     dlg.exec();
+    // Mudança de língua com "reabrir já": fecha (pode ser cancelado, ex. projecto por gravar)
+    // e o main() volta a abrir o Studio depois de esta janela desaparecer.
+    if (qApp->property("vthostRestart").toBool() && !close()) qApp->setProperty("vthostRestart", false);
 }
 
 
@@ -1271,7 +1361,7 @@ bool MainWindow::confirmDiscard() {
 void MainWindow::openProject() {
     if (!confirmDiscard()) return;
     const QString path = QFileDialog::getOpenFileName(this, tr("Open project"), QString(),
-                                                      tr("VTHOST projects (*.vthost)"));
+                                                      tr("VIDEOHOST PLAYER projects (*.vthost)"));
     if (!path.isEmpty()) loadFrom(path);
 }
 
@@ -1305,7 +1395,7 @@ bool MainWindow::saveProject() {
 
 bool MainWindow::saveProjectAs() {
     QString path = QFileDialog::getSaveFileName(this, tr("Save project"), projectPath_,
-                                                tr("VTHOST projects (*.vthost)"));
+                                                tr("VIDEOHOST PLAYER projects (*.vthost)"));
     if (path.isEmpty()) return false;
     if (!path.endsWith(QStringLiteral(".vthost"), Qt::CaseInsensitive)) path += QStringLiteral(".vthost");
     projectPath_ = path;
@@ -1566,7 +1656,7 @@ void MainWindow::showCountdownWebInfo() {
             row->addWidget(copy);
             l->addLayout(row);
         }
-        auto* hint = new QLabel(tr("If Windows asks, allow VTHOST Studio on private networks. "
+        auto* hint = new QLabel(tr("If Windows asks, allow VIDEOHOST PLAYER on private networks. "
                                    "Double-click the page to go full screen."),
                                 &dlg);
         hint->setWordWrap(true);
@@ -1581,7 +1671,7 @@ void MainWindow::showCountdownWebInfo() {
 }
 
 void MainWindow::updateTitle() {
-    QString t = QStringLiteral("VTHOST Studio - %1").arg(qs(project_.name));
+    QString t = QStringLiteral("VIDEOHOST PLAYER - %1").arg(qs(project_.name));
     if (dirty_) t += QStringLiteral(" *");
     if (showMode_) t += QStringLiteral("  [") + tr("SHOW MODE") + QStringLiteral("]");
     setWindowTitle(t);

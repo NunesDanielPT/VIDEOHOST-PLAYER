@@ -54,6 +54,7 @@ signals:
 
 private:
     QNetworkRequest makeRequest(const QUrl& url) const;
+    void request();
     void onCheckFinished(QNetworkReply* reply);
     void startInstallerDownload();
     void finishDownload();
@@ -64,4 +65,5 @@ private:
     QPointer<QNetworkReply> downloadReply_;
     QFile file_;
     bool checking_ = false;
+    bool useLegacyRepo_ = false;
 };

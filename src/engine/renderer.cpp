@@ -294,6 +294,7 @@ bool Renderer::init(std::string* error) {
         if (error) *error = "DXGI indisponível";
         return false;
     }
+    adapter.As(&adapter3_); // pode falhar (WARP antigo): a VRAM fica por mostrar
     DXGI_ADAPTER_DESC ad{};
     if (SUCCEEDED(adapter->GetDesc(&ad))) {
         char name[256] = {};
@@ -669,6 +670,15 @@ void Renderer::capturePreview(const std::string& canvasId, const PixelSink& sink
     ID3D11ShaderResourceView* none = nullptr;
     ctx_->PSSetShaderResources(0, 1, &none);
     readback(preview_, previewRt_.Get(), sink);
+}
+
+bool Renderer::videoMemory(double& usedMb, double& budgetMb) const {
+    if (!adapter3_) return false;
+    DXGI_QUERY_VIDEO_MEMORY_INFO info{};
+    if (FAILED(adapter3_->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info))) return false;
+    usedMb = static_cast<double>(info.CurrentUsage) / (1024.0 * 1024.0);
+    budgetMb = static_cast<double>(info.Budget) / (1024.0 * 1024.0);
+    return true;
 }
 
 void Renderer::captureCanvas(const std::string& canvasId, const PixelSink& sink) {

@@ -194,6 +194,9 @@ std::string statusResponse(const EngineStatus& s) {
                 {"audioError", s.audioError},
                 {"levelL", s.levelL},
                 {"levelR", s.levelR},
+                {"renderMs", s.renderMs},
+                {"vramUsedMb", s.vramUsedMb},
+                {"vramBudgetMb", s.vramBudgetMb},
                 {"outputs", outputs},
                 {"warnings", s.warnings}}}};
     return dump(j);
@@ -254,6 +257,9 @@ ParsedResponse parseResponse(const std::string& line) {
             es.audioError = str(s, "audioError");
             es.levelL = std::clamp(num(s, "levelL").value_or(0.0), 0.0, 4.0);
             es.levelR = std::clamp(num(s, "levelR").value_or(0.0), 0.0, 4.0);
+            es.renderMs = std::max(0.0, num(s, "renderMs").value_or(0.0));
+            es.vramUsedMb = std::max(0.0, num(s, "vramUsedMb").value_or(0.0));
+            es.vramBudgetMb = std::max(0.0, num(s, "vramBudgetMb").value_or(0.0));
             if (auto a = s.find("outputs"); a != s.end() && a->is_array())
                 for (const auto& o : *a)
                     if (o.is_object())

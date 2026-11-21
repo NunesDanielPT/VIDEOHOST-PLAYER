@@ -4,6 +4,7 @@
 #include <QIcon>
 #include <QLocale>
 #include <QPalette>
+#include <QProcess>
 #include <QSettings>
 #include <QStyleFactory>
 #include <QTranslator>
@@ -11,7 +12,10 @@
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     QApplication::setOrganizationName(QStringLiteral("Daniel Nunes"));
+    // Nome interno mantém-se (as definições guardadas ficam em "VTHOST Studio");
+    // o nome visível é VIDEOHOST PLAYER.
     QApplication::setApplicationName(QStringLiteral("VTHOST Studio"));
+    QApplication::setApplicationDisplayName(QStringLiteral("VIDEOHOST PLAYER"));
     QApplication::setApplicationVersion(QStringLiteral(VTHOST_VERSION));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/branding/vthost-icon-256.png")));
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
@@ -46,7 +50,13 @@ int main(int argc, char* argv[]) {
     if (lang == QStringLiteral("pt_PT") && translator.load(QStringLiteral(":/i18n/vthost_studio_pt_PT.qm")))
         QApplication::installTranslator(&translator);
 
-    MainWindow w;
-    w.show();
-    return QApplication::exec();
+    int rc = 0;
+    {
+        MainWindow w;
+        w.show();
+        rc = QApplication::exec();
+    }
+    // Definições → língua → "reabrir já": abre outra vez (o motor nunca parou).
+    if (qApp->property("vthostRestart").toBool()) QProcess::startDetached(QCoreApplication::applicationFilePath(), {});
+    return rc;
 }
