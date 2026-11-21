@@ -83,8 +83,7 @@
     if (typeof s.warn === "number") WARN = s.warn;
     if (typeof s.danger === "number") DANGER = s.danger;
     var title = "";
-    if (s.mode === "timeline") title = s.cue || "";
-    else if (s.cueNumber > 0) title = (s.cueNumber < 10 ? "0" : "") + s.cueNumber + "  " + (s.cue || "");
+    if (s.cueNumber > 0) title = (s.label ? s.label : String(s.cueNumber)) + "  " + (s.cue || "");
     el("title").textContent = title;
     el("foot").textContent = "VTHOST" + (s.project ? " · " + s.project : "");
     document.title = (s.active ? fmt(s.remaining) + " · " : "") + "VTHOST";

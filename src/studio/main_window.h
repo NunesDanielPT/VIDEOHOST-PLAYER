@@ -1,15 +1,17 @@
 #pragma once
-// Janela principal, organizada como um media server de espetáculo:
+// Janela principal: player de playlist (estilo Mitti).
 //
-//   ┌───────────┬──────────────────────────┬─────────────┐
-//   │  Library  │  Workspace (preview AR)  │ Properties  │
-//   ├───────────┴──────────────────────────┴─────────────┤
-//   │        Dashboard  |  Timeline   (separadores)       │
-//   └─────────────────────────────────────────────────────┘
+//   ┌──────────────── barra de transporte (play, anterior/seguinte, GOTO, tempo) ───────┐
+//   │  Playlist (cues)   │  Preview (decorrido / restante)  │  Inspector da cue       │
+//   │                    ├──────────────────────────────────┤                          │
+//   │                    │  Forma de onda (In/Out, saltar)  │                          │
+//   └────────────────────┴──────────────────────────────────┴──────────────────────────┘
 
 #include "engine_client.h"
-#include "vthost/core/countdown.h"
+#include "media_cache.h"
+#include "playlist_view.h"
 #include "update_checker.h"
+#include "vthost/core/countdown.h"
 #include "vthost/core/project.h"
 
 #include <QElapsedTimer>
@@ -17,24 +19,19 @@
 #include <QTimer>
 
 #include <deque>
-#include <optional>
+#include <string>
 
-class DashboardTable;
-class LayerHeader;
-class QMenu;
-class LibraryPanel;
-class MediaCache;
-class PreviewWidget;
-class PropertiesPanel;
-class QAction;
-class QLabel;
-class QSplitter;
-class QTabWidget;
-class TimelinePanel;
-class TransportBar;
+class CountdownServer;
 class CountdownView;
 class CountdownWindow;
-class CountdownServer;
+class InspectorPanel;
+class PreviewWidget;
+class QAction;
+class QLabel;
+class QSlider;
+class QSplitter;
+class QToolButton;
+class WaveformView;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -46,6 +43,7 @@ protected:
 
 private:
     void buildUi();
+    QWidget* buildTransportBar();
     void buildMenus();
 
     // Projecto
@@ -56,54 +54,34 @@ private:
     bool confirmDiscard();
     void loadFrom(const QString& path);
     void setProject(vthost::Project p, const QString& path);
-    void ensureTimeline();
     void markChanged();
     void pushToEngine();
     QString livePath() const;
 
-    // Edição
+    // Playlist
     void addMedia();
-    void removeMedia(const QString& mediaId);
-    void addLayer();
-    void removeLayer();
-    void renameLayer();
-    void addColumn();
-    void removeColumn();
-    void renameColumn();
-    void cueSettings(int column);
-    void placeMedia(int row, int column, const QString& mediaId);
-    void clearCell(int row, int column);
-    void openOutputs();
-    void setCanvasSize();
-    void showCellMenu(const QPoint& pos);
-    void showColumnMenu(int column, const QPoint& globalPos);
-    void showLayerMenu(int row, const QPoint& globalPos);
-    void showMediaMenu(const QString& mediaId, const QPoint& globalPos);
-    void addLoopModeMenu(QMenu* menu, const QString& mediaId);
+    void addFiles(int row, const QStringList& paths);
+    void deleteCue(int index);
+    void duplicateCue(int index);
+    void moveCue(int from, int to);
+    void replaceFile(int index);
+    void onIconClicked(int index, CueIcon icon, const QPoint& globalPos);
+    void showCueMenu(int index, const QPoint& globalPos);
+    void onCueEdited(const vthost::Cue& cue);
+    void applyAnalysis(const QString& path); // grava loudness/pico medidos nas cues desse ficheiro
+    void refreshPlaylist();
+    void updateSelection();      // inspector + forma de onda da cue selecionada
 
-    // Layers e colunas
-    void insertLayerAt(int index);
-    void duplicateLayer(int row);
-    void moveLayer(int from, int to);
-    void toggleLayerVisible(int row);
-    void toggleLayerLock(int row);
-    void toggleSolo(int row);
-    void sendVisibility();          // visibilidade efetiva (olho + solo) para o motor
-    bool effectiveVisible(const vthost::Layer& l) const;
-    void refreshCanvasChoices();
-    void setWorkspaceCanvas(const QString& canvasId);
-    void insertColumnAt(int index);
-    void duplicateColumn(int column);
-    void moveColumn(int from, int to);
-    void deleteColumn(int column);
-
-    // Seleção e propriedades
-    void selectLayer(int row);
-    void updateSelectionViews();
-    void onPropsChanged(const vthost::LayerProps& props);
-    void onLayerDragged(double dx, double dy, bool finished);
-    void onCornerDragged(int corner, double dx, double dy, bool finished);
-    void applyLayerProps(int row, const vthost::LayerProps& props, bool persist);
+    // Reprodução
+    void playCue(int index);     // com SHIFT = corte
+    void playPause();            // ESPAÇO
+    void stopPlayback();
+    void nextCue();
+    void previousCue();
+    void gotoRemaining(double seconds);
+    void seekTo(double fileTime);
+    void toggleLoopPlaylist();
+    void setMasterVolume(double db);
 
     // Desfazer / refazer (Ctrl+Z / Ctrl+Shift+Z): instantâneos do projecto.
     void recordUndo();
@@ -113,11 +91,7 @@ private:
     void restoreSnapshot(const std::string& json);
     void updateUndoActions();
 
-    // Barra de tempo do Workspace
-    void updateTransport();
-    void updateCellProgress();
-
-    // Countdown (Workspace, janela própria e página web na rede local)
+    // Countdown (preview, janela própria e página web na rede local)
     vthost::Countdown currentCountdown() const;
     void refreshCountdown();
     void openCountdownWindow();
@@ -125,18 +99,10 @@ private:
     void applyCountdownServer();
 
     // Show
-    void go(int column);
-    void goNext();
-    void goPrevious();
-    void onSpace();            // ESPAÇO: Dashboard = coluna seguinte; Timeline = play/stop
     void applyPreferences();
     void sendEngineSettings();
-    void stopAll();
     void setShowMode(bool on);
-
-    // Timeline
-    QString timelineId() const;
-    void sendTimeline(vthost::protocol::TimelineAction action, double time);
+    void openOutputs();
 
     // Motor
     void startEngine();
@@ -151,11 +117,9 @@ private:
     void downloadUpdate(const UpdateInfo& info);
     void installUpdate(const QString& installerPath);
 
-    void refreshAll();
-    void refreshDashboard();
     void updateTitle();
     void updateEditingEnabled();
-    QString nextId(const QString& prefix) const;
+    int selectedCue() const;
 
     EngineClient* engine_ = nullptr;
     UpdateChecker* updater_ = nullptr;
@@ -167,42 +131,45 @@ private:
     bool dirty_ = false;
     bool showMode_ = false;
     bool adoptedEngineProject_ = false;
-    int activeColumn_ = -1;
-    int selectedLayer_ = -1;
-    std::string soloLayer_;      // layer em solo ("" = nenhuma)
-    QString workspaceCanvas_;    // canvas mostrado no Workspace
-    std::optional<vthost::LayerProps> dragStartProps_;
+    int playingCue_ = -1;
     QTimer pushTimer_;
+    QTimer uiTimer_; // tempos no ecrã a ~25 fps (interpolados entre estados do motor)
+
     std::deque<std::string> undoStack_;
     std::deque<std::string> redoStack_;
-    std::string undoBase_;        // estado actual já registado
-    QElapsedTimer lastUndoPush_;  // agrupa alterações seguidas (ex. arrastar um valor)
+    std::string undoBase_;
+    QElapsedTimer lastUndoPush_;
     bool restoring_ = false;
-    std::string transportLayer_;  // layer controlada pela barra de tempo
-    vthost::Countdown countdown_; // último estado (do motor)
-    QElapsedTimer countdownClock_; // tempo desde esse estado (interpolação)
+
+    vthost::Countdown countdown_;
+    QElapsedTimer countdownClock_;
     QTimer countdownTimer_;
+    double statusMediaTime_ = 0.0; // posição no ficheiro no último estado
 
     QSplitter* mainSplit_ = nullptr;
-    QSplitter* topSplit_ = nullptr;
-    LibraryPanel* library_ = nullptr;
+    QSplitter* centerSplit_ = nullptr;
+    PlaylistView* playlist_ = nullptr;
     PreviewWidget* preview_ = nullptr;
-    class QComboBox* canvasSelect_ = nullptr;
-    PropertiesPanel* properties_ = nullptr;
-    QTabWidget* bottomTabs_ = nullptr;
-    DashboardTable* dashboard_ = nullptr;
-    LayerHeader* layerHeader_ = nullptr;
-    TimelinePanel* timelinePanel_ = nullptr;
-    TransportBar* transport_ = nullptr;
-    CountdownView* countdownView_ = nullptr;
+    WaveformView* waveform_ = nullptr;
+    InspectorPanel* inspector_ = nullptr;
     CountdownWindow* countdownWindow_ = nullptr;
     CountdownServer* countdownServer_ = nullptr;
-    QLabel* webLabel_ = nullptr;
-    QAction* undoAction_ = nullptr;
-    QAction* redoAction_ = nullptr;
+
+    QToolButton* playBtn_ = nullptr;
+    QToolButton* loopBtn_ = nullptr;
+    QLabel* timecode_ = nullptr;
+    QLabel* cueLabel_ = nullptr;
+    QSlider* master_ = nullptr;
+    QLabel* masterLabel_ = nullptr;
+    QWidget* meter_ = nullptr;
+    QToolButton* testBtn_ = nullptr;
     QLabel* engineLabel_ = nullptr;
     QLabel* infoLabel_ = nullptr;
+    QLabel* webLabel_ = nullptr;
     QAction* showModeAction_ = nullptr;
+    QAction* undoAction_ = nullptr;
+    QAction* redoAction_ = nullptr;
+    QAction* loopAction_ = nullptr;
     QList<QWidget*> editWidgets_;
     QList<QAction*> editActions_;
 };

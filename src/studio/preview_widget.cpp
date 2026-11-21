@@ -2,11 +2,9 @@
 
 #include "vthost/core/preview.h"
 
-#include <QMouseEvent>
 #include <QPainter>
-#include <QPainterPath>
-#include <QPolygonF>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstring>
@@ -18,8 +16,7 @@
 using namespace vthost;
 
 namespace {
-const QColor kOrange(255, 136, 0);
-constexpr int kMargin = 28;
+constexpr int kMargin = 0;
 } // namespace
 
 PreviewWidget::PreviewWidget(QWidget* parent) : QWidget(parent) {
@@ -94,10 +91,11 @@ void PreviewWidget::poll() {
     if (live_ || wasLive != live_) update();
 }
 
-void PreviewWidget::setSelection(const std::optional<LayerProps>& props, int mediaW, int mediaH) {
-    selection_ = props;
-    selMediaW_ = mediaW;
-    selMediaH_ = mediaH;
+void PreviewWidget::setTimes(const QString& elapsed, const QString& remaining, const QColor& remainingColor) {
+    if (elapsed == elapsed_ && remaining == remaining_ && remainingColor == remainingColor_) return;
+    elapsed_ = elapsed;
+    remaining_ = remaining;
+    remainingColor_ = remainingColor;
     update();
 }
 
@@ -109,7 +107,7 @@ void PreviewWidget::setCanvasSize(int w, int h) {
 }
 
 QRectF PreviewWidget::canvasRect() const {
-    const QRectF area = QRectF(rect()).adjusted(kMargin, kMargin, -kMargin, -kMargin - 18);
+    const QRectF area = QRectF(rect()).adjusted(kMargin, kMargin, -kMargin, -kMargin);
     if (area.width() <= 0 || area.height() <= 0 || canvasW_ <= 0 || canvasH_ <= 0) return {};
     const double s = std::min(area.width() / canvasW_, area.height() / canvasH_);
     const double w = canvasW_ * s, h = canvasH_ * s;
@@ -119,91 +117,44 @@ QRectF PreviewWidget::canvasRect() const {
 void PreviewWidget::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    // Fundo riscado (zona fora do canvas).
-    p.fillRect(rect(), QColor(58, 58, 58));
-    p.fillRect(rect(), QBrush(QColor(70, 70, 70), Qt::BDiagPattern));
-
+    p.fillRect(rect(), QColor(16, 16, 16));
     const QRectF cr = canvasRect();
     if (cr.isEmpty()) return;
-
     if (live_ && !frame_.isNull()) {
         p.setRenderHint(QPainter::SmoothPixmapTransform);
         p.drawImage(cr, frame_);
     } else {
         p.fillRect(cr, Qt::black);
-        p.setPen(QColor(160, 160, 160));
+        p.setPen(QColor(120, 120, 120));
         p.drawText(cr, Qt::AlignCenter, tr("No signal from the engine"));
     }
 
-    // Contorno e etiqueta "Canvas".
-    p.setPen(QPen(kOrange, 1));
-    p.setBrush(Qt::NoBrush);
-    p.drawRect(cr.adjusted(-0.5, -0.5, 0.5, 0.5));
-    const QString tag = tr("Canvas");
-    const QFontMetrics fm(font());
-    const QRectF tagRect(cr.left(), cr.top() - fm.height() - 4, fm.horizontalAdvance(tag) + 10, fm.height() + 4);
-    p.fillRect(tagRect, kOrange);
-    p.setPen(Qt::black);
-    p.drawText(tagRect, Qt::AlignCenter, tag);
+    // Tempos nos cantos (como no Mitti): caixa preta, letra branca monoespaçada.
+    QFont f(QStringLiteral("Consolas"));
+    f.setStyleHint(QFont::Monospace);
+    f.setBold(true);
+    f.setPixelSize(std::clamp(static_cast<int>(height() / 13), 12, 40));
+    p.setFont(f);
+    const QFontMetrics fm(f);
+    const int pad = std::max(4, fm.height() / 5);
+    auto box = [&](const QString& text, bool right, const QColor& color) {
+        if (text.isEmpty()) return;
+        const int w = fm.horizontalAdvance(text) + pad * 2;
+        const int h = fm.height() + pad;
+        const QRect r(right ? width() - w - 10 : 10, 10, w, h);
+        p.fillRect(r, QColor(0, 0, 0, 200));
+        p.setPen(color);
+        p.drawText(r, Qt::AlignCenter, text);
+    };
+    box(elapsed_, false, Qt::white);
+    box(remaining_, true, remainingColor_);
 
-    // Contorno da layer selecionada.
-    handles_.clear();
-    if (selection_) {
-        const auto corners = computeLayerCorners(*selection_, selMediaW_, selMediaH_, canvasW_, canvasH_);
-        const double s = cr.width() / canvasW_;
-        for (const auto& c : corners) handles_ << QPointF(cr.left() + c.x * s, cr.top() + c.y * s);
-        p.setPen(QPen(kOrange, 1.5, Qt::DashLine));
-        p.setBrush(Qt::NoBrush);
-        p.drawPolygon(handles_);
-        // Pegas dos cantos: arrastar = corner pin (mapping da layer).
-        p.setPen(QPen(Qt::black, 1));
-        p.setBrush(kOrange);
-        for (const QPointF& pt : handles_) p.drawRect(QRectF(pt.x() - 5, pt.y() - 5, 10, 10));
-    }
-
-    // Rodapé: resolução e fps.
-    p.setPen(QColor(190, 190, 190));
+    // Rodapé discreto: resolução e fps.
+    QFont small = font();
+    small.setPixelSize(11);
+    p.setFont(small);
+    p.setPen(QColor(150, 150, 150));
     const QString info = QStringLiteral("%1 × %2").arg(canvasW_).arg(canvasH_) +
                          (live_ ? QStringLiteral("  ·  %1 fps").arg(fps_, 0, 'f', 1) : QString());
-    p.drawText(QRectF(0, height() - 20, width() - 8, 18), Qt::AlignRight | Qt::AlignVCenter, info);
-    if (live_) {
-        p.setBrush(QColor(220, 40, 40));
-        p.setPen(Qt::NoPen);
-        p.drawEllipse(QPointF(12, height() - 11), 4, 4);
-        p.setPen(QColor(220, 220, 220));
-        p.drawText(QRectF(20, height() - 20, 120, 18), Qt::AlignLeft | Qt::AlignVCenter, tr("ON AIR"));
-    }
-}
-
-void PreviewWidget::mousePressEvent(QMouseEvent* e) {
-    if (e->button() != Qt::LeftButton || !editable_ || !selection_) return;
-    dragCorner_ = -1;
-    for (int i = 0; i < handles_.size(); ++i)
-        if (QLineF(handles_[i], e->position()).length() <= 9.0) dragCorner_ = i;
-    if (dragCorner_ >= 0 || canvasRect().contains(e->position())) {
-        dragging_ = true;
-        dragStart_ = e->position();
-    }
-}
-
-void PreviewWidget::mouseMoveEvent(QMouseEvent* e) {
-    if (!dragging_) return;
-    const QRectF cr = canvasRect();
-    if (cr.width() <= 0) return;
-    const double s = canvasW_ / cr.width();
-    const QPointF d = (e->position() - dragStart_) * s;
-    if (dragCorner_ >= 0) emit cornerDragged(dragCorner_, d.x(), d.y(), false);
-    else emit layerDragged(d.x(), d.y(), false);
-}
-
-void PreviewWidget::mouseReleaseEvent(QMouseEvent* e) {
-    if (!dragging_) return;
-    dragging_ = false;
-    const QRectF cr = canvasRect();
-    if (cr.width() <= 0) return;
-    const double s = canvasW_ / cr.width();
-    const QPointF d = (e->position() - dragStart_) * s;
-    if (dragCorner_ >= 0) emit cornerDragged(dragCorner_, d.x(), d.y(), true);
-    else emit layerDragged(d.x(), d.y(), true);
-    dragCorner_ = -1;
+    p.drawText(QRectF(0, height() - 18, width() - 8, 16), Qt::AlignRight | Qt::AlignVCenter, info);
 }

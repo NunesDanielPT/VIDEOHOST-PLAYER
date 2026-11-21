@@ -1,17 +1,12 @@
 #pragma once
-// Workspace: preview em direto do canvas que está no ar (lido da memória
-// partilhada escrita pelo motor). Mostra o contorno da layer selecionada e
-// permite movê-la arrastando com o rato.
-
-#include "vthost/core/project.h"
+// Preview do que está no ar (lido da memória partilhada escrita pelo motor),
+// como no Mitti: imagem grande, tempo decorrido em cima à esquerda e tempo que
+// falta em cima à direita.
 
 #include <QElapsedTimer>
 #include <QImage>
-#include <QPolygonF>
 #include <QTimer>
 #include <QWidget>
-
-#include <optional>
 
 class PreviewWidget : public QWidget {
     Q_OBJECT
@@ -19,23 +14,17 @@ public:
     explicit PreviewWidget(QWidget* parent = nullptr);
     ~PreviewWidget() override;
 
-    // Contorno da layer selecionada (tamanho da media em píxeis; 0 = desconhecido).
-    void setSelection(const std::optional<vthost::LayerProps>& props, int mediaW, int mediaH);
     void setCanvasSize(int w, int h);
-    void setEditable(bool editable) { editable_ = editable; }
     void setFps(double fps) { fps_ = fps; }
+    // Textos dos cantos ("" = escondido) e cor do tempo que falta.
+    void setTimes(const QString& elapsed, const QString& remaining, const QColor& remainingColor);
 
 signals:
-    // Deslocamento pedido pelo utilizador (píxeis do canvas).
-    void layerDragged(double dx, double dy, bool finished);
-    // Arrastar um canto laranja = corner pin desse canto (0..3: sup-esq, sup-dir, inf-dir, inf-esq).
-    void cornerDragged(int corner, double dx, double dy, bool finished);
+    void doubleClicked();
 
 protected:
     void paintEvent(QPaintEvent* e) override;
-    void mousePressEvent(QMouseEvent* e) override;
-    void mouseMoveEvent(QMouseEvent* e) override;
-    void mouseReleaseEvent(QMouseEvent* e) override;
+    void mouseDoubleClickEvent(QMouseEvent*) override { emit doubleClicked(); }
 
 private:
     void poll();
@@ -54,12 +43,7 @@ private:
     int canvasW_ = 1920;
     int canvasH_ = 1080;
     double fps_ = 0.0;
-    std::optional<vthost::LayerProps> selection_;
-    int selMediaW_ = 0;
-    int selMediaH_ = 0;
-    bool editable_ = true;
-    bool dragging_ = false;
-    int dragCorner_ = -1;
-    QPointF dragStart_;
-    QPolygonF handles_; // cantos da layer selecionada no ecrã (para o rato)
+    QString elapsed_;
+    QString remaining_;
+    QColor remainingColor_ = Qt::white;
 };

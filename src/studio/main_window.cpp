@@ -3,26 +3,18 @@
 #include "app_info.h"
 #include "countdown_server.h"
 #include "countdown_view.h"
-#include "cue_dialog.h"
-#include "dashboard_table.h"
-#include "layer_header.h"
-#include "library_panel.h"
+#include "inspector_panel.h"
 #include "outputs_dialog.h"
-#include "media_cache.h"
-#include "preview_widget.h"
-#include "properties_panel.h"
 #include "prefs.h"
+#include "preview_widget.h"
 #include "settings_dialog.h"
-#include "timeline_panel.h"
-#include "transport_bar.h"
+#include "waveform_view.h"
 #include "vthost/core/paths.h"
 
 #include <QAction>
 #include <QApplication>
-#include <QComboBox>
-#include <QToolButton>
-#include <QCloseEvent>
 #include <QClipboard>
+#include <QCloseEvent>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -30,8 +22,6 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
-#include <QHeaderView>
-#include <QInputDialog>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
@@ -42,10 +32,11 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QSlider>
 #include <QSplitter>
 #include <QStatusBar>
-#include <QTabWidget>
-#include <QToolBar>
+#include <QStyle>
+#include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -60,8 +51,54 @@ namespace {
 QString qs(const std::string& s) { return QString::fromStdString(s); }
 std::string ss(const QString& s) { return s.toStdString(); }
 
-const QColor kActiveColumn(255, 136, 0);
 constexpr std::size_t kMaxUndo = 100;
+const QColor kBlue(42, 160, 255);
+
+// Medidor de nível (L/R) da barra de transporte.
+class LevelMeter : public QWidget {
+public:
+    explicit LevelMeter(QWidget* parent) : QWidget(parent) { setFixedSize(14, 34); }
+    void setLevels(double l, double r) {
+        l_ = std::clamp(l, 0.0, 1.0);
+        r_ = std::clamp(r, 0.0, 1.0);
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.fillRect(rect(), QColor(20, 20, 20));
+        auto bar = [&](int x, double v) {
+            // Escala em dB (-60..0) para o medidor mexer como os de som.
+            const double db = v > 0.0 ? 20.0 * std::log10(v) : -60.0;
+            const double f = std::clamp((db + 60.0) / 60.0, 0.0, 1.0);
+            const int h = static_cast<int>(f * (height() - 2));
+            const QColor c = db > -3.0 ? QColor(230, 60, 50) : db > -12.0 ? QColor(240, 190, 30) : QColor(70, 200, 80);
+            p.fillRect(QRect(x, height() - 1 - h, 5, h), c);
+        };
+        bar(1, l_);
+        bar(8, r_);
+    }
+
+private:
+    double l_ = 0.0, r_ = 0.0;
+};
+
+QIcon cueIcon(CueIcon kind) {
+    QPixmap pm(48, 48);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    paintCueIcon(&p, QRectF(4, 4, 40, 40), kind, true);
+    return QIcon(pm);
+}
+
+bool isImageFile(const QString& path) {
+    static const QStringList ext = {QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"),
+                                    QStringLiteral("bmp"), QStringLiteral("tif"), QStringLiteral("tiff"),
+                                    QStringLiteral("gif"), QStringLiteral("webp"), QStringLiteral("tga"),
+                                    QStringLiteral("exr"), QStringLiteral("dpx")};
+    return ext.contains(QFileInfo(path).suffix().toLower());
+}
 
 } // namespace
 
@@ -72,9 +109,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     media_ = new MediaCache(this);
     connect(media_, &MediaCache::updated, this, [this](const QString&) {
-        refreshDashboard();
-        updateSelectionViews();
+        playlist_->refresh();
+        updateSelection();
     });
+    connect(media_, &MediaCache::audioAnalyzed, this, &MainWindow::applyAnalysis);
 
     updater_ = new UpdateChecker(this);
     connect(updater_, &UpdateChecker::updateAvailable, this, &MainWindow::onUpdateAvailable);
@@ -111,21 +149,54 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(&countdownTimer_, &QTimer::timeout, this, &MainWindow::refreshCountdown);
     countdownTimer_.start();
 
+    // Tempos no ecrã (preview, código de tempo, cabeça de leitura) a ~25 fps.
+    uiTimer_.setInterval(40);
+    connect(&uiTimer_, &QTimer::timeout, this, [this] {
+        const Countdown c = currentCountdown();
+        const int idx = playingCue_;
+        const Cue* q = idx >= 0 && idx < static_cast<int>(project_.cues.size()) ? &project_.cues[static_cast<std::size_t>(idx)] : nullptr;
+        const double fps = q ? std::max(1.0, media_->info(qs(q->path)).fps) : 25.0;
+        if (c.active) {
+            const QString el = formatTimecode(c.elapsed, fps);
+            const QString rem = QStringLiteral("-") + formatTimecode(c.remaining, fps);
+            QColor col = Qt::white;
+            if (c.running && c.remaining <= prefs::countdownDangerSeconds()) col = QColor(255, 70, 60);
+            else if (c.running && c.remaining <= prefs::countdownWarnSeconds()) col = QColor(255, 170, 0);
+            preview_->setTimes(el, rem, col);
+            timecode_->setText(el);
+            timecode_->setStyleSheet(QStringLiteral("color: %1;").arg(c.running ? QStringLiteral("#ffffff") : QStringLiteral("#78b4ff")));
+        } else {
+            preview_->setTimes(QString(), QString(), Qt::white);
+            timecode_->setText(QStringLiteral("--:--:--:--"));
+            timecode_->setStyleSheet(QStringLiteral("color: #777;"));
+        }
+        // Cabeça de leitura na forma de onda (só se a cue selecionada for a que está no ar).
+        double head = -1.0;
+        if (q && selectedCue() == idx && c.active) {
+            head = statusMediaTime_;
+            if (c.running) head += countdownClock_.elapsed() / 1000.0 * q->speed;
+            const double out = q->effectiveOut(media_->info(qs(q->path)).duration);
+            if (out > 0.0 && head > out) head = c.loops ? q->inPoint + std::fmod(head - q->inPoint, std::max(0.01, out - q->inPoint)) : out;
+        }
+        waveform_->setPlayhead(head);
+        inspector_->setPlayhead(head);
+        if (q && c.active && c.duration > 0.0) playlist_->setPlaying(idx, std::clamp(c.elapsed / c.duration, 0.0, 1.0), qs(c.state));
+    });
+    uiTimer_.start();
+
     buildUi();
     buildMenus();
 
     project_ = Project::makeDefault();
     project_.name = ss(tr("Untitled"));
-    ensureTimeline();
     clearUndo();
-    refreshAll();
-    selectLayer(0);
+    refreshPlaylist();
 
     resize(1440, 900);
     const QSettings st;
     restoreGeometry(st.value(QStringLiteral("ui/geometry")).toByteArray());
-    mainSplit_->restoreState(st.value(QStringLiteral("ui/mainSplit")).toByteArray());
-    topSplit_->restoreState(st.value(QStringLiteral("ui/topSplit")).toByteArray());
+    mainSplit_->restoreState(st.value(QStringLiteral("ui/playerSplit")).toByteArray());
+    centerSplit_->restoreState(st.value(QStringLiteral("ui/centerSplit")).toByteArray());
 
     applyPreferences();
 
@@ -144,219 +215,172 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         QTimer::singleShot(4000, this, [this] { checkForUpdates(false); });
 }
 
+
 // ------------------------------------------------------------------ UI
 
-void MainWindow::buildUi() {
-    library_ = new LibraryPanel(media_, this);
-    connect(library_, &LibraryPanel::addRequested, this, &MainWindow::addMedia);
-    connect(library_, &LibraryPanel::removeRequested, this, &MainWindow::removeMedia);
-    connect(library_, &LibraryPanel::contextMenuRequested, this, &MainWindow::showMediaMenu);
+QWidget* MainWindow::buildTransportBar() {
+    auto* bar = new QWidget(this);
+    bar->setObjectName(QStringLiteral("transport"));
+    bar->setStyleSheet(QStringLiteral("#transport { background: #1d1d1d; border-bottom: 1px solid #111; }"
+                                      "QToolButton { border-radius: 4px; padding: 2px; }"
+                                      "QToolButton:hover { background: #333; }"
+                                      "QToolButton:checked { background: #1d3d5c; }"));
+    auto* l = new QHBoxLayout(bar);
+    l->setContentsMargins(8, 6, 8, 6);
+    l->setSpacing(6);
+    auto button = [&](const QIcon& icon, const QString& tip, int size, auto slot) {
+        auto* b = new QToolButton(bar);
+        b->setIcon(icon);
+        b->setIconSize(QSize(size, size));
+        b->setToolTip(tip);
+        b->setAutoRaise(true);
+        connect(b, &QToolButton::clicked, this, slot);
+        l->addWidget(b);
+        return b;
+    };
+    playBtn_ = button(style()->standardIcon(QStyle::SP_MediaPlay), tr("Play / pause (Space)"), 36, [this] { playPause(); });
+    button(style()->standardIcon(QStyle::SP_MediaStop), tr("Stop (Esc)"), 24, [this] { stopPlayback(); });
+    l->addSpacing(6);
+    button(style()->standardIcon(QStyle::SP_MediaSkipBackward), tr("Previous cue (Ctrl+Left)"), 22, [this] { previousCue(); });
+    button(style()->standardIcon(QStyle::SP_MediaSkipForward), tr("Next cue (Ctrl+Right)"), 22, [this] { nextCue(); });
+    loopBtn_ = button(cueIcon(CueIcon::Loop), tr("Loop the playlist (Ctrl+R)"), 22, [this] { toggleLoopPlaylist(); });
+    loopBtn_->setCheckable(true);
+    l->addSpacing(10);
+    for (int s : {30, 20, 10}) {
+        auto* b = new QToolButton(bar);
+        b->setText(QStringLiteral("GOTO\n%1").arg(s));
+        b->setToolTip(tr("Jump to the last %1 seconds of the cue").arg(s));
+        b->setStyleSheet(QStringLiteral("QToolButton { font-size: 9px; color: #aaa; min-width: 34px; }"));
+        connect(b, &QToolButton::clicked, this, [this, s] { gotoRemaining(s); });
+        l->addWidget(b);
+    }
+    l->addSpacing(10);
+    auto* tcBox = new QWidget(bar);
+    tcBox->setStyleSheet(QStringLiteral("background: #101010; border: 1px solid #333; border-radius: 4px;"));
+    auto* tcl = new QVBoxLayout(tcBox);
+    tcl->setContentsMargins(12, 2, 12, 2);
+    tcl->setSpacing(0);
+    timecode_ = new QLabel(QStringLiteral("--:--:--:--"), tcBox);
+    QFont tf(QStringLiteral("Consolas"));
+    tf.setStyleHint(QFont::Monospace);
+    tf.setPixelSize(26);
+    tf.setBold(true);
+    timecode_->setFont(tf);
+    timecode_->setStyleSheet(QStringLiteral("border: none; color: #777;"));
+    cueLabel_ = new QLabel(tcBox);
+    cueLabel_->setStyleSheet(QStringLiteral("border: none; color: #8aa; font-size: 10px;"));
+    cueLabel_->setMaximumWidth(260);
+    tcl->addWidget(timecode_);
+    tcl->addWidget(cueLabel_);
+    l->addWidget(tcBox);
+    l->addStretch();
 
-    preview_ = new PreviewWidget(this);
-    connect(preview_, &PreviewWidget::layerDragged, this, &MainWindow::onLayerDragged);
-    connect(preview_, &PreviewWidget::cornerDragged, this, &MainWindow::onCornerDragged);
-    // Workspace: escolha do canvas mostrado + atalhos para saídas e test card.
-    auto* workspace = new QWidget(this);
-    auto* wl = new QVBoxLayout(workspace);
-    wl->setContentsMargins(0, 0, 0, 0);
-    wl->setSpacing(2);
-    auto* wbar = new QHBoxLayout;
-    wbar->setContentsMargins(6, 4, 6, 0);
-    canvasSelect_ = new QComboBox(workspace);
-    canvasSelect_->setMinimumWidth(200);
-    connect(canvasSelect_, &QComboBox::activated, this,
-            [this](int) { setWorkspaceCanvas(canvasSelect_->currentData().toString()); });
-    auto* outputsBtn = new QToolButton(workspace);
-    outputsBtn->setText(tr("Outputs..."));
-    connect(outputsBtn, &QToolButton::clicked, this, &MainWindow::openOutputs);
-    auto* testBtn = new QToolButton(workspace);
-    testBtn->setText(tr("Test card"));
-    testBtn->setCheckable(true);
-    connect(testBtn, &QToolButton::toggled, this, [this](bool on) {
+    // Volume geral + medidor.
+    auto* volIcon = new QLabel(bar);
+    volIcon->setPixmap(cueIcon(CueIcon::Audio).pixmap(18, 18));
+    l->addWidget(volIcon);
+    master_ = new QSlider(Qt::Horizontal, bar);
+    master_->setRange(-600, 120);
+    master_->setFixedWidth(130);
+    master_->setToolTip(tr("Master volume (double-click the value to reset)"));
+    masterLabel_ = new QLabel(QStringLiteral("0.0 dB"), bar);
+    masterLabel_->setMinimumWidth(56);
+    connect(master_, &QSlider::valueChanged, this, [this](int v) { setMasterVolume(v / 10.0); });
+    l->addWidget(master_);
+    l->addWidget(masterLabel_);
+    auto* meter = new LevelMeter(bar);
+    meter_ = meter;
+    l->addWidget(meter);
+    l->addSpacing(10);
+    testBtn_ = new QToolButton(bar);
+    testBtn_->setText(tr("Test card"));
+    testBtn_->setCheckable(true);
+    connect(testBtn_, &QToolButton::toggled, this, [this](bool on) {
         protocol::Command c;
         c.type = protocol::CommandType::SetTestCard;
         c.on = on;
         engine_->send(c);
     });
-    countdownView_ = new CountdownView(true, workspace);
-    countdownView_->setFixedSize(250, 40);
-    connect(countdownView_, &CountdownView::doubleClicked, this, &MainWindow::openCountdownWindow);
-    wbar->addWidget(new QLabel(tr("Canvas:"), workspace));
-    wbar->addWidget(canvasSelect_);
-    wbar->addStretch();
-    wbar->addWidget(countdownView_);
-    wbar->addSpacing(8);
-    wbar->addWidget(testBtn);
-    wbar->addWidget(outputsBtn);
-    wl->addLayout(wbar);
-    wl->addWidget(preview_, 1);
-    // Barra de tempo do vídeo da layer selecionada (saltar / pausar), ao vivo.
-    transport_ = new TransportBar(workspace);
-    wl->addWidget(transport_);
-    connect(transport_, &TransportBar::seekRequested, this, [this](double t, bool) {
-        if (transportLayer_.empty()) return;
-        protocol::Command c;
-        c.type = protocol::CommandType::LayerSeek;
-        c.layer = transportLayer_;
-        c.value = t;
-        engine_->sendLatest(QStringLiteral("seek:") + qs(transportLayer_), c);
-    });
-    connect(transport_, &TransportBar::pauseRequested, this, [this](bool pause) {
-        if (transportLayer_.empty()) return;
-        protocol::Command c;
-        c.type = protocol::CommandType::LayerPause;
-        c.layer = transportLayer_;
-        c.on = pause;
-        engine_->send(c);
-    });
+    l->addWidget(testBtn_);
+    auto* outputsBtn = new QToolButton(bar);
+    outputsBtn->setText(tr("Outputs..."));
+    connect(outputsBtn, &QToolButton::clicked, this, &MainWindow::openOutputs);
+    l->addWidget(outputsBtn);
+    editWidgets_ << outputsBtn;
+    return bar;
+}
 
-    properties_ = new PropertiesPanel(this);
-    connect(properties_, &PropertiesPanel::propsChanged, this, &MainWindow::onPropsChanged);
-    connect(properties_, &PropertiesPanel::canvasChanged, this, [this](const QString& canvasId) {
-        if (selectedLayer_ < 0 || selectedLayer_ >= static_cast<int>(project_.layers.size()) || showMode_) return;
-        project_.layers[static_cast<std::size_t>(selectedLayer_)].canvasId = ss(canvasId);
-        setWorkspaceCanvas(canvasId);
-        refreshDashboard();
-        markChanged();
-    });
+void MainWindow::buildUi() {
+    playlist_ = new PlaylistView(media_, this);
+    connect(playlist_, &QListWidget::currentRowChanged, this, [this](int) { updateSelection(); });
+    connect(playlist_, &PlaylistView::playRequested, this, &MainWindow::playCue);
+    connect(playlist_, &PlaylistView::iconClicked, this, &MainWindow::onIconClicked);
+    connect(playlist_, &PlaylistView::filesDropped, this, &MainWindow::addFiles);
+    connect(playlist_, &PlaylistView::cueMoved, this, &MainWindow::moveCue);
+    connect(playlist_, &PlaylistView::deleteRequested, this, &MainWindow::deleteCue);
+    connect(playlist_, &PlaylistView::contextMenuRequested, this, &MainWindow::showCueMenu);
 
-    topSplit_ = new QSplitter(Qt::Horizontal, this);
-    topSplit_->addWidget(library_);
-    topSplit_->addWidget(workspace);
-    topSplit_->addWidget(properties_);
-    topSplit_->setStretchFactor(0, 0);
-    topSplit_->setStretchFactor(1, 1);
-    topSplit_->setStretchFactor(2, 0);
-    topSplit_->setSizes({260, 860, 320});
-
-    // ---- Dashboard
-    auto* dashPage = new QWidget(this);
-    auto* dashLayout = new QVBoxLayout(dashPage);
-    dashLayout->setContentsMargins(0, 4, 0, 0);
-    auto* dashBar = new QHBoxLayout;
-    dashBar->setContentsMargins(6, 0, 6, 0);
-    auto* goBtn = new QPushButton(tr("GO next  [Space]"), dashPage);
-    goBtn->setMinimumHeight(34);
-    goBtn->setStyleSheet(QStringLiteral("font-weight: bold; padding: 0 18px;"));
-    auto* stopBtn = new QPushButton(tr("Stop all"), dashPage);
-    stopBtn->setMinimumHeight(34);
-    connect(goBtn, &QPushButton::clicked, this, &MainWindow::goNext);
-    connect(stopBtn, &QPushButton::clicked, this, &MainWindow::stopAll);
-    // Barra de ícones das layers (como no Premiere): adicionar, duplicar, subir, descer, apagar.
-    auto tool = [&](ToolIcon icon, const QString& tip, auto slot) {
-        auto* b = new QToolButton(dashPage);
-        b->setIcon(makeToolIcon(icon));
-        b->setIconSize(QSize(20, 20));
-        b->setToolTip(tip);
-        b->setAutoRaise(true);
-        connect(b, &QToolButton::clicked, this, slot);
-        dashBar->addWidget(b);
-        editWidgets_ << b;
-        return b;
-    };
-    dashBar->addWidget(goBtn);
-    dashBar->addWidget(stopBtn);
-    dashBar->addSpacing(16);
-    dashBar->addWidget(new QLabel(tr("Layers:"), dashPage));
-    tool(ToolIcon::Add, tr("Add layer"), [this] { insertLayerAt(std::max(0, selectedLayer_)); });
-    tool(ToolIcon::Duplicate, tr("Duplicate layer"), [this] { duplicateLayer(selectedLayer_); });
-    tool(ToolIcon::Up, tr("Move up"), [this] { moveLayer(selectedLayer_, selectedLayer_ - 1); });
-    tool(ToolIcon::Down, tr("Move down"), [this] { moveLayer(selectedLayer_, selectedLayer_ + 1); });
-    tool(ToolIcon::Delete, tr("Delete layer"), [this] { removeLayer(); });
-    dashBar->addStretch();
-    auto* addColBtn = new QPushButton(tr("+ Column"), dashPage);
-    connect(addColBtn, &QPushButton::clicked, this, &MainWindow::addColumn);
-    dashBar->addWidget(addColBtn);
-    editWidgets_ << addColBtn;
-
-    dashboard_ = new DashboardTable(dashPage);
-    layerHeader_ = new LayerHeader(dashboard_);
-    dashboard_->setVerticalHeader(layerHeader_);
-    connect(layerHeader_, &LayerHeader::visibilityToggled, this, &MainWindow::toggleLayerVisible);
-    connect(layerHeader_, &LayerHeader::lockToggled, this, &MainWindow::toggleLayerLock);
-    connect(layerHeader_, &LayerHeader::soloToggled, this, &MainWindow::toggleSolo);
-    connect(layerHeader_, &LayerHeader::contextMenuRequested, this, &MainWindow::showLayerMenu);
-    connect(layerHeader_, &QHeaderView::sectionDoubleClicked, this, [this](int row) {
-        selectLayer(row); // duplo clique no nome = mudar o nome (como no Millumin)
-        if (!showMode_) renameLayer();
-    });
-    // Arrastar layers/colunas: o Qt só muda a ordem visual; aplicamos ao projeto e repomos a vista.
-    connect(layerHeader_, &QHeaderView::sectionMoved, this, [this](int, int oldVisual, int newVisual) {
-        {
-            const QSignalBlocker b(layerHeader_);
-            layerHeader_->moveSection(newVisual, oldVisual);
+    preview_ = new PreviewWidget(this);
+    connect(preview_, &PreviewWidget::doubleClicked, this, &MainWindow::openCountdownWindow);
+    waveform_ = new WaveformView(this);
+    connect(waveform_, &WaveformView::seekRequested, this, [this](double t, bool) { seekTo(t); });
+    connect(waveform_, &WaveformView::inOutChanged, this, [this](double in, double out, bool finished) {
+        const int i = selectedCue();
+        if (i < 0 || showMode_) return;
+        Cue& q = project_.cues[static_cast<std::size_t>(i)];
+        q.inPoint = in;
+        q.outPoint = out;
+        q.clamp();
+        playlist_->refresh();
+        if (finished) {
+            markChanged();
+            updateSelection();
         }
-        if (showMode_) return;
-        moveLayer(oldVisual, newVisual);
     });
-    auto* colHeader = dashboard_->horizontalHeader();
-    colHeader->setSectionsMovable(true);
-    colHeader->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(colHeader, &QHeaderView::sectionMoved, this, [this, colHeader](int, int oldVisual, int newVisual) {
-        {
-            const QSignalBlocker b(colHeader);
-            colHeader->moveSection(newVisual, oldVisual);
-        }
-        if (showMode_) return;
-        moveColumn(oldVisual, newVisual);
-    });
-    connect(colHeader, &QHeaderView::customContextMenuRequested, this, [this, colHeader](const QPoint& pos) {
-        const int c = colHeader->logicalIndexAt(pos);
-        if (c >= 0) showColumnMenu(c, colHeader->mapToGlobal(pos));
-    });
-    dashboard_->setToolTip(tr("Drag media from the Library onto a cell. Click a column header to GO."));
-    connect(dashboard_, &DashboardTable::mediaDropped, this, &MainWindow::placeMedia);
-    connect(dashboard_, &QTableWidget::cellDoubleClicked, this,
-            [this](int r, int c) { placeMedia(r, c, library_->selectedMediaId()); });
-    connect(dashboard_, &QTableWidget::customContextMenuRequested, this, &MainWindow::showCellMenu);
-    connect(dashboard_->horizontalHeader(), &QHeaderView::sectionClicked, this, &MainWindow::go);
-    connect(dashboard_->verticalHeader(), &QHeaderView::sectionClicked, this, &MainWindow::selectLayer);
-    connect(dashboard_, &QTableWidget::currentCellChanged, this, [this](int row, int, int, int) {
-        if (row >= 0) selectLayer(row);
-    });
-    dashLayout->addLayout(dashBar);
-    dashLayout->addWidget(dashboard_, 1);
-
-    // ---- Timeline
-    timelinePanel_ = new TimelinePanel(media_, this);
-    TimelineWidget* tw = timelinePanel_->timeline();
-    connect(timelinePanel_, &TimelinePanel::playRequested, this,
-            [this] { sendTimeline(protocol::TimelineAction::Play, timelinePanel_->timeline()->playhead()); });
-    connect(timelinePanel_, &TimelinePanel::pauseRequested, this,
-            [this] { sendTimeline(protocol::TimelineAction::Pause, -1.0); });
-    connect(timelinePanel_, &TimelinePanel::stopRequested, this, [this] {
-        sendTimeline(protocol::TimelineAction::Stop, -1.0);
-        timelinePanel_->setState(0.0, false, true);
-    });
-    connect(tw, &TimelineWidget::seekRequested, this,
-            [this](double t, bool) { sendTimeline(protocol::TimelineAction::Seek, t); });
-    connect(tw, &TimelineWidget::edited, this, &MainWindow::markChanged);
-    connect(tw, &TimelineWidget::layerClicked, this, &MainWindow::selectLayer);
-    connect(tw, &TimelineWidget::layerContextMenu, this, &MainWindow::showLayerMenu);
-    connect(tw, &TimelineWidget::layerVisibilityToggled, this, &MainWindow::toggleLayerVisible);
-    connect(tw, &TimelineWidget::layerLockToggled, this, &MainWindow::toggleLayerLock);
-    connect(tw, &TimelineWidget::layerSoloToggled, this, &MainWindow::toggleSolo);
-    connect(tw, &TimelineWidget::layerMoved, this, [this](int from, int to) {
-        if (!showMode_) moveLayer(from, to);
+    inspector_ = new InspectorPanel(this);
+    connect(inspector_, &InspectorPanel::cueChanged, this, &MainWindow::onCueEdited);
+    connect(inspector_, &InspectorPanel::reanalyzeRequested, this, [this](const QString& path) {
+        media_->forget(path);
+        for (auto& q : project_.cues)
+            if (qs(q.path) == path) {
+                q.loudness.reset();
+                q.peakDb.reset();
+            }
+        media_->info(path);
+        media_->audio(path);
+        updateSelection();
     });
 
-    bottomTabs_ = new QTabWidget(this);
-    bottomTabs_->addTab(dashPage, tr("Dashboard"));
-    bottomTabs_->addTab(timelinePanel_, tr("Timeline"));
+    centerSplit_ = new QSplitter(Qt::Vertical, this);
+    centerSplit_->addWidget(preview_);
+    centerSplit_->addWidget(waveform_);
+    centerSplit_->setStretchFactor(0, 4);
+    centerSplit_->setStretchFactor(1, 1);
+    centerSplit_->setSizes({520, 150});
 
-    mainSplit_ = new QSplitter(Qt::Vertical, this);
-    mainSplit_->addWidget(topSplit_);
-    mainSplit_->addWidget(bottomTabs_);
-    mainSplit_->setStretchFactor(0, 3);
-    mainSplit_->setStretchFactor(1, 2);
-    setCentralWidget(mainSplit_);
+    mainSplit_ = new QSplitter(Qt::Horizontal, this);
+    mainSplit_->addWidget(playlist_);
+    mainSplit_->addWidget(centerSplit_);
+    mainSplit_->addWidget(inspector_);
+    mainSplit_->setStretchFactor(0, 0);
+    mainSplit_->setStretchFactor(1, 1);
+    mainSplit_->setStretchFactor(2, 0);
+    mainSplit_->setSizes({440, 760, 340});
+
+    auto* central = new QWidget(this);
+    auto* v = new QVBoxLayout(central);
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(0);
+    v->addWidget(buildTransportBar());
+    v->addWidget(mainSplit_, 1);
+    setCentralWidget(central);
 
     engineLabel_ = new QLabel(this);
     infoLabel_ = new QLabel(this);
-    statusBar()->addWidget(engineLabel_);
-    statusBar()->addWidget(infoLabel_, 1);
     webLabel_ = new QLabel(this);
     webLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    statusBar()->addWidget(engineLabel_);
+    statusBar()->addWidget(infoLabel_, 1);
     statusBar()->addPermanentWidget(webLabel_);
     onEngineConnection(false);
 }
@@ -368,10 +392,12 @@ void MainWindow::buildMenus() {
     file->addAction(tr("&Save"), QKeySequence::Save, this, [this] { saveProject(); });
     file->addAction(tr("Save &as..."), QKeySequence::SaveAs, this, [this] { saveProjectAs(); });
     file->addSeparator();
+    auto* aAdd = file->addAction(tr("Add media..."), QKeySequence(Qt::CTRL | Qt::Key_I), this, &MainWindow::addMedia);
+    file->addSeparator();
     file->addAction(tr("Preferences..."), QKeySequence(Qt::CTRL | Qt::Key_Comma), this, [this] { openSettings(0); });
     file->addSeparator();
     file->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
-    editActions_ << aNew << aOpen;
+    editActions_ << aNew << aOpen << aAdd;
 
     auto* edit = menuBar()->addMenu(tr("&Edit"));
     undoAction_ = edit->addAction(tr("&Undo"), this, &MainWindow::undo);
@@ -379,48 +405,47 @@ void MainWindow::buildMenus() {
     redoAction_ = edit->addAction(tr("&Redo"), this, &MainWindow::redo);
     redoAction_->setShortcuts({QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z), QKeySequence(Qt::CTRL | Qt::Key_Y)});
     edit->addSeparator();
-    editActions_ << edit->addAction(tr("Add media..."), this, &MainWindow::addMedia);
-    edit->addSeparator();
-    editActions_ << edit->addAction(tr("Add layer"), this, &MainWindow::addLayer)
-                 << edit->addAction(tr("Remove layer"), this, &MainWindow::removeLayer)
-                 << edit->addAction(tr("Rename layer..."), this, &MainWindow::renameLayer);
-    edit->addSeparator();
-    editActions_ << edit->addAction(tr("Add column"), this, &MainWindow::addColumn)
-                 << edit->addAction(tr("Remove column"), this, &MainWindow::removeColumn)
-                 << edit->addAction(tr("Rename column..."), this, &MainWindow::renameColumn)
-                 << edit->addAction(tr("Cue settings..."), this,
-                                    [this] { cueSettings(dashboard_->currentColumn()); });
-    edit->addSeparator();
-    editActions_ << edit->addAction(tr("Canvas size..."), this, &MainWindow::setCanvasSize);
+    editActions_ << edit->addAction(tr("Duplicate cue"), QKeySequence(Qt::CTRL | Qt::Key_D), this,
+                                    [this] { duplicateCue(selectedCue()); })
+                 << edit->addAction(tr("Replace file..."), this, [this] { replaceFile(selectedCue()); })
+                 << edit->addAction(tr("Delete cue"), this, [this] { deleteCue(selectedCue()); });
 
-    auto* outputs = menuBar()->addMenu(tr("&Outputs"));
-    auto* aOutputs = outputs->addAction(tr("Outputs and canvases..."), this, &MainWindow::openOutputs);
-    aOutputs->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Semicolon));
-    editActions_ << aOutputs;
-
-    auto* show = menuBar()->addMenu(tr("&Show"));
-    // Como no Millumin: ESPAÇO = coluna seguinte (Dashboard) ou play/stop (Timeline).
-    auto* aGo = show->addAction(tr("GO next column / Play-stop timeline"), this, &MainWindow::onSpace);
-    aGo->setShortcut(Qt::Key_Space);
-    aGo->setShortcutContext(Qt::ApplicationShortcut);
-    auto* aPrev = show->addAction(tr("GO previous column"), this, &MainWindow::goPrevious);
-    aPrev->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Space));
-    aPrev->setShortcutContext(Qt::ApplicationShortcut);
-    show->addAction(tr("Stop all"), this, &MainWindow::stopAll);
-    show->addSeparator();
-    auto* aCountdown = show->addAction(tr("Countdown window"), this, &MainWindow::openCountdownWindow);
-    aCountdown->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
-    show->addAction(tr("Countdown on the network..."), this, &MainWindow::showCountdownWebInfo);
-    show->addSeparator();
-    showModeAction_ = show->addAction(tr("Show Mode (lock editing)"));
+    auto* play = menuBar()->addMenu(tr("&Playback"));
+    // WindowShortcut: o ESPAÇO não é roubado quando se escreve num campo de texto.
+    auto* aPlay = play->addAction(tr("Play / pause"), this, &MainWindow::playPause);
+    aPlay->setShortcut(Qt::Key_Space);
+    play->addAction(tr("Play the selected cue"), this, [this] { playCue(selectedCue()); });
+    auto* aStop = play->addAction(tr("Stop (black)"), this, &MainWindow::stopPlayback);
+    aStop->setShortcut(Qt::Key_Escape);
+    play->addSeparator();
+    play->addAction(tr("Next cue"), QKeySequence(Qt::CTRL | Qt::Key_Right), this, &MainWindow::nextCue);
+    play->addAction(tr("Previous cue"), QKeySequence(Qt::CTRL | Qt::Key_Left), this, &MainWindow::previousCue);
+    play->addSeparator();
+    play->addAction(tr("Go to the last 30 seconds"), QKeySequence(Qt::CTRL | Qt::Key_3), this, [this] { gotoRemaining(30); });
+    play->addAction(tr("Go to the last 20 seconds"), QKeySequence(Qt::CTRL | Qt::Key_2), this, [this] { gotoRemaining(20); });
+    play->addAction(tr("Go to the last 10 seconds"), QKeySequence(Qt::CTRL | Qt::Key_1), this, [this] { gotoRemaining(10); });
+    play->addSeparator();
+    loopAction_ = play->addAction(tr("Loop the playlist"), QKeySequence(Qt::CTRL | Qt::Key_R), this, &MainWindow::toggleLoopPlaylist);
+    loopAction_->setCheckable(true);
+    play->addSeparator();
+    showModeAction_ = play->addAction(tr("Show Mode (lock editing)"));
     showModeAction_->setCheckable(true);
     showModeAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
     connect(showModeAction_, &QAction::triggered, this, &MainWindow::setShowMode);
+    play->addSeparator();
+    play->addAction(tr("Countdown window"), QKeySequence(Qt::CTRL | Qt::Key_T), this, &MainWindow::openCountdownWindow);
+    play->addAction(tr("Countdown on the network..."), this, &MainWindow::showCountdownWebInfo);
+
+    auto* outputs = menuBar()->addMenu(tr("&Outputs"));
+    auto* aOutputs = outputs->addAction(tr("Outputs..."), this, &MainWindow::openOutputs);
+    aOutputs->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Semicolon));
+    editActions_ << aOutputs;
+    outputs->addAction(tr("Test card"), this, [this] { testBtn_->toggle(); });
 
     auto* eng = menuBar()->addMenu(tr("E&ngine"));
     eng->addAction(tr("Start engine"), this, &MainWindow::startEngine);
-    auto* aStop = eng->addAction(tr("Stop engine"), this, &MainWindow::stopEngine);
-    editActions_ << aStop;
+    auto* aStopEngine = eng->addAction(tr("Stop engine"), this, &MainWindow::stopEngine);
+    editActions_ << aStopEngine;
     eng->addSeparator();
     eng->addAction(tr("Open logs folder"), this, [] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdWString(paths::logsDir().wstring())));
@@ -430,29 +455,9 @@ void MainWindow::buildMenus() {
     help->addAction(tr("Check for updates..."), this, [this] { checkForUpdates(true); });
     help->addSeparator();
     help->addAction(tr("About VTHOST"), this, [this] { openSettings(SettingsDialog::kAboutTab); });
-
-    auto* tb = addToolBar(tr("Show"));
-    tb->setObjectName(QStringLiteral("toolbar"));
-    tb->setMovable(false);
-    tb->addAction(showModeAction_);
-    tb->addSeparator();
-    tb->addAction(tr("Start engine"), this, &MainWindow::startEngine);
 }
 
 // ------------------------------------------------------------------ projecto
-
-QString MainWindow::livePath() const {
-    // O motor lê sempre esta cópia "ao vivo"; o ficheiro do utilizador só muda ao Guardar.
-    return QString::fromStdWString((paths::dataDir() / "live" / "live.vthost").wstring());
-}
-
-void MainWindow::ensureTimeline() {
-    if (project_.timelines.empty()) project_.timelines.push_back({"T1", "Timeline 1", {}, {}});
-}
-
-QString MainWindow::timelineId() const {
-    return project_.timelines.empty() ? QString() : qs(project_.timelines.front().id);
-}
 
 void MainWindow::markChanged() {
     recordUndo();
@@ -463,9 +468,8 @@ void MainWindow::markChanged() {
 
 void MainWindow::pushToEngine() {
     std::string err;
-    // A cópia ao vivo leva a visibilidade efetiva (olho + solo).
     Project live = project_;
-    for (auto& l : live.layers) l.visible = effectiveVisible(l);
+    live.normalizeTargetLufs = prefs::normalizeTarget(); // preferência desta máquina
     if (!saveProjectFile(live, ss(livePath()), &err)) {
         infoLabel_->setText(tr("Could not write live project: %1").arg(qs(err)));
         return;
@@ -479,14 +483,574 @@ void MainWindow::pushToEngine() {
 
 void MainWindow::setProject(Project p, const QString& path) {
     project_ = std::move(p);
-    ensureTimeline();
     projectPath_ = path;
     dirty_ = false;
     if (!path.isEmpty()) QSettings().setValue(QStringLiteral("lastProject"), path);
     clearUndo();
-    refreshAll();
-    selectLayer(project_.layers.empty() ? -1 : 0);
+    refreshPlaylist();
+    playlist_->selectIndex(project_.cues.empty() ? -1 : 0);
+    for (const auto& q : project_.cues) {
+        media_->info(qs(q.path));
+        media_->audio(qs(q.path));
+    }
+    {
+        const QSignalBlocker b(master_);
+        master_->setValue(static_cast<int>(std::lround(project_.masterVolumeDb * 10.0)));
+    }
+    masterLabel_->setText(tr("%1 dB").arg(project_.masterVolumeDb, 0, 'f', 1));
+    loopBtn_->setChecked(project_.loopPlaylist);
+    loopAction_->setChecked(project_.loopPlaylist);
+    updateTitle();
+    updateSelection();
     pushTimer_.start();
+}
+
+void MainWindow::newProject() {
+    if (!confirmDiscard()) return;
+    Project p = Project::makeDefault();
+    p.name = ss(tr("Untitled"));
+    setProject(std::move(p), {});
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    if (prefs::confirmQuit() && !dirty_ &&
+        QMessageBox::question(this, tr("Quit"), tr("Quit VTHOST Studio? The engine and the show keep running.")) !=
+            QMessageBox::Yes) {
+        event->ignore();
+        return;
+    }
+    if (!confirmDiscard()) {
+        event->ignore();
+        return;
+    }
+    QSettings st;
+    st.setValue(QStringLiteral("ui/geometry"), saveGeometry());
+    st.setValue(QStringLiteral("ui/playerSplit"), mainSplit_->saveState());
+    st.setValue(QStringLiteral("ui/centerSplit"), centerSplit_->saveState());
+    if (countdownWindow_) countdownWindow_->close();
+    // O motor continua a correr: fechar a interface nunca pára o show.
+    event->accept();
+}
+
+// ------------------------------------------------------------------ playlist
+
+int MainWindow::selectedCue() const {
+    const int i = playlist_ ? playlist_->selectedIndex() : -1;
+    return i >= 0 && i < static_cast<int>(project_.cues.size()) ? i : -1;
+}
+
+void MainWindow::refreshPlaylist() {
+    playlist_->setProject(&project_);
+    playlist_->setPlaying(playingCue_, playlist_->playingProgress(), playlist_->playingState());
+}
+
+void MainWindow::updateSelection() {
+    const int i = selectedCue();
+    if (i < 0) {
+        inspector_->setCue(nullptr, -1, &project_, {}, {}, prefs::normalizeTarget());
+        waveform_->setData({}, 0.0, 0.0, false, true);
+        return;
+    }
+    const Cue& q = project_.cues[static_cast<std::size_t>(i)];
+    const QString path = qs(q.path);
+    const MediaInfo info = media_->info(path);
+    const AudioAnalysis audio = media_->audio(path);
+    inspector_->setCue(&q, i, &project_, info, audio, prefs::normalizeTarget());
+    // Imagens sem som: a "forma de onda" mostra a duração definida.
+    const double dur = info.duration > 0.0 ? info.duration : q.passSeconds(0.0) * q.speed;
+    waveform_->setData(audio.peaks, audio.blocksPerSecond, dur, !audio.ready, info.hasAudio || !info.ready);
+    waveform_->setInOut(q.inPoint, q.outPoint);
+}
+
+void MainWindow::addMedia() {
+    if (showMode_) return;
+    const QStringList files = QFileDialog::getOpenFileNames(
+        this, tr("Add media"), QSettings().value(QStringLiteral("lastMediaDir")).toString(),
+        tr("Media (*.mp4 *.mov *.mkv *.avi *.webm *.m4v *.mxf *.wmv *.mpg *.mpeg *.ts *.png *.jpg *.jpeg *.bmp *.tif "
+           "*.tiff *.gif *.webp *.mp3 *.wav *.aif *.aiff *.flac *.m4a *.ogg);;All files (*)"));
+    if (files.isEmpty()) return;
+    QSettings().setValue(QStringLiteral("lastMediaDir"), QFileInfo(files.front()).absolutePath());
+    const int sel = selectedCue();
+    addFiles(sel >= 0 ? sel + 1 : static_cast<int>(project_.cues.size()), files);
+}
+
+void MainWindow::addFiles(int row, const QStringList& paths) {
+    if (showMode_ || paths.isEmpty()) return;
+    row = std::clamp(row, 0, static_cast<int>(project_.cues.size()));
+    int inserted = 0;
+    for (const QString& path : paths) {
+        const QFileInfo fi(path);
+        if (fi.isDir() || !fi.exists()) continue;
+        Cue q;
+        q.id = project_.newCueId();
+        q.path = ss(QDir::toNativeSeparators(fi.absoluteFilePath()).replace(QLatin1Char('\\'), QLatin1Char('/')));
+        if (isImageFile(path)) q.outPoint = prefs::imageDuration(); // imagens: duração = ponto Out
+        q.pauseAtEnd = prefs::newCuesPauseAtEnd();
+        project_.cues.insert(project_.cues.begin() + row + inserted, q);
+        media_->info(qs(q.path));
+        media_->audio(qs(q.path));
+        ++inserted;
+    }
+    if (inserted == 0) return;
+    refreshPlaylist();
+    playlist_->selectIndex(row);
+    markChanged();
+}
+
+void MainWindow::deleteCue(int index) {
+    if (showMode_ || index < 0 || index >= static_cast<int>(project_.cues.size())) return;
+    const std::string id = project_.cues[static_cast<std::size_t>(index)].id;
+    project_.cues.erase(project_.cues.begin() + index);
+    for (auto& q : project_.cues)
+        if (q.gotoCue == id) q.gotoCue.clear();
+    refreshPlaylist();
+    playlist_->selectIndex(std::min(index, static_cast<int>(project_.cues.size()) - 1));
+    markChanged();
+}
+
+void MainWindow::duplicateCue(int index) {
+    if (showMode_ || index < 0 || index >= static_cast<int>(project_.cues.size())) return;
+    Cue copy = project_.cues[static_cast<std::size_t>(index)];
+    copy.id = project_.newCueId();
+    project_.cues.insert(project_.cues.begin() + index + 1, copy);
+    refreshPlaylist();
+    playlist_->selectIndex(index + 1);
+    markChanged();
+}
+
+void MainWindow::moveCue(int from, int to) {
+    const int n = static_cast<int>(project_.cues.size());
+    if (showMode_ || from < 0 || from >= n || to < 0 || to >= n || from == to) return;
+    Cue q = std::move(project_.cues[static_cast<std::size_t>(from)]);
+    project_.cues.erase(project_.cues.begin() + from);
+    project_.cues.insert(project_.cues.begin() + to, std::move(q));
+    refreshPlaylist();
+    playlist_->selectIndex(to);
+    markChanged();
+}
+
+void MainWindow::replaceFile(int index) {
+    if (showMode_ || index < 0 || index >= static_cast<int>(project_.cues.size())) return;
+    Cue& q = project_.cues[static_cast<std::size_t>(index)];
+    const QString path = QFileDialog::getOpenFileName(this, tr("Replace file"), QFileInfo(qs(q.path)).absolutePath());
+    if (path.isEmpty()) return;
+    q.path = ss(QDir::fromNativeSeparators(QFileInfo(path).absoluteFilePath()));
+    q.loudness.reset();
+    q.peakDb.reset();
+    media_->info(qs(q.path));
+    media_->audio(qs(q.path));
+    playlist_->refresh();
+    markChanged();
+    updateSelection();
+}
+
+void MainWindow::onCueEdited(const Cue& cue) {
+    if (showMode_) return;
+    const int i = project_.cueIndex(cue.id);
+    if (i < 0) return;
+    project_.cues[static_cast<std::size_t>(i)] = cue;
+    playlist_->refresh();
+    waveform_->setInOut(cue.inPoint, cue.outPoint);
+    markChanged();
+}
+
+void MainWindow::onIconClicked(int index, CueIcon icon, const QPoint& globalPos) {
+    if (showMode_ || index < 0 || index >= static_cast<int>(project_.cues.size())) return;
+    playlist_->selectIndex(index);
+    Cue& q = project_.cues[static_cast<std::size_t>(index)];
+    const double fade = prefs::defaultFade();
+    switch (icon) {
+    case CueIcon::Audio: q.muted = !q.muted; break;
+    case CueIcon::PauseStart: q.pauseAtStart = !q.pauseAtStart; break;
+    case CueIcon::FadeIn: q.fadeIn = q.fadeIn > 0.0 ? 0.0 : fade; break;
+    case CueIcon::Loop: q.playCount = q.playCount == 1 ? 0 : 1; break;
+    case CueIcon::Crossfade: q.crossfade = q.crossfade > 0.0 ? 0.0 : fade; break;
+    case CueIcon::FadeOut: q.fadeOut = q.fadeOut > 0.0 ? 0.0 : fade; break;
+    case CueIcon::PauseEnd:
+        q.pauseAtEnd = !q.pauseAtEnd;
+        if (q.pauseAtEnd) q.clearAtEnd = false;
+        break;
+    case CueIcon::Clear:
+        q.clearAtEnd = !q.clearAtEnd;
+        if (q.clearAtEnd) q.pauseAtEnd = false;
+        break;
+    case CueIcon::Goto: {
+        QMenu menu(this);
+        menu.addAction(tr("None (next cue)"), this, [this, index] {
+            project_.cues[static_cast<std::size_t>(index)].gotoCue.clear();
+        });
+        menu.addSeparator();
+        for (int k = 0; k < static_cast<int>(project_.cues.size()); ++k) {
+            const Cue& t = project_.cues[static_cast<std::size_t>(k)];
+            const QString num = t.label.empty() ? QString::number(k + 1) : qs(t.label);
+            QAction* a = menu.addAction(QStringLiteral("%1  %2").arg(num, qs(t.displayName())), this, [this, index, k] {
+                project_.cues[static_cast<std::size_t>(index)].gotoCue = project_.cues[static_cast<std::size_t>(k)].id;
+            });
+            a->setCheckable(true);
+            a->setChecked(project_.cues[static_cast<std::size_t>(index)].gotoCue == t.id);
+        }
+        if (!menu.exec(globalPos)) return;
+        break;
+    }
+    case CueIcon::Count: return;
+    }
+    playlist_->refresh();
+    markChanged();
+    updateSelection();
+}
+
+void MainWindow::showCueMenu(int index, const QPoint& globalPos) {
+    QMenu menu(this);
+    const bool valid = index >= 0 && index < static_cast<int>(project_.cues.size());
+    if (valid) {
+        menu.addAction(tr("Play"), this, [this, index] { playCue(index); });
+        menu.addAction(tr("Cue (ready, paused on the first frame)"), this, [this, index] {
+            protocol::Command c;
+            c.type = protocol::CommandType::Play;
+            c.cue = index;
+            c.paused = true;
+            if (pushTimer_.isActive()) {
+                pushTimer_.stop();
+                pushToEngine();
+            }
+            engine_->send(c);
+        });
+        menu.addSeparator();
+    }
+    QList<QAction*> edit;
+    edit << menu.addAction(tr("Add media..."), this, &MainWindow::addMedia);
+    if (valid) {
+        edit << menu.addAction(tr("Duplicate"), this, [this, index] { duplicateCue(index); })
+             << menu.addAction(tr("Replace file..."), this, [this, index] { replaceFile(index); });
+        menu.addAction(tr("Show in Explorer"), this, [this, index] {
+            const QString path = QDir::toNativeSeparators(qs(project_.cues[static_cast<std::size_t>(index)].path));
+#ifdef Q_OS_WIN
+            QProcess::startDetached(QStringLiteral("explorer.exe"), {QStringLiteral("/select,"), path});
+#else
+            QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
+#endif
+        });
+        auto* colors = menu.addMenu(tr("Color"));
+        edit << colors->menuAction();
+        const std::pair<const char*, QString> names[] = {{"", tr("None")},         {"red", tr("Red")},
+                                                         {"yellow", tr("Yellow")}, {"green", tr("Green")},
+                                                         {"purple", tr("Purple")}, {"pink", tr("Pink")}};
+        for (const auto& [key, label] : names) {
+            const std::string k = key;
+            colors->addAction(label, this, [this, index, k] {
+                project_.cues[static_cast<std::size_t>(index)].color = k;
+                playlist_->refresh();
+                markChanged();
+                updateSelection();
+            });
+        }
+        menu.addSeparator();
+        edit << menu.addAction(tr("Delete"), this, [this, index] { deleteCue(index); });
+    }
+    for (QAction* a : edit) a->setEnabled(!showMode_);
+    menu.exec(globalPos);
+}
+
+void MainWindow::applyAnalysis(const QString& path) {
+    const AudioAnalysis a = media_->audio(path);
+    bool changed = false;
+    for (auto& q : project_.cues) {
+        if (qs(q.path) != path) continue;
+        if (q.loudness != a.loudness || q.peakDb != a.peakDb) {
+            q.loudness = a.loudness;
+            q.peakDb = a.peakDb;
+            changed = true;
+        }
+    }
+    if (changed) {
+        // Resultado de uma medição, não uma edição: não conta como passo de desfazer.
+        undoBase_ = serializeProject(project_);
+        dirty_ = true;
+        updateTitle();
+        pushTimer_.start();
+    }
+    updateSelection();
+    playlist_->refresh();
+}
+
+// ------------------------------------------------------------------ reprodução
+
+void MainWindow::playCue(int index) {
+    if (index < 0 || index >= static_cast<int>(project_.cues.size())) return;
+    // Garante que o motor tem a versão mais recente antes de tocar.
+    if (pushTimer_.isActive()) {
+        pushTimer_.stop();
+        pushToEngine();
+    }
+    protocol::Command c;
+    c.type = protocol::CommandType::Play;
+    c.cue = index;
+    // SHIFT = sem transição (corte seco).
+    c.cut = prefs::shiftSkipsTransitions() && (QApplication::keyboardModifiers() & Qt::ShiftModifier);
+    engine_->send(c, [this](const protocol::ParsedResponse& r) {
+        if (!r.ok) infoLabel_->setText(tr("Play failed: %1").arg(qs(r.error)));
+    });
+    playingCue_ = index;
+    playlist_->setPlaying(index, 0.0, QStringLiteral("loading"));
+}
+
+void MainWindow::playPause() {
+    const QString state = engine_->hasStatus() ? qs(engine_->lastStatus().state) : QString();
+    if (!engine_->isConnected()) {
+        infoLabel_->setText(tr("The engine is not running."));
+        return;
+    }
+    if (state == QStringLiteral("playing") || state == QStringLiteral("paused") || state == QStringLiteral("loading") ||
+        state == QStringLiteral("ended")) {
+        protocol::Command c;
+        c.type = protocol::CommandType::Transport;
+        c.action = protocol::TransportAction::Toggle;
+        engine_->send(c);
+        return;
+    }
+    const int sel = selectedCue();
+    playCue(sel >= 0 ? sel : 0);
+}
+
+void MainWindow::stopPlayback() {
+    protocol::Command c;
+    c.type = protocol::CommandType::Transport;
+    c.action = protocol::TransportAction::Stop;
+    engine_->send(c);
+}
+
+void MainWindow::nextCue() {
+    int next = -1;
+    if (playingCue_ >= 0) next = project_.nextCue(playingCue_);
+    else next = std::min(selectedCue() + 1, static_cast<int>(project_.cues.size()) - 1);
+    if (next < 0) {
+        infoLabel_->setText(tr("End of the playlist."));
+        return;
+    }
+    playCue(next);
+}
+
+void MainWindow::previousCue() {
+    const int base = playingCue_ >= 0 ? playingCue_ : selectedCue();
+    if (project_.cues.empty()) return;
+    playCue(std::max(0, base - 1));
+}
+
+void MainWindow::gotoRemaining(double seconds) {
+    protocol::Command c;
+    c.type = protocol::CommandType::SeekRemaining;
+    c.time = seconds;
+    engine_->send(c);
+}
+
+void MainWindow::seekTo(double fileTime) {
+    if (playingCue_ < 0 || playingCue_ >= static_cast<int>(project_.cues.size())) return;
+    protocol::Command c;
+    c.type = protocol::CommandType::Seek;
+    c.time = std::max(0.0, fileTime - project_.cues[static_cast<std::size_t>(playingCue_)].inPoint);
+    engine_->sendLatest(QStringLiteral("seek"), c);
+    statusMediaTime_ = fileTime;
+    countdownClock_.restart();
+}
+
+void MainWindow::toggleLoopPlaylist() {
+    if (showMode_) {
+        loopBtn_->setChecked(project_.loopPlaylist);
+        loopAction_->setChecked(project_.loopPlaylist);
+        return;
+    }
+    project_.loopPlaylist = !project_.loopPlaylist;
+    loopBtn_->setChecked(project_.loopPlaylist);
+    loopAction_->setChecked(project_.loopPlaylist);
+    markChanged();
+}
+
+void MainWindow::setMasterVolume(double db) {
+    project_.masterVolumeDb = std::clamp(db, -60.0, 12.0);
+    masterLabel_->setText(tr("%1 dB").arg(project_.masterVolumeDb, 0, 'f', 1));
+    // Volume geral é um controlo ao vivo (também em Show Mode).
+    dirty_ = true;
+    updateTitle();
+    pushTimer_.start();
+}
+
+// ------------------------------------------------------------------ show e motor
+
+void MainWindow::applyPreferences() {
+    sendEngineSettings();
+    applyCountdownServer();
+    playlist_->refresh();
+    updateSelection();
+    pushTimer_.start(); // alvo de normalização pode ter mudado
+}
+
+void MainWindow::sendEngineSettings() {
+    protocol::Command c;
+    c.type = protocol::CommandType::SetSettings;
+    c.settings = prefs::engineSettings();
+    engine_->send(c);
+}
+
+void MainWindow::openOutputs() {
+    if (showMode_) return;
+    const Project backup = project_;
+    OutputsDialog dlg(project_.width, project_.height, project_.outputs, engine_, this);
+    // Ao vivo: o motor aplica logo (sem esperar pelo OK).
+    connect(&dlg, &OutputsDialog::liveChanged, this, [this, &dlg] {
+        project_.width = dlg.canvasWidth();
+        project_.height = dlg.canvasHeight();
+        project_.outputs = dlg.outputs();
+        pushTimer_.start();
+    });
+    if (dlg.exec() == QDialog::Accepted) {
+        project_.width = dlg.canvasWidth();
+        project_.height = dlg.canvasHeight();
+        project_.outputs = dlg.outputs();
+        markChanged();
+    } else {
+        project_.width = backup.width;
+        project_.height = backup.height;
+        project_.outputs = backup.outputs;
+        pushTimer_.start();
+    }
+}
+
+void MainWindow::onEngineConnection(bool connected) {
+    engineLabel_->setText(connected ? tr("Engine: connected") : tr("Engine: offline"));
+    engineLabel_->setStyleSheet(connected ? QStringLiteral("color: #3c3; padding: 0 8px;")
+                                          : QStringLiteral("color: #e44; padding: 0 8px;"));
+    if (!connected) {
+        countdown_ = Countdown{};
+        playingCue_ = -1;
+        if (playlist_) playlist_->setPlaying(-1, 0.0, QString());
+    }
+    if (connected) sendEngineSettings();
+    // Ao ligar, decide no primeiro status: adoptar o show que já está a correr ou enviar o nosso.
+    if (connected && adoptedEngineProject_) pushTimer_.start();
+}
+
+void MainWindow::onEngineStatus() {
+    const auto& s = engine_->lastStatus();
+
+    if (!adoptedEngineProject_) {
+        adoptedEngineProject_ = true;
+        // O Studio abriu (ou reabriu após um crash) com o motor já a tocar um show:
+        // mostra esse show em vez de o substituir.
+        if (!dirty_ && projectPath_.isEmpty() && !s.projectPath.empty()) {
+            auto r = loadProjectFile(s.projectPath);
+            if (r.project) {
+                const QString last = QSettings().value(QStringLiteral("lastProject")).toString();
+                setProject(std::move(*r.project), last);
+                showMode_ = s.showMode;
+                showModeAction_->setChecked(showMode_);
+                updateEditingEnabled();
+                infoLabel_->setText(tr("Connected to a running show."));
+                return;
+            }
+        }
+        pushTimer_.start();
+    }
+
+    if (s.showMode != showMode_) {
+        showMode_ = s.showMode;
+        showModeAction_->setChecked(showMode_);
+        updateEditingEnabled();
+        updateTitle();
+    }
+    if (s.testCard != testBtn_->isChecked()) {
+        const QSignalBlocker b(testBtn_);
+        testBtn_->setChecked(s.testCard);
+    }
+
+    const int previous = playingCue_;
+    playingCue_ = s.state == "stopped" ? -1 : s.cue;
+    statusMediaTime_ = s.mediaTime;
+    countdown_ = computeCountdown(project_, s);
+    countdownClock_.restart();
+    refreshCountdown();
+    if (playingCue_ != previous && playingCue_ >= 0 && prefs::selectionFollowsPlayback()) playlist_->selectIndex(playingCue_);
+    playlist_->setPlaying(playingCue_, countdown_.duration > 0.0 ? countdown_.elapsed / countdown_.duration : 0.0, qs(s.state));
+    playBtn_->setIcon(style()->standardIcon(s.state == "playing" ? QStyle::SP_MediaPause : QStyle::SP_MediaPlay));
+    if (playingCue_ >= 0 && playingCue_ < static_cast<int>(project_.cues.size())) {
+        const Cue& q = project_.cues[static_cast<std::size_t>(playingCue_)];
+        QString t = (q.label.empty() ? QString::number(playingCue_ + 1) : qs(q.label)) + QStringLiteral("  ") + qs(q.displayName());
+        cueLabel_->setText(cueLabel_->fontMetrics().elidedText(t, Qt::ElideRight, 250));
+    } else {
+        cueLabel_->setText(tr("Stopped"));
+    }
+    static_cast<LevelMeter*>(meter_)->setLevels(s.levelL, s.levelR);
+    preview_->setFps(s.fps);
+
+    QStringList problems;
+    for (const auto& o : s.outputs)
+        if (!o.ok || !o.error.empty()) problems << tr("Output %1: %2").arg(qs(o.id), qs(o.error));
+    if (!s.error.empty()) problems << qs(s.error);
+    if (!s.audioError.empty()) problems << tr("Audio: %1").arg(qs(s.audioError));
+    for (const auto& w : s.warnings) problems << qs(w);
+
+    QString info = tr("%1 fps").arg(s.fps, 0, 'f', 1);
+    if (s.audioOk) info += QStringLiteral("  |  🔊 ") + qs(s.audioDevice);
+    if (s.recovered) info += QStringLiteral("  |  ") + tr("Engine was restarted and the show resumed");
+    if (!problems.isEmpty()) info += QStringLiteral("  |  ⚠ ") + problems.join(QStringLiteral("; "));
+    infoLabel_->setText(info);
+}
+
+void MainWindow::updateEditingEnabled() {
+    const bool edit = !showMode_;
+    for (auto* w : editWidgets_) w->setEnabled(edit);
+    for (auto* a : editActions_) a->setEnabled(edit);
+    playlist_->setEditable(edit);
+    inspector_->setEditable(edit);
+    waveform_->setEditable(edit);
+    updateUndoActions();
+    // Play, pausa, GOTO, volume geral e test card continuam: são controlos ao vivo.
+}
+
+// ------------------------------------------------------------------ desfazer / refazer
+
+void MainWindow::restoreSnapshot(const std::string& json) {
+    auto r = parseProject(json);
+    if (!r.project) {
+        infoLabel_->setText(tr("Could not undo: %1").arg(qs(r.error)));
+        updateUndoActions();
+        return;
+    }
+    restoring_ = true;
+    const int sel = selectedCue();
+    project_ = std::move(*r.project);
+    // Medições de som já feitas voltam a ser aplicadas (não fazem parte do desfazer).
+    for (auto& q : project_.cues) {
+        const AudioAnalysis a = media_->audio(qs(q.path));
+        if (a.ready) {
+            q.loudness = a.loudness;
+            q.peakDb = a.peakDb;
+        }
+    }
+    undoBase_ = serializeProject(project_);
+    lastUndoPush_.invalidate(); // o próximo passo nunca se junta a este
+    refreshPlaylist();
+    playlist_->selectIndex(std::min(sel, static_cast<int>(project_.cues.size()) - 1));
+    loopBtn_->setChecked(project_.loopPlaylist);
+    loopAction_->setChecked(project_.loopPlaylist);
+    markChanged(); // envia para o motor (sem registar: restoring_)
+    restoring_ = false;
+    updateSelection();
+    updateUndoActions();
+}
+
+// ------------------------------------------------------------------ definições e atualizações
+
+void MainWindow::openSettings(int tab) {
+    SettingsDialog dlg(this, tab, engine_);
+    connect(&dlg, &SettingsDialog::checkForUpdatesRequested, this, [this] { checkForUpdates(true); });
+    connect(&dlg, &SettingsDialog::preferencesChanged, this, &MainWindow::applyPreferences);
+    dlg.exec();
+}
+
+
+QString MainWindow::livePath() const {
+    // O motor lê sempre esta cópia "ao vivo"; o ficheiro do utilizador só muda ao Guardar.
+    return QString::fromStdWString((paths::dataDir() / "live" / "live.vthost").wstring());
 }
 
 bool MainWindow::confirmDiscard() {
@@ -496,13 +1060,6 @@ bool MainWindow::confirmDiscard() {
                                          QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
     if (b == QMessageBox::Save) return saveProject();
     return b == QMessageBox::Discard;
-}
-
-void MainWindow::newProject() {
-    if (!confirmDiscard()) return;
-    Project p = Project::makeDefault();
-    p.name = ss(tr("Untitled"));
-    setProject(std::move(p), {});
 }
 
 void MainWindow::openProject() {
@@ -550,665 +1107,6 @@ bool MainWindow::saveProjectAs() {
     return saveProject();
 }
 
-void MainWindow::closeEvent(QCloseEvent* event) {
-    if (prefs::confirmQuit() && !dirty_ &&
-        QMessageBox::question(this, tr("Quit"), tr("Quit VTHOST Studio? The engine and the show keep running.")) !=
-            QMessageBox::Yes) {
-        event->ignore();
-        return;
-    }
-    if (!confirmDiscard()) {
-        event->ignore();
-        return;
-    }
-    QSettings st;
-    st.setValue(QStringLiteral("ui/geometry"), saveGeometry());
-    st.setValue(QStringLiteral("ui/mainSplit"), mainSplit_->saveState());
-    st.setValue(QStringLiteral("ui/topSplit"), topSplit_->saveState());
-    // O motor continua a correr: fechar a interface nunca pára o show.
-    event->accept();
-}
-
-// ------------------------------------------------------------------ edição
-
-QString MainWindow::nextId(const QString& prefix) const {
-    for (int i = 1;; ++i) {
-        const std::string id = ss(prefix + QString::number(i));
-        bool used = project_.findMedia(id) || project_.findLayer(id);
-        for (const auto& o : project_.outputs) used = used || o.id == id;
-        if (!used) return qs(id);
-    }
-}
-
-void MainWindow::addMedia() {
-    if (showMode_) return;
-    const QStringList files = QFileDialog::getOpenFileNames(
-        this, tr("Add media"), QSettings().value(QStringLiteral("mediaDir")).toString(),
-        tr("Video and images (*.mov *.mp4 *.m4v *.mkv *.avi *.mxf *.webm *.png *.jpg *.jpeg *.bmp *.tif *.tiff);;All files (*)"));
-    if (files.isEmpty()) return;
-    QSettings().setValue(QStringLiteral("mediaDir"), QFileInfo(files.first()).absolutePath());
-    for (const QString& f : files) {
-        MediaItem m;
-        m.id = ss(nextId(QStringLiteral("m")));
-        m.path = ss(QDir::fromNativeSeparators(QFileInfo(f).absoluteFilePath()));
-        m.loopMode = LoopMode::Infinite;
-        project_.media.push_back(std::move(m));
-    }
-    library_->setMedia(project_.media);
-    markChanged();
-}
-
-void MainWindow::removeMedia(const QString& mediaId) {
-    if (showMode_) return;
-    const std::string id = ss(mediaId);
-    std::erase_if(project_.media, [&](const MediaItem& m) { return m.id == id; });
-    for (auto& c : project_.columns) std::erase_if(c.cells, [&](const auto& kv) { return kv.second == id; });
-    for (auto& t : project_.timelines) std::erase_if(t.clips, [&](const Clip& c) { return c.mediaId == id; });
-    refreshAll();
-    markChanged();
-}
-
-void MainWindow::addLayer() {
-    if (showMode_) return;
-    Layer l;
-    l.id = ss(nextId(QStringLiteral("L")));
-    l.name = ss(tr("Layer %1").arg(project_.layers.size() + 1));
-    project_.layers.push_back(std::move(l));
-    refreshAll();
-    markChanged();
-}
-
-void MainWindow::removeLayer() {
-    const int row = selectedLayer_;
-    if (showMode_ || row < 0 || row >= static_cast<int>(project_.layers.size())) return;
-    const std::string id = project_.layers[static_cast<std::size_t>(row)].id;
-    project_.layers.erase(project_.layers.begin() + row);
-    for (auto& c : project_.columns) c.cells.erase(id);
-    for (auto& t : project_.timelines) std::erase_if(t.clips, [&](const Clip& c) { return c.layerId == id; });
-    refreshAll();
-    selectLayer(std::min(row, static_cast<int>(project_.layers.size()) - 1));
-    markChanged();
-}
-
-void MainWindow::renameLayer() {
-    const int row = selectedLayer_;
-    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
-    auto& l = project_.layers[static_cast<std::size_t>(row)];
-    bool ok = false;
-    const QString name = QInputDialog::getText(this, tr("Rename layer"), tr("Name:"), QLineEdit::Normal, qs(l.name), &ok);
-    if (!ok || name.trimmed().isEmpty()) return;
-    l.name = ss(name.trimmed());
-    refreshAll();
-    markChanged();
-}
-
-void MainWindow::addColumn() {
-    if (showMode_) return;
-    Column c;
-    c.id = project_.newColumnId();
-    c.name = ss(tr("Cue %1").arg(project_.columns.size() + 1));
-    c.fadeSeconds = prefs::defaultColumnFade();
-    project_.columns.push_back(std::move(c));
-    refreshDashboard();
-    markChanged();
-}
-
-void MainWindow::removeColumn() { deleteColumn(dashboard_->currentColumn()); }
-
-void MainWindow::renameColumn() {
-    const int col = dashboard_->currentColumn();
-    if (col < 0 || col >= static_cast<int>(project_.columns.size())) return;
-    auto& c = project_.columns[static_cast<std::size_t>(col)];
-    bool ok = false;
-    const QString name = QInputDialog::getText(this, tr("Rename column"), tr("Name:"), QLineEdit::Normal, qs(c.name), &ok);
-    if (!ok || name.trimmed().isEmpty()) return;
-    c.name = ss(name.trimmed());
-    refreshDashboard();
-    markChanged();
-}
-
-void MainWindow::cueSettings(int column) {
-    if (showMode_ || column < 0 || column >= static_cast<int>(project_.columns.size())) return;
-    CueDialog dlg(project_, column, this);
-    if (dlg.exec() != QDialog::Accepted) return;
-    if (column >= static_cast<int>(project_.columns.size())) return;
-    dlg.applyTo(project_.columns[static_cast<std::size_t>(column)]);
-    refreshDashboard();
-    markChanged();
-}
-
-void MainWindow::placeMedia(int row, int column, const QString& mediaId) {
-    if (showMode_) return;
-    if (row < 0 || column < 0 || row >= static_cast<int>(project_.layers.size()) ||
-        column >= static_cast<int>(project_.columns.size()))
-        return;
-    if (mediaId.isEmpty() || !project_.findMedia(ss(mediaId))) {
-        infoLabel_->setText(tr("Select a media in the library first."));
-        return;
-    }
-    project_.columns[static_cast<std::size_t>(column)].cells[project_.layers[static_cast<std::size_t>(row)].id] =
-        ss(mediaId);
-    refreshDashboard();
-    markChanged();
-}
-
-void MainWindow::clearCell(int row, int column) {
-    if (row < 0 || column < 0 || row >= static_cast<int>(project_.layers.size()) ||
-        column >= static_cast<int>(project_.columns.size()))
-        return;
-    project_.columns[static_cast<std::size_t>(column)].cells.erase(project_.layers[static_cast<std::size_t>(row)].id);
-    refreshDashboard();
-    markChanged();
-}
-
-void MainWindow::showCellMenu(const QPoint& pos) {
-    if (showMode_) return;
-    const QModelIndex idx = dashboard_->indexAt(pos);
-    if (!idx.isValid()) return;
-    QMenu menu(this);
-    menu.addAction(tr("Place selected media"), this,
-                   [this, idx] { placeMedia(idx.row(), idx.column(), library_->selectedMediaId()); });
-    menu.addAction(tr("Clear cell"), this, [this, idx] { clearCell(idx.row(), idx.column()); });
-    const auto& cells = project_.columns[static_cast<std::size_t>(idx.column())].cells;
-    if (idx.row() < static_cast<int>(project_.layers.size())) {
-        auto it = cells.find(project_.layers[static_cast<std::size_t>(idx.row())].id);
-        if (it != cells.end()) {
-            menu.addSeparator();
-            addLoopModeMenu(&menu, qs(it->second));
-        }
-    }
-    menu.addSeparator();
-    menu.addAction(tr("GO this column"), this, [this, idx] { go(idx.column()); });
-    menu.exec(dashboard_->viewport()->mapToGlobal(pos));
-}
-
-void MainWindow::openOutputs() {
-    if (showMode_) return;
-    const auto origCanvases = project_.canvases;
-    const auto origOutputs = project_.outputs;
-    OutputsDialog dlg(project_.canvases, project_.outputs, engine_, this);
-    // Tudo é aplicado ao vivo para se ver nos ecrãs/projetores enquanto se configura.
-    connect(&dlg, &OutputsDialog::liveChanged, this, [this, &dlg] {
-        project_.canvases = dlg.canvases();
-        project_.outputs = dlg.outputs();
-        refreshCanvasChoices();
-        markChanged();
-    });
-    if (dlg.exec() == QDialog::Accepted) {
-        project_.canvases = dlg.canvases();
-        project_.outputs = dlg.outputs();
-    } else {
-        project_.canvases = origCanvases; // Cancelar repõe tudo
-        project_.outputs = origOutputs;
-    }
-    refreshCanvasChoices();
-    markChanged();
-}
-
-void MainWindow::setCanvasSize() {
-    Canvas* cv = nullptr;
-    for (auto& c : project_.canvases)
-        if (qs(c.id) == workspaceCanvas_) cv = &c;
-    if (!cv && !project_.canvases.empty()) cv = &project_.canvases.front();
-    if (!cv) return;
-    bool ok = false;
-    const int w = QInputDialog::getInt(this, tr("Canvas size"), tr("Width (px):"), cv->width, 16, kMaxCanvasSize, 1, &ok);
-    if (!ok) return;
-    const int h = QInputDialog::getInt(this, tr("Canvas size"), tr("Height (px):"), cv->height, 16, kMaxCanvasSize, 1, &ok);
-    if (!ok) return;
-    cv->width = w;
-    cv->height = h;
-    preview_->setCanvasSize(w, h);
-    refreshCanvasChoices();
-    updateTitle();
-    markChanged();
-}
-
-void MainWindow::refreshCanvasChoices() {
-    std::vector<std::pair<QString, QString>> list;
-    {
-        const QSignalBlocker b(canvasSelect_);
-        canvasSelect_->clear();
-        for (const auto& c : project_.canvases) {
-            const QString label = QStringLiteral("%1  (%2 × %3)").arg(qs(c.name)).arg(c.width).arg(c.height);
-            canvasSelect_->addItem(label, qs(c.id));
-            list.emplace_back(qs(c.id), label);
-        }
-        int i = canvasSelect_->findData(workspaceCanvas_);
-        if (i < 0) i = 0;
-        canvasSelect_->setCurrentIndex(i);
-        workspaceCanvas_ = canvasSelect_->currentData().toString();
-    }
-    properties_->setCanvases(list);
-    const Canvas& cv = project_.canvasOf(ss(workspaceCanvas_));
-    preview_->setCanvasSize(cv.width, cv.height);
-    updateSelectionViews();
-}
-
-void MainWindow::setWorkspaceCanvas(const QString& canvasId) {
-    const QString id = qs(project_.resolveCanvasId(ss(canvasId)));
-    if (id != workspaceCanvas_) {
-        workspaceCanvas_ = id;
-        protocol::Command c;
-        c.type = protocol::CommandType::SetPreviewCanvas;
-        c.canvas = ss(id);
-        engine_->send(c);
-    }
-    refreshCanvasChoices();
-}
-
-bool MainWindow::effectiveVisible(const Layer& l) const {
-    if (!soloLayer_.empty()) return l.id == soloLayer_;
-    return l.visible;
-}
-
-void MainWindow::sendVisibility() {
-    for (const auto& l : project_.layers) {
-        protocol::Command c;
-        c.type = protocol::CommandType::SetLayerVisible;
-        c.layer = l.id;
-        c.on = effectiveVisible(l);
-        engine_->send(c);
-    }
-}
-
-void MainWindow::toggleSolo(int row) {
-    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
-    const std::string id = project_.layers[static_cast<std::size_t>(row)].id;
-    soloLayer_ = soloLayer_ == id ? std::string() : id;
-    // Ao vivo, também em Show Mode; o solo não fica guardado no projeto.
-    sendVisibility();
-    if (!showMode_) pushTimer_.start();
-    refreshDashboard();
-    timelinePanel_->timeline()->setSoloLayer(soloLayer_);
-}
-
-void MainWindow::addLoopModeMenu(QMenu* menu, const QString& mediaId) {
-    MediaItem* media = nullptr;
-    for (auto& m : project_.media)
-        if (qs(m.id) == mediaId) media = &m;
-    if (!media) return;
-    QMenu* sub = menu->addMenu(tr("At the end of the media"));
-    const std::pair<LoopMode, QString> modes[] = {
-        {LoopMode::Infinite, tr("Loop (infinite)")},
-        {LoopMode::OnceFreeze, tr("Play once and freeze")},
-        {LoopMode::OnceStop, tr("Play once and stop")},
-        {LoopMode::AutoFollow, tr("Play once and GO next column (auto-follow)")},
-    };
-    for (const auto& [mode, label] : modes) {
-        QAction* a = sub->addAction(label);
-        a->setCheckable(true);
-        a->setChecked(media->loopMode == mode);
-        const std::string id = media->id;
-        const LoopMode m = mode;
-        connect(a, &QAction::triggered, this, [this, id, m] {
-            for (auto& x : project_.media)
-                if (x.id == id) x.loopMode = m;
-            markChanged();
-        });
-    }
-}
-
-void MainWindow::showMediaMenu(const QString& mediaId, const QPoint& globalPos) {
-    QMenu menu(this);
-    addLoopModeMenu(&menu, mediaId);
-    menu.addSeparator();
-    for (const auto& m : project_.media)
-        if (qs(m.id) == mediaId) {
-            const QString path = qs(m.path);
-            menu.addAction(tr("Show in Explorer"), this, [path] {
-                QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
-            });
-        }
-    QAction* rm = menu.addAction(tr("Remove from library"), this, [this, mediaId] { removeMedia(mediaId); });
-    rm->setEnabled(!showMode_);
-    menu.exec(globalPos);
-}
-
-void MainWindow::showColumnMenu(int column, const QPoint& globalPos) {
-    if (column < 0 || column >= static_cast<int>(project_.columns.size())) return;
-    dashboard_->setCurrentCell(std::max(0, dashboard_->currentRow()), column);
-    QMenu menu(this);
-    menu.addAction(tr("GO this column"), this, [this, column] { go(column); });
-    menu.addSeparator();
-    QList<QAction*> edit;
-    edit << menu.addAction(tr("Cue settings..."), this, [this, column] { cueSettings(column); })
-         << menu.addAction(tr("Rename column..."), this, &MainWindow::renameColumn);
-    menu.addSeparator();
-    edit << menu.addAction(tr("Insert column before"), this, [this, column] { insertColumnAt(column); })
-         << menu.addAction(tr("Insert column after"), this, [this, column] { insertColumnAt(column + 1); })
-         << menu.addAction(tr("Duplicate column"), this, [this, column] { duplicateColumn(column); });
-    menu.addSeparator();
-    edit << menu.addAction(tr("Delete column"), this, [this, column] { deleteColumn(column); });
-    for (QAction* a : edit) a->setEnabled(!showMode_);
-    menu.exec(globalPos);
-}
-
-void MainWindow::showLayerMenu(int row, const QPoint& globalPos) {
-    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
-    selectLayer(row);
-    const Layer& layer = project_.layers[static_cast<std::size_t>(row)];
-    QMenu menu(this);
-    QList<QAction*> edit;
-    edit << menu.addAction(tr("Rename layer..."), this, &MainWindow::renameLayer)
-         << menu.addAction(tr("Duplicate layer"), this, [this, row] { duplicateLayer(row); });
-    menu.addSeparator();
-    edit << menu.addAction(tr("Add layer above"), this, [this, row] { insertLayerAt(row); })
-         << menu.addAction(tr("Add layer below"), this, [this, row] { insertLayerAt(row + 1); });
-    QAction* up = menu.addAction(tr("Move up"), this, [this, row] { moveLayer(row, row - 1); });
-    QAction* down = menu.addAction(tr("Move down"), this, [this, row] { moveLayer(row, row + 1); });
-    up->setEnabled(row > 0 && !showMode_);
-    down->setEnabled(row + 1 < static_cast<int>(project_.layers.size()) && !showMode_);
-    menu.addSeparator();
-    menu.addAction(layer.visible ? tr("Hide layer") : tr("Show layer"), this, [this, row] { toggleLayerVisible(row); });
-    menu.addAction(layer.locked ? tr("Unlock layer") : tr("Lock layer"), this, [this, row] { toggleLayerLock(row); });
-    menu.addAction(tr("Reset position, scale and rotation"), this, [this, row] {
-        if (row >= static_cast<int>(project_.layers.size())) return;
-        LayerProps p;
-        p.opacity = project_.layers[static_cast<std::size_t>(row)].props.opacity;
-        p.blend = project_.layers[static_cast<std::size_t>(row)].props.blend;
-        applyLayerProps(row, p, true);
-    });
-    menu.addSeparator();
-    edit << menu.addAction(tr("Delete layer"), this, &MainWindow::removeLayer);
-    for (QAction* a : edit) a->setEnabled(!showMode_);
-    menu.exec(globalPos);
-}
-
-void MainWindow::insertLayerAt(int index) {
-    if (showMode_) return;
-    index = std::clamp(index, 0, static_cast<int>(project_.layers.size()));
-    Layer l;
-    l.id = ss(nextId(QStringLiteral("L")));
-    l.name = ss(tr("Layer %1").arg(project_.layers.size() + 1));
-    project_.layers.insert(project_.layers.begin() + index, std::move(l));
-    refreshAll();
-    selectLayer(index);
-    markChanged();
-}
-
-void MainWindow::duplicateLayer(int row) {
-    if (showMode_ || row < 0 || row >= static_cast<int>(project_.layers.size())) return;
-    Layer copy = project_.layers[static_cast<std::size_t>(row)];
-    const std::string oldId = copy.id;
-    copy.id = ss(nextId(QStringLiteral("L")));
-    copy.name = ss(tr("%1 copy").arg(qs(copy.name)));
-    // A cópia leva as media do dashboard e os clips da timeline.
-    for (auto& c : project_.columns) {
-        auto it = c.cells.find(oldId);
-        if (it != c.cells.end()) c.cells[copy.id] = it->second;
-    }
-    for (auto& t : project_.timelines) {
-        std::vector<Clip> extra;
-        for (const auto& c : t.clips)
-            if (c.layerId == oldId) {
-                Clip n = c;
-                n.layerId = copy.id;
-                n.id = c.id + "-" + copy.id;
-                extra.push_back(n);
-            }
-        t.clips.insert(t.clips.end(), extra.begin(), extra.end());
-    }
-    project_.layers.insert(project_.layers.begin() + row, std::move(copy));
-    refreshAll();
-    selectLayer(row);
-    markChanged();
-}
-
-void MainWindow::moveLayer(int from, int to) {
-    const int n = static_cast<int>(project_.layers.size());
-    if (from < 0 || from >= n || to < 0 || to >= n || from == to) return;
-    Layer l = std::move(project_.layers[static_cast<std::size_t>(from)]);
-    project_.layers.erase(project_.layers.begin() + from);
-    project_.layers.insert(project_.layers.begin() + to, std::move(l));
-    refreshAll();
-    selectLayer(to);
-    markChanged();
-}
-
-void MainWindow::toggleLayerVisible(int row) {
-    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
-    Layer& l = project_.layers[static_cast<std::size_t>(row)];
-    l.visible = !l.visible;
-    // Ao vivo: também em Show Mode (como o olho do Millumin).
-    protocol::Command c;
-    c.type = protocol::CommandType::SetLayerVisible;
-    c.layer = l.id;
-    c.on = effectiveVisible(l);
-    engine_->send(c);
-    recordUndo();
-    dirty_ = true;
-    updateTitle();
-    if (!showMode_) pushTimer_.start();
-    refreshDashboard();
-    timelinePanel_->timeline()->update();
-}
-
-void MainWindow::toggleLayerLock(int row) {
-    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
-    Layer& l = project_.layers[static_cast<std::size_t>(row)];
-    l.locked = !l.locked;
-    recordUndo();
-    dirty_ = true;
-    updateTitle();
-    if (!showMode_) pushTimer_.start();
-    refreshDashboard();
-    timelinePanel_->timeline()->update();
-    updateSelectionViews();
-}
-
-void MainWindow::insertColumnAt(int index) {
-    if (showMode_) return;
-    index = std::clamp(index, 0, static_cast<int>(project_.columns.size()));
-    Column c;
-    c.id = project_.newColumnId();
-    c.name = ss(tr("Cue %1").arg(project_.columns.size() + 1));
-    c.fadeSeconds = prefs::defaultColumnFade();
-    project_.columns.insert(project_.columns.begin() + index, std::move(c));
-    if (activeColumn_ >= index) ++activeColumn_;
-    refreshDashboard();
-    markChanged();
-}
-
-void MainWindow::duplicateColumn(int column) {
-    if (showMode_ || column < 0 || column >= static_cast<int>(project_.columns.size())) return;
-    Column copy = project_.columns[static_cast<std::size_t>(column)];
-    copy.id = project_.newColumnId();
-    copy.name = ss(tr("%1 copy").arg(qs(copy.name)));
-    project_.columns.insert(project_.columns.begin() + column + 1, std::move(copy));
-    if (activeColumn_ > column) ++activeColumn_;
-    refreshDashboard();
-    markChanged();
-}
-
-void MainWindow::moveColumn(int from, int to) {
-    const int n = static_cast<int>(project_.columns.size());
-    if (from < 0 || from >= n || to < 0 || to >= n || from == to) return;
-    Column c = std::move(project_.columns[static_cast<std::size_t>(from)]);
-    project_.columns.erase(project_.columns.begin() + from);
-    project_.columns.insert(project_.columns.begin() + to, std::move(c));
-    if (activeColumn_ == from) activeColumn_ = to;
-    refreshDashboard();
-    markChanged();
-}
-
-void MainWindow::deleteColumn(int column) {
-    if (showMode_ || column < 0 || column >= static_cast<int>(project_.columns.size())) return;
-    const std::string removedId = project_.columns[static_cast<std::size_t>(column)].id;
-    project_.columns.erase(project_.columns.begin() + column);
-    for (auto& c : project_.columns)
-        if (c.jumpTo == removedId) c.jumpTo.clear(); // salto para uma cue apagada: volta a "a seguinte"
-    if (activeColumn_ == column) activeColumn_ = -1;
-    else if (activeColumn_ > column) --activeColumn_;
-    refreshDashboard();
-    markChanged();
-}
-
-// ------------------------------------------------------------------ seleção e propriedades
-
-void MainWindow::selectLayer(int row) {
-    if (row >= static_cast<int>(project_.layers.size())) row = static_cast<int>(project_.layers.size()) - 1;
-    selectedLayer_ = row;
-    // Ao selecionar uma layer, o Workspace mostra o canvas dela.
-    if (row >= 0) {
-        const QString cid = qs(project_.resolveCanvasId(project_.layers[static_cast<std::size_t>(row)].canvasId));
-        if (cid != workspaceCanvas_ && canvasSelect_) setWorkspaceCanvas(cid);
-    }
-    if (row >= 0 && dashboard_->currentRow() != row) {
-        const QSignalBlocker b(dashboard_);
-        dashboard_->setCurrentCell(row, std::max(0, dashboard_->currentColumn()));
-    }
-    updateSelectionViews();
-    updateTransport();
-}
-
-void MainWindow::updateSelectionViews() {
-    const bool valid = selectedLayer_ >= 0 && selectedLayer_ < static_cast<int>(project_.layers.size());
-    const Layer* layer = valid ? &project_.layers[static_cast<std::size_t>(selectedLayer_)] : nullptr;
-    const Canvas& layerCanvas = project_.canvasOf(layer ? layer->canvasId : std::string());
-    if (prefs::originTopLeft()) properties_->setOrigin(layerCanvas.width / 2.0, layerCanvas.height / 2.0);
-    else properties_->setOrigin(0.0, 0.0);
-    properties_->setLayer(layer);
-    // O contorno só aparece se a layer estiver no canvas mostrado no Workspace.
-    if (!layer || !prefs::showLayerOutline() || layerCanvas.id != ss(workspaceCanvas_)) {
-        preview_->setSelection(std::nullopt, 0, 0);
-        return;
-    }
-    // Tamanho da media que está no ar nesta layer (para o contorno no Workspace).
-    int mw = 0, mh = 0;
-    if (engine_->hasStatus()) {
-        for (const auto& ls : engine_->lastStatus().layers) {
-            if (ls.id != layer->id || ls.mediaId.empty()) continue;
-            if (const MediaItem* m = project_.findMedia(ls.mediaId)) {
-                const MediaInfo info = media_->info(qs(m->path));
-                mw = info.width;
-                mh = info.height;
-            }
-        }
-    }
-    preview_->setSelection(layer->props, mw, mh);
-}
-
-void MainWindow::applyLayerProps(int row, const LayerProps& props, bool persist) {
-    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
-    Layer& l = project_.layers[static_cast<std::size_t>(row)];
-    l.props = props;
-    l.props.clamp();
-    // Ao vivo: vai já para o motor (também em Show Mode).
-    protocol::Command c;
-    c.type = protocol::CommandType::SetLayerProps;
-    c.layer = l.id;
-    c.props = l.props;
-    engine_->sendLatest(QStringLiteral("props:") + qs(l.id), c);
-    if (persist) {
-        recordUndo();
-        dirty_ = true;
-        updateTitle();
-        if (!showMode_) pushTimer_.start();
-    }
-    updateSelectionViews();
-}
-
-void MainWindow::onPropsChanged(const LayerProps& props) { applyLayerProps(selectedLayer_, props, true); }
-
-void MainWindow::onCornerDragged(int corner, double dx, double dy, bool finished) {
-    if (selectedLayer_ < 0 || selectedLayer_ >= static_cast<int>(project_.layers.size()) || corner < 0 || corner > 3) return;
-    if (project_.layers[static_cast<std::size_t>(selectedLayer_)].locked) return;
-    if (!dragStartProps_) dragStartProps_ = project_.layers[static_cast<std::size_t>(selectedLayer_)].props;
-    LayerProps p = *dragStartProps_;
-    p.cornerPin[static_cast<std::size_t>(corner)].x += dx;
-    p.cornerPin[static_cast<std::size_t>(corner)].y += dy;
-    applyLayerProps(selectedLayer_, p, finished);
-    if (finished) dragStartProps_.reset();
-}
-
-void MainWindow::onLayerDragged(double dx, double dy, bool finished) {
-    if (selectedLayer_ < 0 || selectedLayer_ >= static_cast<int>(project_.layers.size())) return;
-    if (project_.layers[static_cast<std::size_t>(selectedLayer_)].locked) return; // layer bloqueada
-    if (!dragStartProps_) dragStartProps_ = project_.layers[static_cast<std::size_t>(selectedLayer_)].props;
-    LayerProps p = *dragStartProps_;
-    p.posX += dx;
-    p.posY += dy;
-    applyLayerProps(selectedLayer_, p, finished);
-    if (finished) dragStartProps_.reset();
-}
-
-// ------------------------------------------------------------------ show
-
-void MainWindow::go(int column) {
-    if (column < 0 || column >= static_cast<int>(project_.columns.size())) return;
-    // Garante que o motor tem a versão mais recente antes do GO.
-    if (pushTimer_.isActive()) {
-        pushTimer_.stop();
-        pushToEngine();
-    }
-    protocol::Command c;
-    c.type = protocol::CommandType::Go;
-    c.column = column;
-    // SHIFT ao lançar = sem transição (corte seco), como no Millumin.
-    c.value = (prefs::shiftSkipsTransitions() && (QApplication::keyboardModifiers() & Qt::ShiftModifier)) ? 0.0 : -1.0;
-    engine_->send(c, [this](const protocol::ParsedResponse& r) {
-        if (!r.ok) infoLabel_->setText(tr("GO failed: %1").arg(qs(r.error)));
-    });
-    activeColumn_ = column;
-    refreshDashboard();
-}
-
-void MainWindow::goNext() {
-    if (project_.columns.empty()) return;
-    // Respeita "depois desta, ir para" de cada cue.
-    const int next = project_.nextColumn(activeColumn_, prefs::loopBoard());
-    if (next < 0) {
-        infoLabel_->setText(tr("End of the board."));
-        return;
-    }
-    go(next);
-}
-
-void MainWindow::goPrevious() {
-    const int n = static_cast<int>(project_.columns.size());
-    if (n == 0) return;
-    int prev = activeColumn_ - 1;
-    if (prev < 0) prev = prefs::loopBoard() ? n - 1 : 0;
-    go(prev);
-}
-
-void MainWindow::onSpace() {
-    if (bottomTabs_->currentWidget() == timelinePanel_) {
-        const bool playing = engine_->hasStatus() && engine_->lastStatus().timelinePlaying &&
-                             qs(engine_->lastStatus().timelineId) == timelineId();
-        if (playing) sendTimeline(protocol::TimelineAction::Pause, -1.0);
-        else sendTimeline(protocol::TimelineAction::Play, timelinePanel_->timeline()->playhead());
-        return;
-    }
-    goNext();
-}
-
-void MainWindow::sendEngineSettings() {
-    protocol::Command c;
-    c.type = protocol::CommandType::SetSettings;
-    c.settings = prefs::engineSettings();
-    engine_->send(c);
-}
-
-void MainWindow::applyPreferences() {
-    sendEngineSettings();
-    applyCountdownServer();
-    timelinePanel_->timeline()->setSnapEnabled(prefs::timelineSnap());
-    timelinePanel_->timeline()->setFollowPlayhead(prefs::followPlayhead());
-    refreshDashboard();
-    updateSelectionViews();
-}
-
-void MainWindow::stopAll() {
-    protocol::Command c;
-    c.type = protocol::CommandType::StopAll;
-    c.value = 1.0;
-    engine_->send(c);
-    activeColumn_ = -1;
-    refreshDashboard();
-}
-
 void MainWindow::setShowMode(bool on) {
     if (!on && showMode_ && prefs::confirmLeaveShowMode()) {
         const auto b = QMessageBox::question(this, tr("Show Mode"), tr("Leave Show Mode and unlock editing?"));
@@ -1227,31 +1125,6 @@ void MainWindow::setShowMode(bool on) {
     updateTitle();
 }
 
-// ------------------------------------------------------------------ timeline
-
-void MainWindow::sendTimeline(protocol::TimelineAction action, double time) {
-    const QString id = timelineId();
-    if (id.isEmpty()) return;
-    if (pushTimer_.isActive()) {
-        pushTimer_.stop();
-        pushToEngine();
-    }
-    protocol::Command c;
-    c.type = protocol::CommandType::Timeline;
-    c.action = action;
-    c.timeline = ss(id);
-    c.value = time;
-    engine_->send(c, [this](const protocol::ParsedResponse& r) {
-        if (!r.ok) infoLabel_->setText(tr("Timeline: %1").arg(qs(r.error)));
-    });
-    if (action == protocol::TimelineAction::Play || action == protocol::TimelineAction::Seek) {
-        activeColumn_ = -1;
-        refreshDashboard();
-    }
-}
-
-// ------------------------------------------------------------------ motor
-
 void MainWindow::startEngine() {
     pushToEngine(); // garante que a cópia ao vivo existe
     if (!engine_->startEngine(livePath()))
@@ -1267,401 +1140,6 @@ void MainWindow::stopEngine() {
     engine_->send(c, [this](const protocol::ParsedResponse& r) {
         if (!r.ok) QMessageBox::warning(this, tr("Engine"), qs(r.error));
     });
-}
-
-void MainWindow::onEngineConnection(bool connected) {
-    engineLabel_->setText(connected ? tr("Engine: connected") : tr("Engine: offline"));
-    if (!connected) countdown_ = Countdown{};
-    updateTransport();
-    engineLabel_->setStyleSheet(connected ? QStringLiteral("color: #3c3; padding: 0 8px;")
-                                          : QStringLiteral("color: #e44; padding: 0 8px;"));
-    if (connected) {
-        sendEngineSettings();
-        protocol::Command pc;
-        pc.type = protocol::CommandType::SetPreviewCanvas;
-        pc.canvas = ss(workspaceCanvas_);
-        engine_->send(pc);
-    }
-    // Ao ligar, decide no primeiro status: adoptar o show que já está a correr ou enviar o nosso.
-    if (connected && adoptedEngineProject_) pushTimer_.start();
-}
-
-void MainWindow::onEngineStatus() {
-    const auto& s = engine_->lastStatus();
-
-    if (!adoptedEngineProject_) {
-        adoptedEngineProject_ = true;
-        // O Studio abriu (ou reabriu após um crash) com o motor já a tocar um show:
-        // mostra esse show em vez de o substituir.
-        if (!dirty_ && projectPath_.isEmpty() && !s.projectPath.empty()) {
-            auto r = loadProjectFile(s.projectPath);
-            if (r.project) {
-                project_ = std::move(*r.project);
-                ensureTimeline();
-                projectPath_ = QSettings().value(QStringLiteral("lastProject")).toString();
-                clearUndo();
-                activeColumn_ = s.activeColumn;
-                showMode_ = s.showMode;
-                showModeAction_->setChecked(showMode_);
-                refreshAll();
-                selectLayer(project_.layers.empty() ? -1 : 0);
-                infoLabel_->setText(tr("Connected to a running show."));
-                return;
-            }
-        }
-        pushTimer_.start();
-    }
-
-    if (s.showMode != showMode_) {
-        showMode_ = s.showMode;
-        showModeAction_->setChecked(showMode_);
-        updateEditingEnabled();
-        updateTitle();
-    }
-    if (s.activeColumn != activeColumn_) {
-        activeColumn_ = s.activeColumn;
-        refreshDashboard();
-    }
-    timelinePanel_->setState(s.timelineTime, s.timelinePlaying, qs(s.timelineId) == timelineId());
-    preview_->setFps(s.fps);
-    updateSelectionViews();
-    updateTransport();
-    countdown_ = computeCountdown(project_, s, prefs::loopBoard());
-    countdownClock_.restart();
-    refreshCountdown();
-    updateCellProgress();
-
-    QStringList problems;
-    for (const auto& o : s.outputs)
-        if (!o.ok || !o.error.empty()) problems << tr("Output %1: %2").arg(qs(o.id), qs(o.error));
-    for (const auto& l : s.layers)
-        if (l.state == "error") problems << tr("Layer %1: %2").arg(qs(l.id), qs(l.error));
-    for (const auto& w : s.warnings) problems << qs(w);
-
-    QString info = tr("%1 fps").arg(s.fps, 0, 'f', 1);
-    if (s.recovered) info += QStringLiteral("  |  ") + tr("Engine was restarted and the show resumed");
-    if (!problems.isEmpty()) info += QStringLiteral("  |  ⚠ ") + problems.join(QStringLiteral("; "));
-    infoLabel_->setText(info);
-}
-
-// ------------------------------------------------------------------ desfazer / refazer
-
-void MainWindow::recordUndo() {
-    if (restoring_) return;
-    std::string now = serializeProject(project_);
-    if (now == undoBase_) return;
-    if (undoBase_.empty()) { // ainda sem estado base: este passa a sê-lo
-        undoBase_ = std::move(now);
-        return;
-    }
-    // Alterações seguidas (ex. rodar um valor, várias teclas) ficam num só passo.
-    if (undoStack_.empty() || !lastUndoPush_.isValid() || lastUndoPush_.elapsed() > 400) {
-        undoStack_.push_back(std::move(undoBase_));
-        while (undoStack_.size() > kMaxUndo) undoStack_.pop_front();
-    }
-    lastUndoPush_.restart();
-    undoBase_ = std::move(now);
-    redoStack_.clear();
-    updateUndoActions();
-}
-
-void MainWindow::clearUndo() {
-    undoStack_.clear();
-    redoStack_.clear();
-    undoBase_ = serializeProject(project_);
-    lastUndoPush_.invalidate();
-    updateUndoActions();
-}
-
-void MainWindow::undo() {
-    if (showMode_) return;
-    recordUndo(); // inclui alterações ainda por registar
-    if (undoStack_.empty()) return;
-    redoStack_.push_back(undoBase_);
-    std::string target = std::move(undoStack_.back());
-    undoStack_.pop_back();
-    restoreSnapshot(target);
-}
-
-void MainWindow::redo() {
-    if (showMode_ || redoStack_.empty()) return;
-    undoStack_.push_back(undoBase_);
-    std::string target = std::move(redoStack_.back());
-    redoStack_.pop_back();
-    restoreSnapshot(target);
-}
-
-void MainWindow::restoreSnapshot(const std::string& json) {
-    auto r = parseProject(json);
-    if (!r.project) {
-        infoLabel_->setText(tr("Could not undo: %1").arg(qs(r.error)));
-        updateUndoActions();
-        return;
-    }
-    restoring_ = true;
-    project_ = std::move(*r.project);
-    ensureTimeline();
-    undoBase_ = serializeProject(project_);
-    lastUndoPush_.invalidate(); // o próximo passo nunca se junta a este
-    if (activeColumn_ >= static_cast<int>(project_.columns.size())) activeColumn_ = -1;
-    if (project_.findLayer(soloLayer_) == nullptr) soloLayer_.clear();
-    const int sel = std::min(selectedLayer_, static_cast<int>(project_.layers.size()) - 1);
-    refreshAll();
-    selectLayer(sel);
-    markChanged(); // envia para o motor (sem registar: restoring_)
-    restoring_ = false;
-    updateUndoActions();
-}
-
-void MainWindow::updateUndoActions() {
-    if (undoAction_) undoAction_->setEnabled(!showMode_ && !undoStack_.empty());
-    if (redoAction_) redoAction_->setEnabled(!showMode_ && !redoStack_.empty());
-}
-
-// ------------------------------------------------------------------ barra de tempo
-
-void MainWindow::updateTransport() {
-    if (!transport_) return;
-    transportLayer_.clear();
-    if (!engine_->isConnected() || !engine_->hasStatus()) {
-        transport_->setUnavailable(tr("Engine not running"));
-        return;
-    }
-    const auto& s = engine_->lastStatus();
-    if (!s.timelineId.empty()) {
-        transport_->setUnavailable(tr("Timeline active: use the timeline controls"));
-        return;
-    }
-    if (selectedLayer_ < 0 || selectedLayer_ >= static_cast<int>(project_.layers.size())) {
-        transport_->setUnavailable(tr("No layer selected"));
-        return;
-    }
-    const Layer& layer = project_.layers[static_cast<std::size_t>(selectedLayer_)];
-    for (const auto& ls : s.layers) {
-        if (ls.id != layer.id) continue;
-        const MediaItem* m = project_.findMedia(ls.mediaId);
-        if (ls.mediaId.empty() || !m) break;
-        const QString title = qs(layer.name) + QStringLiteral(" · ") + QFileInfo(qs(m->path)).completeBaseName();
-        if (ls.duration <= 0.0) {
-            transport_->setUnavailable(title + QStringLiteral("  (") + tr("still image") + QStringLiteral(")"));
-            return;
-        }
-        transportLayer_ = layer.id;
-        transport_->setState(title, ls.position, ls.duration, ls.paused, ls.state == "playing");
-        return;
-    }
-    transport_->setUnavailable(tr("No video on layer %1").arg(qs(layer.name)));
-}
-
-void MainWindow::updateCellProgress() {
-    if (!engine_->hasStatus() || activeColumn_ < 0 || activeColumn_ >= dashboard_->columnCount()) return;
-    const auto& s = engine_->lastStatus();
-    const auto& cells = project_.columns[static_cast<std::size_t>(activeColumn_)].cells;
-    for (int r = 0; r < dashboard_->rowCount() && r < static_cast<int>(project_.layers.size()); ++r) {
-        QTableWidgetItem* item = dashboard_->item(r, activeColumn_);
-        if (!item) continue;
-        double prog = -1.0;
-        const std::string& lid = project_.layers[static_cast<std::size_t>(r)].id;
-        auto cell = cells.find(lid);
-        for (const auto& ls : s.layers)
-            if (ls.id == lid && cell != cells.end() && ls.mediaId == cell->second && ls.duration > 0.0)
-                prog = std::clamp(ls.position / ls.duration, 0.0, 1.0);
-        const QVariant old = item->data(DashboardTable::kProgressRole);
-        if (!old.isValid() || std::abs(old.toDouble() - prog) > 0.002) item->setData(DashboardTable::kProgressRole, prog);
-    }
-}
-
-// ------------------------------------------------------------------ countdown
-
-Countdown MainWindow::currentCountdown() const {
-    if (!engine_->isConnected()) return {};
-    return advanceCountdown(countdown_, countdownClock_.elapsed() / 1000.0);
-}
-
-void MainWindow::refreshCountdown() {
-    const Countdown c = currentCountdown();
-    if (countdownView_) countdownView_->setCountdown(c);
-    if (countdownWindow_ && countdownWindow_->isVisible()) countdownWindow_->setCountdown(c);
-}
-
-void MainWindow::openCountdownWindow() {
-    if (!countdownWindow_) countdownWindow_ = new CountdownWindow(this);
-    countdownWindow_->setCountdown(currentCountdown());
-    countdownWindow_->show();
-    countdownWindow_->raise();
-    countdownWindow_->activateWindow();
-}
-
-void MainWindow::applyCountdownServer() {
-    const bool want = prefs::countdownWebEnabled();
-    const auto port = static_cast<quint16>(std::clamp(prefs::countdownWebPort(), 1024, 65535));
-    if (!want) {
-        countdownServer_->stop();
-        webLabel_->clear();
-        return;
-    }
-    if (!countdownServer_->isRunning() || countdownServer_->port() != port) {
-        QString err;
-        if (!countdownServer_->start(port, &err)) {
-            webLabel_->setText(tr("Countdown web: port %1 unavailable").arg(port));
-            webLabel_->setToolTip(err);
-            return;
-        }
-    }
-    const QStringList urls = countdownServer_->urls();
-    webLabel_->setText(tr("Countdown: %1").arg(urls.value(0)));
-    webLabel_->setToolTip(tr("Anyone on the same network can open this address in a browser:\n%1").arg(urls.join('\n')));
-}
-
-void MainWindow::showCountdownWebInfo() {
-    applyCountdownServer();
-    QDialog dlg(this);
-    dlg.setWindowTitle(tr("Countdown on the network"));
-    auto* l = new QVBoxLayout(&dlg);
-    if (!countdownServer_->isRunning()) {
-        l->addWidget(new QLabel(prefs::countdownWebEnabled()
-                                    ? tr("The countdown page could not start on port %1. Choose another port in "
-                                         "Preferences → Countdown.").arg(prefs::countdownWebPort())
-                                    : tr("The countdown page is turned off. Turn it on in Preferences → Countdown."),
-                                &dlg));
-    } else {
-        const QStringList urls = countdownServer_->urls();
-        auto* text = new QLabel(tr("People on the same network (Wi-Fi or cable) can follow the countdown on a "
-                                   "phone, tablet or computer by opening this address in the browser:"),
-                                &dlg);
-        text->setWordWrap(true);
-        l->addWidget(text);
-        for (const QString& u : urls) {
-            auto* row = new QHBoxLayout;
-            auto* link = new QLabel(QStringLiteral("<a href=\"%1\" style=\"font-size:16pt\">%1</a>").arg(u), &dlg);
-            link->setOpenExternalLinks(true);
-            link->setTextInteractionFlags(Qt::TextBrowserInteraction);
-            auto* copy = new QPushButton(tr("Copy"), &dlg);
-            connect(copy, &QPushButton::clicked, &dlg, [u] { QApplication::clipboard()->setText(u); });
-            row->addWidget(link, 1);
-            row->addWidget(copy);
-            l->addLayout(row);
-        }
-        auto* hint = new QLabel(tr("If Windows asks, allow VTHOST Studio on private networks. "
-                                   "Double-click the page to go full screen."),
-                                &dlg);
-        hint->setWordWrap(true);
-        hint->setStyleSheet(QStringLiteral("color: gray;"));
-        l->addWidget(hint);
-    }
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
-    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-    l->addWidget(buttons);
-    dlg.setMinimumWidth(480);
-    dlg.exec();
-}
-
-// ------------------------------------------------------------------ vista
-
-void MainWindow::refreshAll() {
-    library_->setMedia(project_.media);
-    refreshDashboard();
-    timelinePanel_->timeline()->setProject(&project_, timelineId());
-    refreshCanvasChoices();
-    updateSelectionViews();
-    updateTitle();
-    updateEditingEnabled();
-}
-
-void MainWindow::refreshDashboard() {
-    const QSignalBlocker block(dashboard_);
-    const int curRow = dashboard_->currentRow();
-    const int curCol = dashboard_->currentColumn();
-    dashboard_->clear();
-    dashboard_->setRowCount(static_cast<int>(project_.layers.size()));
-    dashboard_->setColumnCount(static_cast<int>(project_.columns.size()));
-
-    for (int c = 0; c < static_cast<int>(project_.columns.size()); ++c) {
-        const auto& col = project_.columns[static_cast<std::size_t>(c)];
-        const QString index = prefs::showColumnIndex() ? QStringLiteral("%1  ").arg(c + 1, 2, 10, QLatin1Char('0')) : QString();
-        // 2.ª linha: transição, avanço automático e salto (ex. "dissolve 1.0 s · ⏱ 10 s · ↪ 03").
-        QStringList info;
-        switch (col.transition) {
-        case TransitionType::Crossfade: info << tr("dissolve %1 s").arg(col.fadeSeconds, 0, 'f', 1); break;
-        case TransitionType::FadeThroughBlack: info << tr("black %1 s").arg(col.fadeSeconds, 0, 'f', 1); break;
-        case TransitionType::Cut: info << tr("cut"); break;
-        }
-        if (col.follow == FollowMode::MediaEnd) info << QStringLiteral("⏭ ") + tr("at end");
-        else if (col.follow == FollowMode::Timer)
-            info << QStringLiteral("⏱ ") + tr("%1 s").arg(col.followSeconds, 0, 'f', 1);
-        if (const int j = project_.columnIndex(col.jumpTo); j >= 0)
-            info << QStringLiteral("↪ %1").arg(j + 1, 2, 10, QLatin1Char('0'));
-        auto* h = new QTableWidgetItem(QStringLiteral("%1▶  %2\n%3").arg(index, qs(col.name), info.join(QStringLiteral(" · "))));
-        QString tip = tr("Click: GO. Right-click: cue settings.");
-        if (col.follow == FollowMode::MediaEnd) tip += QStringLiteral("\n") + tr("Goes to the next cue when its videos end.");
-        else if (col.follow == FollowMode::Timer)
-            tip += QStringLiteral("\n") + tr("Goes to the next cue after %1 s.").arg(col.followSeconds, 0, 'f', 1);
-        if (const int j = project_.columnIndex(col.jumpTo); j >= 0)
-            tip += QStringLiteral("\n") + tr("Then goes to cue %1 (%2).").arg(j + 1).arg(qs(project_.columns[static_cast<std::size_t>(j)].name));
-        h->setToolTip(tip);
-        if (c == activeColumn_) {
-            h->setBackground(kActiveColumn);
-            h->setForeground(Qt::black);
-        }
-        dashboard_->setHorizontalHeaderItem(c, h);
-    }
-    for (int r = 0; r < static_cast<int>(project_.layers.size()); ++r) {
-        const auto& layer = project_.layers[static_cast<std::size_t>(r)];
-        QString label = qs(layer.name);
-        if (project_.canvases.size() > 1) label += QStringLiteral("  ·  ") + qs(project_.canvasOf(layer.canvasId).name);
-        dashboard_->setVerticalHeaderItem(r, new QTableWidgetItem(label));
-        for (int c = 0; c < static_cast<int>(project_.columns.size()); ++c) {
-            const auto& cells = project_.columns[static_cast<std::size_t>(c)].cells;
-            auto* item = new QTableWidgetItem;
-            auto it = cells.find(layer.id);
-            if (it != cells.end()) {
-                if (const MediaItem* m = project_.findMedia(it->second)) {
-                    const QString path = qs(m->path);
-                    item->setText(QFileInfo(path).completeBaseName());
-                    QString tip = QDir::toNativeSeparators(path);
-                    const MediaInfo info = media_->info(path);
-                    if (info.ok && !info.thumb.isNull()) item->setData(DashboardTable::kThumbRole, info.thumb);
-                    else if (info.ready && !info.ok)
-                        tip += QStringLiteral("\n") + tr("No thumbnail (%1)").arg(info.error);
-                    item->setToolTip(tip);
-                }
-            }
-            item->setData(DashboardTable::kActiveRole, c == activeColumn_);
-            dashboard_->setItem(r, c, item);
-        }
-    }
-    std::vector<LayerHeader::RowState> states;
-    for (const auto& l : project_.layers) states.push_back({l.visible, l.locked, l.id == soloLayer_});
-    layerHeader_->setStates(std::move(states));
-    if (curRow >= 0 && curCol >= 0 && curRow < dashboard_->rowCount() && curCol < dashboard_->columnCount())
-        dashboard_->setCurrentCell(curRow, curCol);
-}
-
-void MainWindow::updateTitle() {
-    QString t = QStringLiteral("VTHOST Studio - %1").arg(qs(project_.name));
-    if (dirty_) t += QStringLiteral(" *");
-    if (showMode_) t += QStringLiteral("  [") + tr("SHOW MODE") + QStringLiteral("]");
-    setWindowTitle(t);
-}
-
-void MainWindow::updateEditingEnabled() {
-    const bool edit = !showMode_;
-    for (auto* w : editWidgets_) w->setEnabled(edit);
-    for (auto* a : editActions_) a->setEnabled(edit);
-    library_->setEditable(edit);
-    updateUndoActions();
-    dashboard_->setEditable(edit);
-    timelinePanel_->setEditable(edit);
-    // Properties e o arrastar no Workspace continuam ativos: são controlos ao vivo.
-}
-
-// ------------------------------------------------------------------ definições e atualizações
-
-void MainWindow::openSettings(int tab) {
-    SettingsDialog dlg(this, tab);
-    connect(&dlg, &SettingsDialog::checkForUpdatesRequested, this, [this] { checkForUpdates(true); });
-    connect(&dlg, &SettingsDialog::preferencesChanged, this, &MainWindow::applyPreferences);
-    dlg.exec();
 }
 
 void MainWindow::checkForUpdates(bool userInitiated) {
@@ -1761,4 +1239,143 @@ void MainWindow::installUpdate(const QString& installerPath) {
     };
     engine_->send(c, [once](const protocol::ParsedResponse&) { QTimer::singleShot(500, once); });
     QTimer::singleShot(4000, this, once); // se o motor não responder, o instalador trata dele
+}
+
+void MainWindow::recordUndo() {
+    if (restoring_) return;
+    std::string now = serializeProject(project_);
+    if (now == undoBase_) return;
+    if (undoBase_.empty()) { // ainda sem estado base: este passa a sê-lo
+        undoBase_ = std::move(now);
+        return;
+    }
+    // Alterações seguidas (ex. rodar um valor, várias teclas) ficam num só passo.
+    if (undoStack_.empty() || !lastUndoPush_.isValid() || lastUndoPush_.elapsed() > 400) {
+        undoStack_.push_back(std::move(undoBase_));
+        while (undoStack_.size() > kMaxUndo) undoStack_.pop_front();
+    }
+    lastUndoPush_.restart();
+    undoBase_ = std::move(now);
+    redoStack_.clear();
+    updateUndoActions();
+}
+
+void MainWindow::clearUndo() {
+    undoStack_.clear();
+    redoStack_.clear();
+    undoBase_ = serializeProject(project_);
+    lastUndoPush_.invalidate();
+    updateUndoActions();
+}
+
+void MainWindow::undo() {
+    if (showMode_) return;
+    recordUndo(); // inclui alterações ainda por registar
+    if (undoStack_.empty()) return;
+    redoStack_.push_back(undoBase_);
+    std::string target = std::move(undoStack_.back());
+    undoStack_.pop_back();
+    restoreSnapshot(target);
+}
+
+void MainWindow::redo() {
+    if (showMode_ || redoStack_.empty()) return;
+    undoStack_.push_back(undoBase_);
+    std::string target = std::move(redoStack_.back());
+    redoStack_.pop_back();
+    restoreSnapshot(target);
+}
+
+void MainWindow::updateUndoActions() {
+    if (undoAction_) undoAction_->setEnabled(!showMode_ && !undoStack_.empty());
+    if (redoAction_) redoAction_->setEnabled(!showMode_ && !redoStack_.empty());
+}
+
+Countdown MainWindow::currentCountdown() const {
+    if (!engine_->isConnected()) return {};
+    return advanceCountdown(countdown_, countdownClock_.elapsed() / 1000.0);
+}
+
+void MainWindow::refreshCountdown() {
+    const Countdown c = currentCountdown();
+    if (countdownWindow_ && countdownWindow_->isVisible()) countdownWindow_->setCountdown(c);
+}
+
+void MainWindow::openCountdownWindow() {
+    if (!countdownWindow_) countdownWindow_ = new CountdownWindow(this);
+    countdownWindow_->setCountdown(currentCountdown());
+    countdownWindow_->show();
+    countdownWindow_->raise();
+    countdownWindow_->activateWindow();
+}
+
+void MainWindow::applyCountdownServer() {
+    const bool want = prefs::countdownWebEnabled();
+    const auto port = static_cast<quint16>(std::clamp(prefs::countdownWebPort(), 1024, 65535));
+    if (!want) {
+        countdownServer_->stop();
+        webLabel_->clear();
+        return;
+    }
+    if (!countdownServer_->isRunning() || countdownServer_->port() != port) {
+        QString err;
+        if (!countdownServer_->start(port, &err)) {
+            webLabel_->setText(tr("Countdown web: port %1 unavailable").arg(port));
+            webLabel_->setToolTip(err);
+            return;
+        }
+    }
+    const QStringList urls = countdownServer_->urls();
+    webLabel_->setText(tr("Countdown: %1").arg(urls.value(0)));
+    webLabel_->setToolTip(tr("Anyone on the same network can open this address in a browser:\n%1").arg(urls.join('\n')));
+}
+
+void MainWindow::showCountdownWebInfo() {
+    applyCountdownServer();
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Countdown on the network"));
+    auto* l = new QVBoxLayout(&dlg);
+    if (!countdownServer_->isRunning()) {
+        l->addWidget(new QLabel(prefs::countdownWebEnabled()
+                                    ? tr("The countdown page could not start on port %1. Choose another port in "
+                                         "Preferences → Countdown.").arg(prefs::countdownWebPort())
+                                    : tr("The countdown page is turned off. Turn it on in Preferences → Countdown."),
+                                &dlg));
+    } else {
+        const QStringList urls = countdownServer_->urls();
+        auto* text = new QLabel(tr("People on the same network (Wi-Fi or cable) can follow the countdown on a "
+                                   "phone, tablet or computer by opening this address in the browser:"),
+                                &dlg);
+        text->setWordWrap(true);
+        l->addWidget(text);
+        for (const QString& u : urls) {
+            auto* row = new QHBoxLayout;
+            auto* link = new QLabel(QStringLiteral("<a href=\"%1\" style=\"font-size:16pt\">%1</a>").arg(u), &dlg);
+            link->setOpenExternalLinks(true);
+            link->setTextInteractionFlags(Qt::TextBrowserInteraction);
+            auto* copy = new QPushButton(tr("Copy"), &dlg);
+            connect(copy, &QPushButton::clicked, &dlg, [u] { QApplication::clipboard()->setText(u); });
+            row->addWidget(link, 1);
+            row->addWidget(copy);
+            l->addLayout(row);
+        }
+        auto* hint = new QLabel(tr("If Windows asks, allow VTHOST Studio on private networks. "
+                                   "Double-click the page to go full screen."),
+                                &dlg);
+        hint->setWordWrap(true);
+        hint->setStyleSheet(QStringLiteral("color: gray;"));
+        l->addWidget(hint);
+    }
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    l->addWidget(buttons);
+    dlg.setMinimumWidth(480);
+    dlg.exec();
+}
+
+void MainWindow::updateTitle() {
+    QString t = QStringLiteral("VTHOST Studio - %1").arg(qs(project_.name));
+    if (dirty_) t += QStringLiteral(" *");
+    if (showMode_) t += QStringLiteral("  [") + tr("SHOW MODE") + QStringLiteral("]");
+    setWindowTitle(t);
 }

@@ -19,34 +19,22 @@ qt_add_executable(vthost-studio WIN32
     update_checker.h
     app_info.h
     prefs.h
-    dashboard_table.cpp
-    dashboard_table.h
-    layer_header.cpp
-    layer_header.h
     outputs_dialog.cpp
-    mapping_editor.cpp
-    mapping_editor.h
     outputs_dialog.h
-    library_panel.cpp
-    library_panel.h
     media_cache.cpp
     media_cache.h
     preview_widget.cpp
     preview_widget.h
-    properties_panel.cpp
-    properties_panel.h
-    timeline_panel.cpp
-    timeline_panel.h
+    playlist_view.cpp
+    playlist_view.h
+    inspector_panel.cpp
+    inspector_panel.h
+    waveform_view.cpp
+    waveform_view.h
     countdown_server.cpp
     countdown_server.h
     countdown_view.cpp
     countdown_view.h
-    cue_dialog.cpp
-    cue_dialog.h
-    transport_bar.cpp
-    transport_bar.h
-    timeline_widget.cpp
-    timeline_widget.h
 )
 target_link_libraries(vthost-studio PRIVATE vthost_core Qt6::Widgets Qt6::Network)
 if(WIN32)
@@ -70,7 +58,7 @@ qt_add_resources(vthost-studio "web"
 # Miniaturas e duração das media: o Studio usa as mesmas DLLs do FFmpeg que o motor.
 find_package(FFmpeg QUIET)
 if(FFmpeg_FOUND)
-    target_link_libraries(vthost-studio PRIVATE FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil FFmpeg::swscale)
+    target_link_libraries(vthost-studio PRIVATE FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil FFmpeg::swscale FFmpeg::swresample)
     target_compile_definitions(vthost-studio PRIVATE VTHOST_HAVE_FFMPEG)
 endif()
 

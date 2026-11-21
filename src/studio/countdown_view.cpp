@@ -53,9 +53,10 @@ void CountdownView::paintEvent(QPaintEvent*) {
     const QString time = c_.active ? QStringLiteral("-") + QString::fromStdString(formatCountdown(c_.remaining))
                                    : QStringLiteral("--:--");
     QString title;
-    if (c_.mode == "timeline") title = QString::fromStdString(c_.cueName);
-    else if (c_.cueNumber > 0)
-        title = QStringLiteral("%1  %2").arg(c_.cueNumber, 2, 10, QLatin1Char('0')).arg(QString::fromStdString(c_.cueName));
+    if (c_.cueNumber > 0)
+        title = QStringLiteral("%1  %2")
+                    .arg(c_.cueLabel.empty() ? QString::number(c_.cueNumber) : QString::fromStdString(c_.cueLabel))
+                    .arg(QString::fromStdString(c_.cueName));
     QString status;
     if (!c_.active) status = tr("Nothing on air");
     else if (!c_.running) status = tr("Paused");
