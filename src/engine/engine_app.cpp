@@ -23,6 +23,7 @@ using namespace std::chrono_literals;
 namespace {
 const std::string kCanvasId = "C1";   // MEDIAPLAYER (resolução do projecto)
 const std::string kPreviewClip = "pv"; // monitor Preview do CUEPLAYER
+const std::string kMonitorScreen = "mon"; // saída de um screen, em ponto pequeno, para o editor de output
 std::string compCanvas(const std::string& id) { return "comp:" + id; }
 std::string layerCanvas(const std::string& comp, const std::string& layer) { return "layer:" + comp + ":" + layer; }
 std::string ndiCanvas(const std::string& id) { return "ndi:" + id; }
@@ -33,7 +34,7 @@ EngineApp::~EngineApp() {
     outputs_.clear();
     previewPlayer_.reset();
     comps_.clear();
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 3; ++i) {
         if (previewBlock_[i]) UnmapViewOfFile(previewBlock_[i]);
         if (previewMapping_[i]) CloseHandle(previewMapping_[i]);
     }
@@ -105,6 +106,14 @@ void EngineApp::syncCanvas() {
         keep.insert(compCanvas(c.id));
     }
     for (const auto& id : layerCanvases_) keep.insert(id); // criados em rebuildSlices
+    if (monitor_.rfind("screen:", 0) == 0)
+        for (const auto& o : project_.outputs)
+            if (o.id == monitor_.substr(7)) {
+                int w = 0, h = 0;
+                previewSizeFor(o.width, o.height, w, h); // já do tamanho do bloco: a cópia não reduz
+                renderer_.ensureCanvas(kMonitorScreen, w, h);
+                keep.insert(kMonitorScreen);
+            }
     for (const auto& o : project_.outputs)
         if (o.enabled && o.type == OutputType::Ndi) {
             renderer_.ensureCanvas(ndiCanvas(o.id), o.width, o.height);
@@ -138,6 +147,19 @@ void EngineApp::rebuildSlices() {
                 const std::string id = sliceCanvas(sl, w, h);
                 if (!id.empty() && renderer_.ensureCanvas(id, w, h)) layers.insert(id);
             }
+    // O editor de output pode mostrar uma layer sozinha mesmo sem slice que a use.
+    if (monitor_.rfind("layer:", 0) == 0) {
+        const auto sep = monitor_.find(':', 6);
+        if (sep != std::string::npos) {
+            Slice probe;
+            probe.source = SliceSourceKind::Layer;
+            probe.compositionId = monitor_.substr(6, sep - 6);
+            probe.layerId = monitor_.substr(sep + 1);
+            int w = 0, h = 0;
+            const std::string id = sliceCanvas(probe, w, h);
+            if (!id.empty() && renderer_.ensureCanvas(id, w, h)) layers.insert(id);
+        }
+    }
     layerCanvases_ = std::move(layers);
     syncCanvas();
 
@@ -157,14 +179,16 @@ void EngineApp::rebuildSlices() {
         return list;
     };
     ndiSlices_.clear();
+    screenSlices_.clear();
     for (const auto& o : project_.outputs) {
+        screenSlices_[o.id] = build(o);
         if (!o.enabled) continue;
         if (o.type == OutputType::Ndi) {
-            ndiSlices_[o.id] = build(o);
+            ndiSlices_[o.id] = screenSlices_[o.id];
             continue;
         }
         for (auto& w : outputs_)
-            if (w->id() == o.id) w->setSlices(build(o));
+            if (w->id() == o.id) w->setSlices(screenSlices_[o.id]);
     }
 }
 
@@ -613,6 +637,13 @@ std::string EngineApp::handle(const std::string& line) {
     case CommandType::SetPreviewSource:
         previewSource_ = c.source.empty() ? std::string("media") : c.source;
         return okResponse();
+    case CommandType::SetMonitor:
+        if (c.source.size() > 512) return errorResponse("fonte inválida");
+        if (c.source != monitor_) {
+            monitor_ = c.source;
+            rebuildSlices(); // cria/apaga os canvases do monitor
+        }
+        return okResponse();
     case CommandType::Shutdown:
         if (showMode_) return errorResponse("Show Mode activo: desligue-o para parar o motor");
         setRunState(EngineRunState::StoppingOnPurpose);
@@ -715,9 +746,9 @@ void EngineApp::applySettings(const protocol::EngineSettings& s) {
 // ---------------------------------------------------------------- preview
 
 bool EngineApp::initPreview() {
-    const wchar_t* names[2] = {kPreviewName, kPreviewName2};
+    const wchar_t* names[3] = {kPreviewName, kPreviewName2, kPreviewName3};
     bool ok = true;
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 3; ++i) {
         previewMapping_[i] = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
                                                 static_cast<DWORD>(kPreviewBlockBytes), names[i]);
         if (!previewMapping_[i]) {
@@ -737,7 +768,7 @@ bool EngineApp::initPreview() {
 
 void EngineApp::writePreview(int slot, const std::string& canvasId, const std::uint8_t* data, int rowPitch, int width,
                              int height) {
-    if (slot < 0 || slot > 1) return;
+    if (slot < 0 || slot > 2) return;
     std::uint8_t* block = previewBlock_[slot];
     if (!block || width <= 0 || height <= 0 || width > kPreviewMaxWidth || height > kPreviewMaxHeight) return;
     auto* h = reinterpret_cast<PreviewHeader*>(block);
@@ -756,6 +787,15 @@ void EngineApp::writePreview(int slot, const std::string& canvasId, const std::u
     h->frameNumber++;
     MemoryBarrier();
     InterlockedIncrement64(seq); // par = pronto
+}
+
+std::string EngineApp::monitorCanvas() const {
+    if (monitor_.empty()) return {};
+    if (monitor_ == "media") return kCanvasId;
+    if (monitor_.rfind("comp:", 0) == 0) return project_.findComposition(monitor_.substr(5)) ? monitor_ : std::string();
+    if (monitor_.rfind("layer:", 0) == 0) return layerCanvases_.count(monitor_) ? monitor_ : std::string();
+    if (monitor_.rfind("screen:", 0) == 0) return renderer_.canvasRtv(kMonitorScreen) ? kMonitorScreen : std::string();
+    return {};
 }
 
 // ---------------------------------------------------------------- render loop
@@ -817,6 +857,28 @@ void EngineApp::renderFrame() {
             renderer_.capturePreview(1, kPreviewClip, [this](const std::uint8_t* d, int pitch, int w, int h) {
                 writePreview(1, kPreviewClip, d, pitch, w, h);
             });
+        // Fundo do editor de output: a fonte de um slice ou o que sai de um screen.
+        const std::string mon = previewBlock_[2] ? monitorCanvas() : std::string();
+        if (!mon.empty()) {
+            if (mon == kMonitorScreen) {
+                ID3D11RenderTargetView* rtv = renderer_.canvasRtv(kMonitorScreen);
+                const auto sl = screenSlices_.find(monitor_.substr(7));
+                int mw = 0, mh = 0;
+                renderer_.canvasSize(kMonitorScreen, mw, mh);
+                if (rtv && sl != screenSlices_.end() && !sl->second.empty()) {
+                    bool firstSlice = true;
+                    for (const auto& d : sl->second) {
+                        renderer_.drawOutput(rtv, mw, mh, d.canvasId, d.mapping, d.mesh, testCard_, firstSlice);
+                        firstSlice = false;
+                    }
+                } else {
+                    renderer_.clearCanvas(kMonitorScreen);
+                }
+            }
+            renderer_.capturePreview(2, mon, [this, &mon](const std::uint8_t* d, int pitch, int w, int h) {
+                writePreview(2, mon, d, pitch, w, h);
+            });
+        }
     }
 
     bool first = true;

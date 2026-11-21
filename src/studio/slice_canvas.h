@@ -36,6 +36,8 @@ public:
     void setOutput(vthost::Output* output, int currentSlice); // nullptr = vazio
     void setTool(Tool tool) { tool_ = tool; update(); }
     void setEditable(bool editable) { editable_ = editable; }
+    // Imagem de fundo (vinda do motor): a fonte do slice (Input) ou o screen (Output).
+    void setBackground(const QImage& image) { background_ = image; update(); }
 
 signals:
     void sliceClicked(int index);
@@ -67,6 +69,7 @@ private:
     int current_ = -1;
     SourceSize sourceSize_;
     SourceName sourceName_;
+    QImage background_;
 
     enum class Drag { None, Move, Corner, Edge, MeshPoint };
     Drag drag_ = Drag::None;

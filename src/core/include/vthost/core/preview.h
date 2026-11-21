@@ -18,6 +18,8 @@ inline constexpr int kPreviewMaxHeight = 540;
 inline constexpr const wchar_t* kPreviewName = L"Local\\VTHOST_Preview";
 // 2.º bloco: monitor Preview do CUEPLAYER (clip selecionado, antes de ir para o ar).
 inline constexpr const wchar_t* kPreviewName2 = L"Local\\VTHOST_Preview2";
+// 3.º bloco: fundo do editor de Output avançado (fonte de um slice ou a saída de um screen).
+inline constexpr const wchar_t* kPreviewName3 = L"Local\\VTHOST_Preview3";
 
 struct PreviewHeader {
     std::uint32_t magic;

@@ -87,6 +87,9 @@ private:
     std::string previewSource_ = "media";      // "media" | "comp:<id>"
     std::set<std::string> layerCanvases_;      // "layer:<comp>:<layer>" usados por slices
     std::map<std::string, std::vector<SliceDraw>> ndiSlices_; // saídas NDI
+    std::map<std::string, std::vector<SliceDraw>> screenSlices_; // todos os screens (monitor do editor)
+    std::string monitor_;                      // fundo do editor de output ("" = desligado)
+    std::string monitorCanvas() const;         // canvas a copiar para o 3.º bloco ("" = nenhum)
     Project project_;
     std::string projectPath_;
     std::vector<std::unique_ptr<OutputWindow>> outputs_; // Display / Window
@@ -101,8 +104,8 @@ private:
     int exitCode_ = kExitRequested;
     bool recovered_ = false;
 
-    HANDLE previewMapping_[2] = {nullptr, nullptr};
-    std::uint8_t* previewBlock_[2] = {nullptr, nullptr};
+    HANDLE previewMapping_[3] = {nullptr, nullptr, nullptr};
+    std::uint8_t* previewBlock_[3] = {nullptr, nullptr, nullptr};
     std::uint64_t previewFrames_ = 0;
 
     HANDLE heartbeatMapping_ = nullptr;

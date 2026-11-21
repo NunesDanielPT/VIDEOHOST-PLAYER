@@ -125,7 +125,7 @@ private:
     std::map<std::string, CanvasTarget> canvases_;
     CanvasTarget* current_ = nullptr;
 
-    static constexpr int kPreviewSlots = 2;
+    static constexpr int kPreviewSlots = 3;
     ComPtr<ID3D11Texture2D> previewRt_[kPreviewSlots];
     ComPtr<ID3D11RenderTargetView> previewRtv_[kPreviewSlots];
     Readback preview_[kPreviewSlots];

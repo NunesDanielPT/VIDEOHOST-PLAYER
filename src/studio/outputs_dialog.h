@@ -26,6 +26,7 @@ class QStackedWidget;
 class QTabWidget;
 class QToolButton;
 class QTreeWidget;
+class PreviewReader;
 class SliceCanvas;
 
 class OutputsDialog : public QDialog {
@@ -37,6 +38,9 @@ public:
     int canvasWidth() const;
     int canvasHeight() const;
     std::vector<vthost::Output> outputs() const { return outputs_; }
+
+protected:
+    void done(int result) override;
 
 signals:
     void liveChanged(); // aplicar já ao motor (o MainWindow lê outputs()/canvasWidth())
@@ -60,6 +64,8 @@ private:
     void duplicateCurrent();
     void removeCurrent();
     void identify();
+    void updateMonitor();     // o que o motor manda para o fundo do editor
+    void applyBackground();
     void updateStatus();
     QString displayLabel(const vthost::protocol::DisplayInfo& d) const;
     QSize displaySize(const vthost::Output& o) const;
@@ -82,6 +88,9 @@ private:
     QTreeWidget* tree_ = nullptr;
     QStackedWidget* right_ = nullptr;
     QLabel* source_ = nullptr;
+    PreviewReader* monitor_ = nullptr;
+    QString monitorSource_;
+    QComboBox* background_ = nullptr;
 
     // Screen
     QLineEdit* name_ = nullptr;

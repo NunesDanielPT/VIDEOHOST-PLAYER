@@ -1,5 +1,6 @@
 #include "outputs_dialog.h"
 
+#include "preview_reader.h"
 #include "slice_canvas.h"
 
 #include <QCheckBox>
@@ -249,6 +250,9 @@ OutputsDialog::OutputsDialog(int width, int height, const std::vector<Output>& o
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
 
+    monitor_ = new PreviewReader(2, this);
+    connect(monitor_, &PreviewReader::frameUpdated, this, &OutputsDialog::applyBackground);
+    monitor_->setActive(true);
     for (auto* c : {screenCanvas_, inputCanvas_, outputCanvas_})
         c->setSourceInfo([this](const Slice& s) { return sourceSize(s); }, [this](const Slice& s) { return sourceName(s); });
 
@@ -419,6 +423,12 @@ QWidget* OutputsDialog::buildSliceEditor() {
         tools_[i] = b;
         toolRow->addWidget(b);
     }
+    toolRow->addSpacing(16);
+    toolRow->addWidget(new QLabel(tr("Background:"), outPage));
+    background_ = new QComboBox(outPage);
+    background_->setToolTip(tr("Live image from the engine behind the slices"));
+    connect(background_, &QComboBox::activated, this, &OutputsDialog::updateMonitor);
+    toolRow->addWidget(background_);
     toolRow->addStretch();
     auto* hint = new QLabel(tr("Shift: snap to 10 px · Alt: fine"), outPage);
     hint->setStyleSheet(QStringLiteral("color: gray;"));
@@ -429,6 +439,7 @@ QWidget* OutputsDialog::buildSliceEditor() {
     sliceTabs_->addTab(inputCanvas_, tr("Input Selection"));
     sliceTabs_->addTab(outPage, tr("Output Transformation"));
     sliceTabs_->setCurrentIndex(1);
+    connect(sliceTabs_, &QTabWidget::currentChanged, this, &OutputsDialog::updateMonitor);
     h->addWidget(sliceTabs_, 1);
     for (auto* c : {inputCanvas_, outputCanvas_}) {
         connect(c, &SliceCanvas::editing, this, [this] {
@@ -720,6 +731,7 @@ void OutputsDialog::showCurrent() {
         right_->setCurrentIndex(1);
         loadScreenForm();
     }
+    updateMonitor();
 }
 
 void OutputsDialog::loadScreenForm() {
@@ -777,6 +789,18 @@ void OutputsDialog::loadSliceForm() {
         idx = sSource_->count() - 1;
     }
     sSource_->setCurrentIndex(idx);
+    {
+        const QString keep = background_->currentData().toString();
+        background_->clear();
+        background_->addItem(tr("Screen output"), QStringLiteral("screen"));
+        background_->addItem(tr("Slice source"), QStringLiteral("slice"));
+        for (int i = 0; i < sSource_->count(); ++i) {
+            const QString key = sSource_->itemData(i).toString();
+            if (!key.isEmpty() && sSource_->itemText(i) != tr("(missing source)")) background_->addItem(sSource_->itemText(i).trimmed(), key);
+        }
+        background_->addItem(tr("None"), QStringLiteral("none"));
+        background_->setCurrentIndex(std::max(0, background_->findData(keep)));
+    }
     const QSize src = sourceSize(*s);
     sInX_->setMaximum(src.width());
     sInY_->setMaximum(src.height());
@@ -899,7 +923,54 @@ void OutputsDialog::changed() {
         screenCanvas_->update();
     }
     if (currentSliceRef()) loadSliceForm();
+    updateMonitor();
     emit liveChanged();
+}
+
+void OutputsDialog::updateMonitor() {
+    if (!monitor_) return;
+    QString src;
+    const Output* o = currentOutput();
+    const Slice* s = currentSliceRef();
+    if (o && right_->currentIndex() == 1) {
+        src = QStringLiteral("screen:") + qs(o->id);
+    } else if (o && s && right_->currentIndex() == 2) {
+        QString bg = sliceTabs_->currentIndex() == 0 ? QStringLiteral("slice") : background_->currentData().toString();
+        if (bg.isEmpty()) bg = QStringLiteral("screen");
+        if (bg == QLatin1String("screen")) src = QStringLiteral("screen:") + qs(o->id);
+        else if (bg == QLatin1String("slice")) src = qs(sourceKey(*s));
+        else if (bg != QLatin1String("none")) src = bg;
+    }
+    if (src == monitorSource_) return;
+    monitorSource_ = src;
+    monitor_->clear();
+    applyBackground();
+    if (!engine_ || !engine_->isConnected()) return;
+    protocol::Command c;
+    c.type = protocol::CommandType::SetMonitor;
+    c.source = src.toStdString();
+    engine_->sendLatest(QStringLiteral("monitor"), c);
+}
+
+void OutputsDialog::applyBackground() {
+    if (!monitor_) return;
+    const QImage img = monitor_->live() ? monitor_->frame() : QImage();
+    // Só o editor visível recebe a imagem; os outros ficam sem fundo.
+    const int page = right_->currentIndex();
+    screenCanvas_->setBackground(page == 1 ? img : QImage());
+    inputCanvas_->setBackground(page == 2 && sliceTabs_->currentIndex() == 0 ? img : QImage());
+    outputCanvas_->setBackground(page == 2 && sliceTabs_->currentIndex() == 1 ? img : QImage());
+}
+
+void OutputsDialog::done(int result) {
+    // O motor deixa de preparar o fundo do editor.
+    if (engine_ && engine_->isConnected()) {
+        protocol::Command c;
+        c.type = protocol::CommandType::SetMonitor;
+        engine_->sendLatest(QStringLiteral("monitor"), c);
+    }
+    monitor_->setActive(false);
+    QDialog::done(result);
 }
 
 void OutputsDialog::sendLive() {

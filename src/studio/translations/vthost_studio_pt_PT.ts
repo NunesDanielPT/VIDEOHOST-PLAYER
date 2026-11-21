@@ -1238,6 +1238,10 @@
         <translation>Output avançado</translation>
     </message>
     <message>
+        <source>Background:</source>
+        <translation>Fundo:</translation>
+    </message>
+    <message>
         <source>Blue:</source>
         <translation>Azul:</translation>
     </message>
@@ -1334,6 +1338,10 @@
         <translation>Esquerda / Direita:</translation>
     </message>
     <message>
+        <source>Live image from the engine behind the slices</source>
+        <translation>Imagem ao vivo do motor por trás dos slices</translation>
+    </message>
+    <message>
         <source>MEDIAPLAYER resolution:</source>
         <translation>Resolução do MEDIAPLAYER:</translation>
     </message>
@@ -1360,6 +1368,10 @@
     <message>
         <source>Needs the free NDI Runtime / NDI Tools installed on this PC.</source>
         <translation>Precisa do NDI Runtime / NDI Tools (gratuitos) instalados neste PC.</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>Nenhum</translation>
     </message>
     <message>
         <source>Not running</source>
@@ -1406,6 +1418,10 @@
         <translation>Ecrã (ecrã inteiro)</translation>
     </message>
     <message>
+        <source>Screen output</source>
+        <translation>Saída do screen</translation>
+    </message>
+    <message>
         <source>Screen resolution:</source>
         <translation>Resolução do screen:</translation>
     </message>
@@ -1440,6 +1456,10 @@
     <message>
         <source>Slice positions are in pixels of this resolution.</source>
         <translation>As posições dos slices estão em píxeis desta resolução.</translation>
+    </message>
+    <message>
+        <source>Slice source</source>
+        <translation>Fonte do slice</translation>
     </message>
     <message>
         <source>Soft Edge</source>

@@ -41,6 +41,8 @@ qt_add_executable(vthost-studio WIN32
     comp_grid.h
     cue_player_page.cpp
     cue_player_page.h
+    preview_reader.cpp
+    preview_reader.h
     slice_canvas.cpp
     slice_canvas.h
 )

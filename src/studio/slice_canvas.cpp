@@ -33,9 +33,11 @@ void SliceCanvas::setSourceInfo(SourceSize size, SourceName name) {
 }
 
 void SliceCanvas::setOutput(Output* output, int currentSlice) {
+    // Durante um arrasto o diálogo volta a chamar isto (para o formulário): só se
+    // cancela o arrasto se mudar mesmo o screen ou o slice.
+    if (output != output_ || currentSlice != current_) drag_ = Drag::None;
     output_ = output;
     current_ = currentSlice;
-    if (drag_ != Drag::None) drag_ = Drag::None;
     update();
 }
 
@@ -128,8 +130,10 @@ void SliceCanvas::paintEvent(QPaintEvent*) {
     f.setPixelSize(12);
     p.setFont(f);
 
+    const bool hasBg = !background_.isNull();
     if (mode_ == Mode::Output) {
         p.fillRect(a, QColor(10, 10, 10));
+        if (hasBg) p.drawImage(a, background_);
         p.setPen(QPen(QColor(90, 90, 90), 1));
         p.drawRect(a);
         p.setPen(QColor(110, 110, 110));
@@ -142,7 +146,7 @@ void SliceCanvas::paintEvent(QPaintEvent*) {
             QPolygonF poly;
             for (const auto& q : c) poly << toWidget(q.x(), q.y());
             QColor fill = cur ? kCurrent : kOther;
-            fill.setAlpha(s.enabled ? (cur ? 70 : 40) : 15);
+            fill.setAlpha(hasBg ? (cur ? 35 : 0) : (s.enabled ? (cur ? 70 : 40) : 15));
             p.setBrush(fill);
             p.setPen(QPen(cur ? kCurrent : kOther, cur ? 2 : 1, s.enabled ? Qt::SolidLine : Qt::DashLine));
             p.drawPolygon(poly);
@@ -194,6 +198,7 @@ void SliceCanvas::paintEvent(QPaintEvent*) {
         return;
     }
     p.fillRect(a, QColor(40, 40, 46));
+    if (hasBg) p.drawImage(a, background_);
     p.setPen(QPen(QColor(90, 90, 90), 1));
     p.drawRect(a);
     const QSize src = sourceSize(*cur);
@@ -207,7 +212,7 @@ void SliceCanvas::paintEvent(QPaintEvent*) {
         const QRectF w(toWidget(r.left(), r.top()), toWidget(r.right(), r.bottom()));
         const bool isCur = i == current_;
         QColor fill = isCur ? kCurrent : kOther;
-        fill.setAlpha(isCur ? 60 : 30);
+        fill.setAlpha(hasBg ? (isCur ? 30 : 0) : (isCur ? 60 : 30));
         p.setBrush(fill);
         p.setPen(QPen(isCur ? kCurrent : kOther, isCur ? 2 : 1));
         p.drawRect(w);
@@ -266,8 +271,11 @@ void SliceCanvas::mousePressEvent(QMouseEvent* e) {
                 if (poly.containsPoint(pos, Qt::OddEvenFill)) hit = current_;
             }
             if (hit != current_ && hit >= 0) {
+                // Escolhe o slice e (se der para editar) começa logo a arrastá-lo.
+                const bool canDrag = editable_ && tool_ != Tool::Points;
+                if (canDrag) current_ = hit;
                 emit sliceClicked(hit);
-                return;
+                if (!canDrag || current_ != hit) return;
             }
             if (hit < 0) return;
             if (editable_ && tool_ != Tool::Points) drag_ = Drag::Move;

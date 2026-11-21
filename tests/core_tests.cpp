@@ -351,7 +351,7 @@ static void testProtocol() {
 
     // Ida e volta de todos os comandos.
     std::vector<Command> all;
-    for (int t = 0; t <= static_cast<int>(CommandType::SetPreviewSource); ++t) {
+    for (int t = 0; t <= static_cast<int>(CommandType::SetMonitor); ++t) {
         Command c;
         c.type = static_cast<CommandType>(t);
         c.path = "C:/shows/ação.vthost";
@@ -393,7 +393,8 @@ static void testProtocol() {
         case CommandType::SetCompLayer:
         case CommandType::SetOutput: CHECK(b.command->json == c.json); break;
         case CommandType::SetCompProps: CHECK(b.command->opacity == 0.5 && b.command->volumeDb == -6.0); break;
-        case CommandType::SetPreviewSource: CHECK(b.command->source == "comp:comp1"); break;
+        case CommandType::SetPreviewSource:
+        case CommandType::SetMonitor: CHECK(b.command->source == "comp:comp1"); break;
         default: break;
         }
     }

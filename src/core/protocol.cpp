@@ -154,6 +154,9 @@ ParsedCommand parseCommand(const std::string& line) {
         } else if (cmd == "set_preview_source") {
             c.type = CommandType::SetPreviewSource;
             c.source = str(j, "source");
+        } else if (cmd == "set_monitor") {
+            c.type = CommandType::SetMonitor;
+            c.source = str(j, "source");
         } else {
             r.error = "comando desconhecido: " + cmd;
             return r;
@@ -212,6 +215,7 @@ std::string serializeCommand(const Command& c) {
     case CommandType::SetOutput: j = {{"cmd", "set_output"}, {"json", c.json}}; break;
     case CommandType::PreviewStop: j["cmd"] = "preview_stop"; break;
     case CommandType::SetPreviewSource: j = {{"cmd", "set_preview_source"}, {"source", c.source}}; break;
+    case CommandType::SetMonitor: j = {{"cmd", "set_monitor"}, {"source", c.source}}; break;
     }
     return dump(j);
 }

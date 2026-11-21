@@ -28,6 +28,7 @@
 //   {"cmd":"preview_clip","comp":"comp1","layer":"L1","column":"K2"} // monitor Preview (sem som, não vai para o ar)
 //   {"cmd":"preview_stop"}
 //   {"cmd":"set_preview_source","source":"media" | "comp:comp1"}    // o que o preview principal mostra
+//   {"cmd":"set_monitor","source":"" | "media" | "comp:c" | "layer:c:L1" | "screen:O1"} // fundo do editor de output (3.º bloco)
 //
 // Respostas: {"ok":true, ...} ou {"ok":false,"error":"..."}
 
@@ -64,7 +65,8 @@ enum class CommandType {
     SetOutput,
     PreviewClip,
     PreviewStop,
-    SetPreviewSource
+    SetPreviewSource,
+    SetMonitor
 };
 enum class TransportAction { Pause, Resume, Toggle, Stop };
 
