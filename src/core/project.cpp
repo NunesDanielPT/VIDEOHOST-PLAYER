@@ -1,8 +1,6 @@
 #include "vthost/core/project.h"
 
 #include "vthost/core/atomic_file.h"
-#include "mapping_json.h"
-#include "props_json.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,180 +12,73 @@ using nlohmann::json;
 
 namespace vthost {
 
-const char* toString(BlendMode m) {
-    switch (m) {
-    case BlendMode::Normal: return "normal";
-    case BlendMode::Add: return "add";
-    case BlendMode::Multiply: return "multiply";
-    case BlendMode::Screen: return "screen";
-    }
-    return "normal";
+namespace {
+double clampFinite(double v, double lo, double hi, double def) {
+    if (!std::isfinite(v)) return def;
+    return std::clamp(v, lo, hi);
+}
+} // namespace
+
+bool isValidCueColor(const std::string& c) {
+    if (c.empty()) return true;
+    for (const char* k : kCueColors)
+        if (c == k) return true;
+    return false;
 }
 
-BlendMode blendModeFromString(const std::string& s) {
-    if (s == "add") return BlendMode::Add;
-    if (s == "multiply") return BlendMode::Multiply;
-    if (s == "screen") return BlendMode::Screen;
-    return BlendMode::Normal;
+std::string Cue::displayName() const {
+    if (!name.empty()) return name;
+    const std::size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? path : path.substr(slash + 1);
 }
 
-void LayerProps::clamp() {
-    auto fin = [](double v, double def) { return std::isfinite(v) ? v : def; };
-    opacity = std::clamp(fin(opacity, 1.0), 0.0, 1.0);
-    posX = std::clamp(fin(posX, 0.0), -100000.0, 100000.0);
-    posY = std::clamp(fin(posY, 0.0), -100000.0, 100000.0);
-    scale = std::clamp(fin(scale, 1.0), 0.01, 10.0);
-    rotation = std::clamp(fin(rotation, 0.0), -3600.0, 3600.0);
-    for (auto& c : cornerPin) {
-        c.x = std::clamp(fin(c.x, 0.0), -100000.0, 100000.0);
-        c.y = std::clamp(fin(c.y, 0.0), -100000.0, 100000.0);
-    }
-    brightness = std::clamp(fin(brightness, 0.0), -1.0, 1.0);
-    contrast = std::clamp(fin(contrast, 1.0), 0.0, 3.0);
-    saturation = std::clamp(fin(saturation, 1.0), 0.0, 3.0);
-    gamma = std::clamp(fin(gamma, 1.0), 0.2, 5.0);
-    hue = std::clamp(fin(hue, 0.0), -180.0, 180.0);
-    cropLeft = std::clamp(fin(cropLeft, 0.0), 0.0, 1.0);
-    cropRight = std::clamp(fin(cropRight, 0.0), 0.0, 1.0);
-    cropTop = std::clamp(fin(cropTop, 0.0), 0.0, 1.0);
-    cropBottom = std::clamp(fin(cropBottom, 0.0), 0.0, 1.0);
-    feather = std::clamp(fin(feather, 0.0), 0.0, 0.5);
+double Cue::effectiveOut(double fileDuration) const {
+    const double d = (std::isfinite(fileDuration) && fileDuration > 0.0) ? fileDuration : 0.0;
+    if (outPoint > inPoint && (d <= 0.0 || outPoint <= d)) return outPoint;
+    return d;
 }
 
-const char* toString(FitMode m) {
-    switch (m) {
-    case FitMode::Fit: return "fit";
-    case FitMode::Fill: return "fill";
-    case FitMode::Stretch: return "stretch";
-    case FitMode::Native: return "native";
-    }
-    return "fit";
+double Cue::passSeconds(double fileDuration) const {
+    const double out = effectiveOut(fileDuration);
+    if (out <= inPoint) return 0.0;
+    return (out - inPoint) / std::max(0.01, speed);
 }
 
-FitMode fitModeFromString(const std::string& s) {
-    if (s == "fill") return FitMode::Fill;
-    if (s == "stretch") return FitMode::Stretch;
-    if (s == "native") return FitMode::Native;
-    return FitMode::Fit;
+double Cue::totalSeconds(double fileDuration) const {
+    if (playCount <= 0) return 0.0;
+    return passSeconds(fileDuration) * playCount;
 }
 
-LayerQuad computeLayerQuad(const LayerProps& p, int mediaW, int mediaH, int canvasW, int canvasH) {
-    LayerQuad q{canvasW / 2.0, canvasH / 2.0, canvasW / 2.0, canvasH / 2.0, 0.0};
-    if (mediaW > 0 && mediaH > 0 && canvasW > 0 && canvasH > 0 && p.fit != FitMode::Stretch) {
-        const double sx = static_cast<double>(canvasW) / mediaW, sy = static_cast<double>(canvasH) / mediaH;
-        double f = std::min(sx, sy);
-        if (p.fit == FitMode::Fill) f = std::max(sx, sy);
-        else if (p.fit == FitMode::Native) f = 1.0;
-        q.halfW = mediaW * f / 2.0;
-        q.halfH = mediaH * f / 2.0;
-    }
-    q.halfW *= p.scale;
-    q.halfH *= p.scale;
-    q.cx += p.posX;
-    q.cy += p.posY;
-    q.rotationRad = p.rotation * 3.14159265358979323846 / 180.0;
-    return q;
+double normalizationGainDb(double loudnessLufs, std::optional<double> peakDb, double targetLufs) {
+    if (!std::isfinite(loudnessLufs) || loudnessLufs < -70.0) return 0.0; // silêncio: não mexe
+    double g = std::clamp(targetLufs - loudnessLufs, -20.0, 20.0);
+    if (peakDb && std::isfinite(*peakDb)) g = std::min(g, std::max(-20.0, -1.0 - *peakDb));
+    return g;
 }
 
-std::array<WarpPoint, 4> computeLayerCorners(const LayerProps& p, int mediaW, int mediaH, int canvasW, int canvasH) {
-    const LayerQuad q = computeLayerQuad(p, mediaW, mediaH, canvasW, canvasH);
-    const double c = std::cos(q.rotationRad), s = std::sin(q.rotationRad);
-    const double local[4][2] = {{-q.halfW, -q.halfH}, {q.halfW, -q.halfH}, {q.halfW, q.halfH}, {-q.halfW, q.halfH}};
-    std::array<WarpPoint, 4> out{};
-    for (std::size_t i = 0; i < 4; ++i) {
-        out[i].x = q.cx + local[i][0] * c - local[i][1] * s + p.cornerPin[i].x;
-        out[i].y = q.cy + local[i][0] * s + local[i][1] * c + p.cornerPin[i].y;
-    }
-    return out;
+double Cue::gainDb(double normalizeTargetLufs) const {
+    double g = volumeDb;
+    if (normalize && loudness) g += normalizationGainDb(*loudness, peakDb, normalizeTargetLufs);
+    return g;
 }
 
-double Timeline::duration() const {
-    double d = 60.0;
-    for (const auto& c : clips) d = std::max(d, c.end());
-    for (const auto& s : segments) d = std::max(d, s.end);
-    return std::min(d, kMaxTimelineSeconds);
-}
-
-const Clip* Timeline::clipAt(const std::string& layerId, double time) const {
-    // Se houver sobreposição, ganha o clip que começou mais tarde.
-    const Clip* best = nullptr;
-    for (const auto& c : clips)
-        if (c.layerId == layerId && time >= c.start && time < c.end() && (!best || c.start >= best->start))
-            best = &c;
-    return best;
-}
-
-const Clip* Timeline::findClip(const std::string& clipId) const {
-    for (const auto& c : clips)
-        if (c.id == clipId) return &c;
-    return nullptr;
-}
-
-const Canvas* Project::findCanvas(const std::string& id) const {
-    for (const auto& c : canvases)
-        if (c.id == id) return &c;
-    return nullptr;
-}
-
-const Canvas& Project::canvasOf(const std::string& canvasId) const {
-    static const Canvas fallback{"C1", "Canvas 1", 1920, 1080};
-    if (const Canvas* c = findCanvas(canvasId)) return *c;
-    return canvases.empty() ? fallback : canvases.front();
-}
-
-std::string Project::resolveCanvasId(const std::string& canvasId) const { return canvasOf(canvasId).id; }
-
-const Timeline* Project::findTimeline(const std::string& id) const {
-    for (const auto& t : timelines)
-        if (t.id == id) return &t;
-    return nullptr;
-}
-
-const char* toString(LoopMode m) {
-    switch (m) {
-    case LoopMode::Infinite: return "infinite";
-    case LoopMode::OnceFreeze: return "once-freeze";
-    case LoopMode::OnceStop: return "once-stop";
-    case LoopMode::AutoFollow: return "auto-follow";
-    }
-    return "infinite";
-}
-
-LoopMode loopModeFromString(const std::string& s) {
-    if (s == "once-freeze") return LoopMode::OnceFreeze;
-    if (s == "once-stop") return LoopMode::OnceStop;
-    if (s == "auto-follow") return LoopMode::AutoFollow;
-    return LoopMode::Infinite;
-}
-
-const char* toString(TransitionType t) {
-    switch (t) {
-    case TransitionType::Crossfade: return "crossfade";
-    case TransitionType::FadeThroughBlack: return "fade-black";
-    case TransitionType::Cut: return "cut";
-    }
-    return "crossfade";
-}
-
-TransitionType transitionFromString(const std::string& s) {
-    if (s == "fade-black") return TransitionType::FadeThroughBlack;
-    if (s == "cut") return TransitionType::Cut;
-    return TransitionType::Crossfade;
-}
-
-const char* toString(FollowMode m) {
-    switch (m) {
-    case FollowMode::None: return "none";
-    case FollowMode::MediaEnd: return "media-end";
-    case FollowMode::Timer: return "timer";
-    }
-    return "none";
-}
-
-FollowMode followModeFromString(const std::string& s) {
-    if (s == "media-end") return FollowMode::MediaEnd;
-    if (s == "timer") return FollowMode::Timer;
-    return FollowMode::None;
+void Cue::clamp() {
+    inPoint = clampFinite(inPoint, 0.0, kMaxMediaSeconds, 0.0);
+    outPoint = clampFinite(outPoint, 0.0, kMaxMediaSeconds, 0.0);
+    if (outPoint > 0.0 && outPoint <= inPoint + 0.04) outPoint = 0.0; // trim inválido: até ao fim
+    speed = clampFinite(speed, 0.25, 4.0, 1.0);
+    playCount = std::clamp(playCount, 0, 9999);
+    fadeIn = clampFinite(fadeIn, 0.0, 60.0, 0.0);
+    fadeOut = clampFinite(fadeOut, 0.0, 60.0, 0.0);
+    crossfade = clampFinite(crossfade, 0.0, 60.0, 0.0);
+    volumeDb = clampFinite(volumeDb, -60.0, 12.0, 0.0);
+    if (loudness && (!std::isfinite(*loudness) || *loudness < -100.0 || *loudness > 10.0)) loudness.reset();
+    if (peakDb && (!std::isfinite(*peakDb) || *peakDb < -200.0 || *peakDb > 30.0)) peakDb.reset();
+    scale = clampFinite(scale, 0.01, 10.0, 1.0);
+    posX = clampFinite(posX, -100000.0, 100000.0, 0.0);
+    posY = clampFinite(posY, -100000.0, 100000.0, 0.0);
+    if (!isValidCueColor(color)) color.clear();
+    if (label.size() > 32) label.resize(32);
 }
 
 const char* toString(OutputType t) {
@@ -207,66 +98,51 @@ OutputType outputTypeFromString(const std::string& s) {
     return OutputType::Display;
 }
 
-double Clip::opacityAt(double t) const {
-    double o = 1.0;
-    const double local = t - start;
-    if (fadeIn > 0.0 && local < fadeIn) o = std::min(o, std::max(0.0, local / fadeIn));
-    const double toEnd = end() - t;
-    if (fadeOut > 0.0 && toEnd < fadeOut) o = std::min(o, std::max(0.0, toEnd / fadeOut));
-    return std::clamp(o, 0.0, 1.0);
+const Cue* Project::findCue(const std::string& id) const {
+    const int i = cueIndex(id);
+    return i >= 0 ? &cues[static_cast<std::size_t>(i)] : nullptr;
 }
 
-const MediaItem* Project::findMedia(const std::string& id) const {
-    for (const auto& m : media)
-        if (m.id == id) return &m;
-    return nullptr;
-}
-
-const Layer* Project::findLayer(const std::string& id) const {
-    for (const auto& l : layers)
-        if (l.id == id) return &l;
-    return nullptr;
-}
-
-int Project::columnIndex(const std::string& columnId) const {
-    if (columnId.empty()) return -1;
-    for (std::size_t i = 0; i < columns.size(); ++i)
-        if (columns[i].id == columnId) return static_cast<int>(i);
+int Project::cueIndex(const std::string& id) const {
+    if (id.empty()) return -1;
+    for (std::size_t i = 0; i < cues.size(); ++i)
+        if (cues[i].id == id) return static_cast<int>(i);
     return -1;
 }
 
-int Project::nextColumn(int current, bool loopBoard) const {
-    const int n = static_cast<int>(columns.size());
+int Project::nextCue(int current) const {
+    const int n = static_cast<int>(cues.size());
     if (n == 0) return -1;
     if (current < 0 || current >= n) return 0;
-    if (int j = columnIndex(columns[static_cast<std::size_t>(current)].jumpTo); j >= 0) return j;
+    if (const int j = cueIndex(cues[static_cast<std::size_t>(current)].gotoCue); j >= 0) return j;
     if (current + 1 < n) return current + 1;
-    return loopBoard ? 0 : -1;
+    return loopPlaylist ? 0 : -1;
 }
 
-std::string Project::newColumnId() const {
+std::string Project::newCueId() const {
     for (int i = 1;; ++i) {
-        std::string id = "K" + std::to_string(i);
-        if (columnIndex(id) < 0) return id;
+        std::string id = "Q" + std::to_string(i);
+        if (cueIndex(id) < 0) return id;
+    }
+}
+
+std::string Project::newOutputId() const {
+    for (int i = 1;; ++i) {
+        std::string id = "O" + std::to_string(i);
+        bool used = false;
+        for (const auto& o : outputs) used = used || o.id == id;
+        if (!used) return id;
     }
 }
 
 Project Project::makeDefault() {
     Project p;
-    p.canvases = {{"C1", "Canvas 1", 1920, 1080}};
-    p.layers = {{"L1", "Layer 1", "", {}, true}, {"L2", "Layer 2", "", {}, true}};
-    p.timelines = {{"T1", "Timeline 1", {}, {}}};
-    for (int i = 1; i <= 4; ++i) {
-        Column c;
-        c.id = "K" + std::to_string(i);
-        c.name = "Cue " + std::to_string(i);
-        p.columns.push_back(std::move(c));
-    }
     Output o;
     o.id = "O1";
     o.name = "Output 1";
-    o.monitor = 1; // por omissão o segundo ecrã (o principal é o do operador)
-    p.outputs = {o};
+    o.type = OutputType::Display;
+    o.monitor = 1; // segundo ecrã (se não existir, abre janela no principal)
+    p.outputs.push_back(o);
     return p;
 }
 
@@ -285,6 +161,14 @@ double getNumber(const json& j, const char* key, double def) {
     return std::isfinite(v) ? v : def;
 }
 
+std::optional<double> getOptNumber(const json& j, const char* key) {
+    auto it = j.find(key);
+    if (it == j.end() || !it->is_number()) return std::nullopt;
+    const double v = it->get<double>();
+    if (!std::isfinite(v)) return std::nullopt;
+    return v;
+}
+
 int getInt(const json& j, const char* key, int def) {
     const double v = getNumber(j, key, def);
     if (v < -1e9 || v > 1e9) return def;
@@ -294,6 +178,68 @@ int getInt(const json& j, const char* key, int def) {
 bool getBool(const json& j, const char* key, bool def) {
     auto it = j.find(key);
     return (it != j.end() && it->is_boolean()) ? it->get<bool>() : def;
+}
+
+Cue cueFromJson(const json& c) {
+    Cue q;
+    q.id = getString(c, "id");
+    q.label = getString(c, "label");
+    q.name = getString(c, "name");
+    q.path = getString(c, "path");
+    q.color = getString(c, "color");
+    q.notes = getString(c, "notes");
+    q.inPoint = getNumber(c, "in", 0.0);
+    q.outPoint = getNumber(c, "out", 0.0);
+    q.speed = getNumber(c, "speed", 1.0);
+    q.playCount = getInt(c, "playCount", 1);
+    q.pauseAtStart = getBool(c, "pauseAtStart", false);
+    q.pauseAtEnd = getBool(c, "pauseAtEnd", false);
+    q.clearAtEnd = getBool(c, "clearAtEnd", false);
+    q.fadeIn = getNumber(c, "fadeIn", 0.0);
+    q.fadeOut = getNumber(c, "fadeOut", 0.0);
+    q.crossfade = getNumber(c, "crossfade", 0.0);
+    q.gotoCue = getString(c, "goto");
+    q.muted = getBool(c, "muted", false);
+    q.volumeDb = getNumber(c, "volumeDb", 0.0);
+    q.normalize = getBool(c, "normalize", true);
+    q.loudness = getOptNumber(c, "loudness");
+    q.peakDb = getOptNumber(c, "peakDb");
+    q.fit = fitModeFromString(getString(c, "fit", "fit"));
+    q.scale = getNumber(c, "scale", 1.0);
+    q.posX = getNumber(c, "x", 0.0);
+    q.posY = getNumber(c, "y", 0.0);
+    q.clamp();
+    return q;
+}
+
+json cueToJson(const Cue& q) {
+    json c{{"id", q.id},
+           {"label", q.label},
+           {"name", q.name},
+           {"path", q.path},
+           {"color", q.color},
+           {"notes", q.notes},
+           {"in", q.inPoint},
+           {"out", q.outPoint},
+           {"speed", q.speed},
+           {"playCount", q.playCount},
+           {"pauseAtStart", q.pauseAtStart},
+           {"pauseAtEnd", q.pauseAtEnd},
+           {"clearAtEnd", q.clearAtEnd},
+           {"fadeIn", q.fadeIn},
+           {"fadeOut", q.fadeOut},
+           {"crossfade", q.crossfade},
+           {"goto", q.gotoCue},
+           {"muted", q.muted},
+           {"volumeDb", q.volumeDb},
+           {"normalize", q.normalize},
+           {"fit", toString(q.fit)},
+           {"scale", q.scale},
+           {"x", q.posX},
+           {"y", q.posY}};
+    if (q.loudness) c["loudness"] = *q.loudness;
+    if (q.peakDb) c["peakDb"] = *q.peakDb;
+    return c;
 }
 
 } // namespace
@@ -311,109 +257,54 @@ ParseResult parseProject(const std::string& text) {
             return r;
         }
         Project p;
-        p.version = getInt(j, "version", kProjectFormatVersion);
-        if (p.version > kProjectFormatVersion)
+        const int fileVersion = getInt(j, "version", kProjectFormatVersion);
+        if (fileVersion > kProjectFormatVersion)
             r.warnings.push_back("projecto criado numa versão mais recente do VTHOST");
+        p.version = kProjectFormatVersion;
         p.name = getString(j, "name", "Untitled");
+        p.width = std::clamp(getInt(j, "width", 1920), 16, kMaxCanvasSize);
+        p.height = std::clamp(getInt(j, "height", 1080), 16, kMaxCanvasSize);
+        p.loopPlaylist = getBool(j, "loopPlaylist", false);
+        p.normalizeTargetLufs = clampFinite(getNumber(j, "normalizeTarget", -16.0), -40.0, -5.0, -16.0);
+        p.masterVolumeDb = clampFinite(getNumber(j, "masterVolumeDb", 0.0), -60.0, 12.0, 0.0);
 
-        std::set<std::string> canvasIds;
-        if (auto a = j.find("canvases"); a != j.end() && a->is_array()) {
+        if (fileVersion < 2) {
+            // Projecto da versão "media server" (0.6 e anteriores): cada media passa a uma cue.
+            if (auto c = j.find("canvases"); c != j.end() && c->is_array() && !c->empty() && c->front().is_object()) {
+                p.width = std::clamp(getInt(c->front(), "width", 1920), 16, kMaxCanvasSize);
+                p.height = std::clamp(getInt(c->front(), "height", 1080), 16, kMaxCanvasSize);
+            }
+            if (auto a = j.find("media"); a != j.end() && a->is_array())
+                for (const auto& m : *a) {
+                    if (!m.is_object() || getString(m, "path").empty()) continue;
+                    Cue q;
+                    q.id = p.newCueId();
+                    q.path = getString(m, "path");
+                    q.playCount = getString(m, "loopMode", "infinite") == "infinite" ? 0 : 1;
+                    q.pauseAtEnd = true;
+                    p.cues.push_back(std::move(q));
+                }
+            r.warnings.push_back("projecto antigo convertido: cada media passou a uma cue da playlist");
+        } else if (auto a = j.find("cues"); a != j.end() && a->is_array()) {
+            std::set<std::string> ids;
             for (const auto& c : *a) {
                 if (!c.is_object()) continue;
-                Canvas cv;
-                cv.id = getString(c, "id");
-                if (cv.id.empty() || !canvasIds.insert(cv.id).second) continue;
-                cv.name = getString(c, "name", cv.id);
-                cv.width = std::clamp(getInt(c, "width", 1920), 16, kMaxCanvasSize);
-                cv.height = std::clamp(getInt(c, "height", 1080), 16, kMaxCanvasSize);
-                p.canvases.push_back(std::move(cv));
-            }
-        }
-        if (p.canvases.empty()) {
-            // Projetos até à 0.4: um só canvas em "canvas": {width, height}.
-            Canvas cv{"C1", "Canvas 1", 1920, 1080};
-            if (auto c = j.find("canvas"); c != j.end() && c->is_object()) {
-                cv.width = std::clamp(getInt(*c, "width", 1920), 16, kMaxCanvasSize);
-                cv.height = std::clamp(getInt(*c, "height", 1080), 16, kMaxCanvasSize);
-            }
-            p.canvases.push_back(cv);
-            canvasIds.insert(cv.id);
-        }
-
-        std::set<std::string> mediaIds;
-        if (auto a = j.find("media"); a != j.end() && a->is_array()) {
-            for (const auto& m : *a) {
-                if (!m.is_object()) continue;
-                MediaItem it{getString(m, "id"), getString(m, "path"), LoopMode::Infinite};
-                // Compatível com projetos antigos ("loop": true/false).
-                if (m.contains("loopMode")) it.loopMode = loopModeFromString(getString(m, "loopMode"));
-                else it.loopMode = getBool(m, "loop", true) ? LoopMode::Infinite : LoopMode::OnceFreeze;
-                if (it.id.empty() || it.path.empty() || !mediaIds.insert(it.id).second) {
-                    r.warnings.push_back("media ignorada (id vazio/duplicado ou sem caminho)");
+                Cue q = cueFromJson(c);
+                if (q.path.empty()) {
+                    r.warnings.push_back("cue sem ficheiro ignorada");
                     continue;
                 }
-                p.media.push_back(std::move(it));
+                if (q.id.empty() || !ids.insert(q.id).second) q.id.clear();
+                p.cues.push_back(std::move(q));
             }
-        }
-
-        std::set<std::string> layerIds;
-        if (auto a = j.find("layers"); a != j.end() && a->is_array()) {
-            for (const auto& l : *a) {
-                if (!l.is_object()) continue;
-                Layer it;
-                it.id = getString(l, "id");
-                if (it.id.empty() || !layerIds.insert(it.id).second) {
-                    r.warnings.push_back("layer ignorada (id vazio ou duplicado)");
-                    continue;
+            // Ids estáveis para cues sem id ou repetidas.
+            for (auto& q : p.cues)
+                if (q.id.empty()) q.id = p.newCueId();
+            for (auto& q : p.cues)
+                if (!q.gotoCue.empty() && p.cueIndex(q.gotoCue) < 0) {
+                    r.warnings.push_back("\"ir para\" uma cue inexistente ignorado");
+                    q.gotoCue.clear();
                 }
-                it.name = getString(l, "name", it.id);
-                it.canvasId = getString(l, "canvas");
-                if (!it.canvasId.empty() && !canvasIds.count(it.canvasId)) it.canvasId.clear();
-                propsFromJson(l, it.props);
-                it.visible = getBool(l, "visible", true);
-                it.locked = getBool(l, "locked", false);
-                p.layers.push_back(std::move(it));
-            }
-        }
-
-        if (auto a = j.find("columns"); a != j.end() && a->is_array()) {
-            for (const auto& c : *a) {
-                if (!c.is_object()) continue;
-                Column col;
-                col.id = getString(c, "id");
-                col.name = getString(c, "name");
-                col.fadeSeconds = std::clamp(getNumber(c, "fade", 1.0), 0.0, 60.0);
-                col.transition = transitionFromString(getString(c, "transition", "crossfade"));
-                col.follow = followModeFromString(getString(c, "follow", "none"));
-                col.followSeconds = std::clamp(getNumber(c, "followSeconds", 10.0), 0.1, 86400.0);
-                col.jumpTo = getString(c, "jumpTo");
-                if (auto cells = c.find("cells"); cells != c.end() && cells->is_object()) {
-                    for (auto it = cells->begin(); it != cells->end(); ++it) {
-                        if (!it.value().is_string()) continue;
-                        const std::string mediaId = it.value().get<std::string>();
-                        if (!layerIds.count(it.key()) || !mediaIds.count(mediaId)) {
-                            r.warnings.push_back("célula com layer/media inexistente ignorada");
-                            continue;
-                        }
-                        col.cells[it.key()] = mediaId;
-                    }
-                }
-                p.columns.push_back(std::move(col));
-            }
-            // Ids estáveis: gera os que faltam ou estão repetidos; descarta saltos inválidos.
-            std::set<std::string> seen;
-            for (auto& col : p.columns)
-                if (col.id.empty() || !seen.insert(col.id).second) col.id.clear();
-            for (auto& col : p.columns) {
-                if (!col.id.empty()) continue;
-                col.id = p.newColumnId();
-            }
-            for (auto& col : p.columns) {
-                if (!col.jumpTo.empty() && p.columnIndex(col.jumpTo) < 0) {
-                    r.warnings.push_back("salto de cue para cue inexistente ignorado");
-                    col.jumpTo.clear();
-                }
-            }
         }
 
         std::set<std::string> outputIds;
@@ -422,78 +313,28 @@ ParseResult parseProject(const std::string& text) {
                 if (!o.is_object()) continue;
                 Output it;
                 it.id = getString(o, "id");
-                it.name = getString(o, "name");
+                if (it.id.empty() || !outputIds.insert(it.id).second) {
+                    r.warnings.push_back("output ignorado (id vazio ou duplicado)");
+                    continue;
+                }
+                it.name = getString(o, "name", it.id);
                 it.type = outputTypeFromString(getString(o, "type", "display"));
                 it.enabled = getBool(o, "enabled", true);
                 it.displayId = getString(o, "display");
-                it.monitor = std::clamp(getInt(o, "monitor", 0), 0, 63);
+                it.monitor = std::clamp(getInt(o, "monitor", 0), 0, 16);
                 it.windowWidth = std::clamp(getInt(o, "windowWidth", 1280), 160, kMaxCanvasSize);
                 it.windowHeight = std::clamp(getInt(o, "windowHeight", 720), 90, kMaxCanvasSize);
                 it.ndiName = getString(o, "ndiName");
                 it.ndiAlpha = getBool(o, "ndiAlpha", false);
-                it.deviceId = getString(o, "device");
-                it.canvasId = getString(o, "canvas");
-                if (!it.canvasId.empty() && !canvasIds.count(it.canvasId)) it.canvasId.clear();
-                if (auto mp = o.find("mapping"); mp != o.end()) mappingFromJson(*mp, it.mapping);
-                it.mapping.sanitize();
-                if (it.id.empty() || !outputIds.insert(it.id).second) continue;
-                if (it.name.empty()) it.name = it.id;
+                it.deviceId = getString(o, "deviceId");
                 p.outputs.push_back(std::move(it));
             }
         }
-
-        std::set<std::string> timelineIds;
-        if (auto a = j.find("timelines"); a != j.end() && a->is_array()) {
-            for (const auto& t : *a) {
-                if (!t.is_object()) continue;
-                Timeline tl;
-                tl.id = getString(t, "id");
-                if (tl.id.empty() || !timelineIds.insert(tl.id).second) continue;
-                tl.name = getString(t, "name", tl.id);
-                std::set<std::string> clipIds;
-                if (auto cs = t.find("clips"); cs != t.end() && cs->is_array()) {
-                    for (const auto& c : *cs) {
-                        if (!c.is_object()) continue;
-                        Clip clip;
-                        clip.id = getString(c, "id");
-                        clip.layerId = getString(c, "layer");
-                        clip.mediaId = getString(c, "media");
-                        clip.start = std::clamp(getNumber(c, "start", 0.0), 0.0, kMaxTimelineSeconds);
-                        clip.duration = std::clamp(getNumber(c, "duration", 5.0), 0.04, kMaxTimelineSeconds);
-                        clip.inPoint = std::clamp(getNumber(c, "in", 0.0), 0.0, kMaxTimelineSeconds);
-                        clip.fadeIn = std::clamp(getNumber(c, "fadeIn", 0.0), 0.0, clip.duration);
-                        clip.fadeOut = std::clamp(getNumber(c, "fadeOut", 0.0), 0.0, clip.duration);
-                        if (clip.id.empty() || !clipIds.insert(clip.id).second || !layerIds.count(clip.layerId) ||
-                            !mediaIds.count(clip.mediaId)) {
-                            r.warnings.push_back("clip de timeline inválido ignorado");
-                            continue;
-                        }
-                        tl.clips.push_back(std::move(clip));
-                    }
-                }
-                if (auto ss = t.find("segments"); ss != t.end() && ss->is_array()) {
-                    for (const auto& sg : *ss) {
-                        if (!sg.is_object()) continue;
-                        Segment seg;
-                        seg.name = getString(sg, "name");
-                        seg.start = std::clamp(getNumber(sg, "start", 0.0), 0.0, kMaxTimelineSeconds);
-                        seg.end = std::clamp(getNumber(sg, "end", seg.start + 10.0), 0.0, kMaxTimelineSeconds);
-                        seg.loop = getBool(sg, "loop", false);
-                        if (seg.end - seg.start < 0.1) continue; // segmento vazio: um loop de 0 s bloquearia a timeline
-                        tl.segments.push_back(std::move(seg));
-                    }
-                }
-                p.timelines.push_back(std::move(tl));
-            }
-        }
-
         r.project = std::move(p);
     } catch (const std::exception& e) {
-        r.project.reset();
-        r.error = std::string("erro a ler projecto: ") + e.what();
+        r.error = e.what();
     } catch (...) {
-        r.project.reset();
-        r.error = "erro desconhecido a ler projecto";
+        r.error = "erro desconhecido";
     }
     return r;
 }
@@ -503,34 +344,13 @@ std::string serializeProject(const Project& p) {
     j["format"] = "vthost-project";
     j["version"] = kProjectFormatVersion;
     j["name"] = p.name;
-    j["canvases"] = json::array();
-    for (const auto& c : p.canvases)
-        j["canvases"].push_back({{"id", c.id}, {"name", c.name}, {"width", c.width}, {"height", c.height}});
-    // Compatibilidade: versões antigas leem o primeiro canvas daqui.
-    if (!p.canvases.empty()) j["canvas"] = {{"width", p.canvases.front().width}, {"height", p.canvases.front().height}};
-    j["media"] = json::array();
-    for (const auto& m : p.media)
-        j["media"].push_back({{"id", m.id}, {"path", m.path}, {"loopMode", toString(m.loopMode)}});
-    j["layers"] = json::array();
-    for (const auto& l : p.layers) {
-        json lj = propsToJson(l.props);
-        lj.update(json{{"id", l.id}, {"name", l.name}, {"canvas", l.canvasId}, {"visible", l.visible},
-                       {"locked", l.locked}});
-        j["layers"].push_back(std::move(lj));
-    }
-    j["columns"] = json::array();
-    for (const auto& c : p.columns) {
-        json cells = json::object();
-        for (const auto& [layer, media] : c.cells) cells[layer] = media;
-        j["columns"].push_back({{"id", c.id},
-                                {"name", c.name},
-                                {"fade", c.fadeSeconds},
-                                {"transition", toString(c.transition)},
-                                {"follow", toString(c.follow)},
-                                {"followSeconds", c.followSeconds},
-                                {"jumpTo", c.jumpTo},
-                                {"cells", cells}});
-    }
+    j["width"] = p.width;
+    j["height"] = p.height;
+    j["loopPlaylist"] = p.loopPlaylist;
+    j["normalizeTarget"] = p.normalizeTargetLufs;
+    j["masterVolumeDb"] = p.masterVolumeDb;
+    j["cues"] = json::array();
+    for (const auto& q : p.cues) j["cues"].push_back(cueToJson(q));
     j["outputs"] = json::array();
     for (const auto& o : p.outputs)
         j["outputs"].push_back({{"id", o.id},
@@ -543,20 +363,7 @@ std::string serializeProject(const Project& p) {
                                 {"windowHeight", o.windowHeight},
                                 {"ndiName", o.ndiName},
                                 {"ndiAlpha", o.ndiAlpha},
-                                {"device", o.deviceId},
-                                {"canvas", o.canvasId},
-                                {"mapping", mappingToJson(o.mapping)}});
-    j["timelines"] = json::array();
-    for (const auto& t : p.timelines) {
-        json clips = json::array();
-        for (const auto& c : t.clips)
-            clips.push_back({{"id", c.id}, {"layer", c.layerId}, {"media", c.mediaId}, {"start", c.start},
-                             {"duration", c.duration}, {"in", c.inPoint}, {"fadeIn", c.fadeIn}, {"fadeOut", c.fadeOut}});
-        json segs = json::array();
-        for (const auto& sg : t.segments)
-            segs.push_back({{"name", sg.name}, {"start", sg.start}, {"end", sg.end}, {"loop", sg.loop}});
-        j["timelines"].push_back({{"id", t.id}, {"name", t.name}, {"clips", clips}, {"segments", segs}});
-    }
+                                {"deviceId", o.deviceId}});
     // error_handler::replace: UTF-8 inválido num nome não pode impedir a gravação.
     return j.dump(2, ' ', false, json::error_handler_t::replace);
 }

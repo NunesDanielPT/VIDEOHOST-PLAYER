@@ -2,7 +2,9 @@
 add_library(vthost_core STATIC
     atomic_file.cpp
     countdown.cpp
+    layer_props.cpp
     log.cpp
+    loudness.cpp
     mapping.cpp
     paths.cpp
     project.cpp

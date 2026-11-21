@@ -3,6 +3,7 @@
 
 #include "vthost/core/atomic_file.h"
 #include "vthost/core/countdown.h"
+#include "vthost/core/loudness.h"
 #include "vthost/core/mapping.h"
 #include "vthost/core/preview.h"
 #include "vthost/core/project.h"
@@ -33,107 +34,6 @@ int g_checks = 0;
 
 using namespace vthost;
 
-static void testProjectRoundTrip() {
-    Project p = Project::makeDefault();
-    p.name = "Ação — Teste";
-    p.media.push_back({"m1", "C:/media/vídeo 1.mp4", LoopMode::AutoFollow});
-    p.columns[0].cells["L1"] = "m1";
-    p.layers[1].props.opacity = 0.25;
-    p.layers[1].props.blend = BlendMode::Add;
-    p.layers[1].props.posX = -120.5;
-    p.layers[1].props.scale = 0.5;
-    p.layers[1].props.rotation = 45.0;
-    p.timelines[0].clips.push_back({"c1", "L1", "m1", 2.0, 8.0, 1.0, 1.5, 2.0});
-    p.layers[0].locked = true;
-    Output ndi;
-    ndi.id = "O2";
-    ndi.name = "Rede";
-    ndi.type = OutputType::Ndi;
-    ndi.ndiName = "Palco";
-    ndi.ndiAlpha = true;
-    p.outputs.push_back(ndi);
-    p.outputs[0].displayId = "\\\\.\\DISPLAY2";
-    p.timelines[0].segments.push_back({"intro", 0.0, 10.0, true});
-
-    const auto text = serializeProject(p);
-    const auto r = parseProject(text);
-    CHECK(r.project.has_value());
-    CHECK(r.warnings.empty());
-    if (!r.project) return;
-    CHECK(r.project->name == p.name);
-    CHECK(r.project->media.size() == 1);
-    CHECK(r.project->media[0].path == "C:/media/vídeo 1.mp4");
-    CHECK(r.project->media[0].loopMode == LoopMode::AutoFollow);
-    CHECK(r.project->columns.size() == 4);
-    CHECK(r.project->columns[0].cells.at("L1") == "m1");
-    CHECK(r.project->layers[1].props == p.layers[1].props);
-    CHECK(r.project->layers[0].locked && !r.project->layers[1].locked);
-    CHECK(r.project->outputs.size() == 2);
-    if (r.project->outputs.size() == 2) {
-        CHECK(r.project->outputs[0].type == OutputType::Display && r.project->outputs[0].displayId == p.outputs[0].displayId);
-        CHECK(r.project->outputs[1].type == OutputType::Ndi && r.project->outputs[1].ndiName == "Palco" &&
-              r.project->outputs[1].ndiAlpha);
-    }
-    CHECK(r.project->timelines.size() == 1);
-    if (!r.project->timelines.empty()) {
-        const auto& t = r.project->timelines[0];
-        CHECK(t.clips.size() == 1 && t.clips[0].start == 2.0 && t.clips[0].inPoint == 1.0);
-        CHECK(t.clips.size() == 1 && t.clips[0].fadeIn == 1.5 && t.clips[0].fadeOut == 2.0);
-        CHECK(t.segments.size() == 1 && t.segments[0].loop);
-    }
-}
-
-static void testCompatAndFades() {
-    // Projeto da 0.1/0.2: "loop" booleano e outputs só com monitor.
-    const auto r = parseProject(R"({"format":"vthost-project","media":[{"id":"a","path":"a.mp4","loop":false},
-        {"id":"b","path":"b.mp4"}],"outputs":[{"id":"O1","monitor":2,"fullscreen":true}]})");
-    CHECK(r.project.has_value());
-    if (r.project) {
-        CHECK(r.project->media[0].loopMode == LoopMode::OnceFreeze);
-        CHECK(r.project->media[1].loopMode == LoopMode::Infinite);
-        CHECK(r.project->outputs[0].type == OutputType::Display && r.project->outputs[0].monitor == 2 &&
-              r.project->outputs[0].enabled);
-    }
-    Clip c{"c", "L", "m", 10.0, 10.0, 0.0, 2.0, 4.0};
-    CHECK(c.opacityAt(10.0) == 0.0);
-    CHECK(c.opacityAt(11.0) == 0.5);
-    CHECK(c.opacityAt(15.0) == 1.0);
-    CHECK(c.opacityAt(18.0) == 0.5);
-    CHECK(c.opacityAt(20.0) == 0.0);
-    CHECK(loopModeFromString(toString(LoopMode::OnceStop)) == LoopMode::OnceStop);
-    CHECK(outputTypeFromString("lixo") == OutputType::Display);
-}
-
-static void testProjectTolerance() {
-    // Valores fora do intervalo, tipos errados e referências partidas não podem
-    // impedir o projecto de abrir.
-    const std::string bad = R"({
-      "format":"vthost-project","version":1,
-      "canvas":{"width":999999,"height":"x"},
-      "media":[{"id":"m1","path":"a.mp4"},{"id":"m1","path":"dup.mp4"},{"id":"","path":"x"}, 5],
-      "layers":[{"id":"L1","opacity":7},{"id":"L1"}],
-      "columns":[{"name":"c","fade":-3,"cells":{"L1":"m1","L9":"m1","L1x":"nope"}}],
-      "outputs":[{"id":"O1","monitor":-5}]
-    })";
-    const auto r = parseProject(bad);
-    CHECK(r.project.has_value());
-    if (!r.project) return;
-    CHECK(r.project->canvases.size() == 1);
-    CHECK(r.project->canvases[0].width == kMaxCanvasSize && r.project->canvases[0].height == 1080);
-    CHECK(r.project->media.size() == 1);
-    CHECK(r.project->layers.size() == 1);
-    CHECK(r.project->layers[0].props.opacity == 1.0);
-    CHECK(r.project->columns[0].fadeSeconds == 0.0);
-    CHECK(r.project->columns[0].cells.size() == 1);
-    CHECK(r.project->outputs[0].monitor == 0);
-    CHECK(!r.warnings.empty());
-
-    CHECK(!parseProject("").project);
-    CHECK(!parseProject("{").project);
-    CHECK(!parseProject("[]").project);
-    CHECK(!parseProject(R"({"format":"outra-coisa"})").project);
-}
-
 static void testFuzzNeverThrows() {
     // Lixo aleatório e projectos truncados: nunca podem rebentar.
     std::mt19937 rng(1234);
@@ -148,118 +48,6 @@ static void testFuzzNeverThrows() {
         (void)parseShowState(s, st);
     }
     CHECK(true);
-}
-
-static void testProtocol() {
-    using namespace protocol;
-    auto c = parseCommand(R"({"cmd":"go","column":3})");
-    CHECK(c.command && c.command->type == CommandType::Go && c.command->column == 3 && c.command->value == -1.0);
-    auto cut = parseCommand(R"({"cmd":"go","column":1,"fade":0})");
-    CHECK(cut.command && cut.command->value == 0.0);
-    Command st;
-    st.type = CommandType::SetSettings;
-    st.settings.vsync = false;
-    st.settings.previewFps = 15;
-    st.settings.priority = "high";
-    st.settings.loopBoard = true;
-    auto sb = parseCommand(serializeCommand(st));
-    CHECK(sb.command && sb.command->type == CommandType::SetSettings && sb.command->settings == st.settings);
-    auto bad = parseCommand(R"({"cmd":"set_settings","previewFps":1000,"priority":"realtime"})");
-    CHECK(bad.command && bad.command->settings.previewFps == 60 && bad.command->settings.priority == "above_normal");
-    CHECK(!parseCommand(R"({"cmd":"go","column":-1})").command);
-    CHECK(!parseCommand(R"({"cmd":"go"})").command);
-    CHECK(!parseCommand(R"({"cmd":"rm -rf"})").command);
-    CHECK(!parseCommand("não é json").command);
-
-    auto o = parseCommand(R"({"cmd":"set_layer_props","layer":"L1","props":{"opacity":5,"scale":0,"blend":"screen"}})");
-    CHECK(o.command && o.command->props.opacity == 1.0 && o.command->props.scale == 0.01 &&
-          o.command->props.blend == BlendMode::Screen);
-    CHECK(!parseCommand(R"({"cmd":"set_layer_props","layer":"L1"})").command);
-
-    Command props;
-    props.type = CommandType::SetLayerProps;
-    props.layer = "L2";
-    props.props.posX = 10;
-    props.props.rotation = -90;
-    props.props.blend = BlendMode::Multiply;
-    auto pb = parseCommand(serializeCommand(props));
-    CHECK(pb.command && pb.command->props == props.props && pb.command->layer == "L2");
-
-    auto tl = parseCommand(R"({"cmd":"timeline","action":"seek","timeline":"T1","time":12.5})");
-    CHECK(tl.command && tl.command->action == TimelineAction::Seek && tl.command->value == 12.5);
-    CHECK(!parseCommand(R"({"cmd":"timeline","action":"play"})").command);
-    CHECK(!parseCommand(R"({"cmd":"timeline","action":"explode","timeline":"T1"})").command);
-    auto tstop = parseCommand(R"({"cmd":"timeline","action":"stop"})");
-    CHECK(tstop.command && tstop.command->value == -1.0);
-
-    Command lp;
-    lp.type = CommandType::LoadProject;
-    lp.path = "C:/shows/Ação.vthost";
-    auto back = parseCommand(serializeCommand(lp));
-    CHECK(back.command && back.command->path == lp.path);
-
-    EngineStatus s;
-    s.version = "0.1.0";
-    s.activeColumn = 2;
-    s.fps = 59.94;
-    s.layers.push_back({"L1", "m1", "playing", 12.5, ""});
-    s.timelineId = "T1";
-    s.timelineTime = 3.25;
-    s.timelinePlaying = true;
-    s.outputs.push_back({"O1", 1, true, "", "display", "OMEN 27"});
-    auto r = parseResponse(statusResponse(s));
-    CHECK(r.ok && r.status);
-    if (r.status) {
-        CHECK(r.status->activeColumn == 2);
-        CHECK(r.status->layers.size() == 1 && r.status->layers[0].position == 12.5);
-        CHECK(r.status->outputs.size() == 1 && r.status->outputs[0].monitor == 1 && r.status->outputs[0].detail == "OMEN 27");
-        CHECK(r.status->timelineId == "T1" && r.status->timelineTime == 3.25 && r.status->timelinePlaying);
-    }
-    DisplayInfo d;
-    d.id = "\\\\.\\DISPLAY2";
-    d.name = "OMEN 27";
-    d.adapter = "NVIDIA GeForce RTX 5060 Ti";
-    d.width = 2560;
-    d.height = 1440;
-    d.refreshHz = 143.97;
-    d.index = 1;
-    auto dr = parseResponse(displaysResponse({d}));
-    CHECK(dr.ok && dr.displays && dr.displays->size() == 1);
-    if (dr.displays && !dr.displays->empty()) {
-        const auto& x = dr.displays->front();
-        CHECK(x.id == d.id && x.name == "OMEN 27" && x.adapter == d.adapter && x.width == 2560 && x.index == 1);
-    }
-    CHECK(parseCommand(R"({"cmd":"list_displays"})").command->type == CommandType::ListDisplays);
-    Command vis;
-    vis.type = CommandType::SetLayerVisible;
-    vis.layer = "L2";
-    vis.on = false;
-    auto vb = parseCommand(serializeCommand(vis));
-    CHECK(vb.command && vb.command->type == CommandType::SetLayerVisible && vb.command->layer == "L2" && !vb.command->on);
-    CHECK(!parseCommand(R"({"cmd":"set_layer_visible","layer":"L1"})").command);
-
-    auto e = parseResponse(errorResponse("falhou"));
-    CHECK(!e.ok && e.error == "falhou");
-}
-
-static void testShowState() {
-    ShowState s;
-    s.projectPath = "C:/x.vthost";
-    s.activeColumn = 1;
-    s.showMode = true;
-    LayerProps lp;
-    lp.opacity = 0.5;
-    lp.scale = 2.0;
-    lp.blend = BlendMode::Add;
-    s.layers.push_back({"L1", "m1", 33.3, lp});
-    s.timelineId = "T1";
-    s.timelineTime = 7.5;
-    ShowState back;
-    CHECK(parseShowState(serializeShowState(s), back));
-    CHECK(back.projectPath == s.projectPath && back.activeColumn == 1 && back.showMode);
-    CHECK(back.layers.size() == 1 && back.layers[0].positionSeconds == 33.3);
-    CHECK(back.layers.size() == 1 && back.layers[0].props == lp);
-    CHECK(back.timelineId == "T1" && back.timelineTime == 7.5 && !back.timelinePlaying);
 }
 
 static void testAtomicWrite() {
@@ -296,48 +84,6 @@ static void testVersion() {
     CHECK(!isNewerVersion("0.1.0", "0.1.0"));
     CHECK(!isNewerVersion("0.0.9", "0.1.0"));
     CHECK(!isNewerVersion("lixo", "0.1.0"));
-}
-
-static void testTimelineAndQuad() {
-    Timeline t;
-    t.clips.push_back({"a", "L1", "m1", 0.0, 10.0, 0.0});
-    t.clips.push_back({"b", "L1", "m2", 5.0, 10.0, 0.0}); // sobrepõe: ganha o mais recente
-    CHECK(t.clipAt("L1", 2.0) && t.clipAt("L1", 2.0)->id == "a");
-    CHECK(t.clipAt("L1", 6.0) && t.clipAt("L1", 6.0)->id == "b");
-    CHECK(!t.clipAt("L1", 15.0));
-    CHECK(!t.clipAt("L2", 2.0));
-    CHECK(t.duration() == 60.0);
-    t.clips.push_back({"c", "L1", "m1", 100.0, 20.0, 0.0});
-    CHECK(t.duration() == 120.0);
-
-    // Media 4:3 num canvas 16:9 => encaixa pela altura.
-    LayerProps p;
-    auto q = computeLayerQuad(p, 1440, 1080, 1920, 1080);
-    CHECK(q.cx == 960.0 && q.cy == 540.0 && q.halfW == 720.0 && q.halfH == 540.0);
-    p.scale = 0.5;
-    p.posX = 100;
-    q = computeLayerQuad(p, 1440, 1080, 1920, 1080);
-    CHECK(q.cx == 1060.0 && q.halfW == 360.0);
-
-    // Segmentos de 0 s são descartados (evitam loops infinitos).
-    const std::string j = R"({"format":"vthost-project","layers":[{"id":"L1"}],"media":[{"id":"m","path":"x"}],
-      "timelines":[{"id":"T","segments":[{"start":5,"end":5,"loop":true},{"start":0,"end":4,"loop":true}],
-                    "clips":[{"id":"c","layer":"L1","media":"m","start":1,"duration":-5},
-                             {"id":"d","layer":"LX","media":"m"}]}]})";
-    auto r = parseProject(j);
-    CHECK(r.project && r.project->timelines.size() == 1);
-    if (r.project && !r.project->timelines.empty()) {
-        CHECK(r.project->timelines[0].segments.size() == 1);
-        CHECK(r.project->timelines[0].clips.size() == 1 && r.project->timelines[0].clips[0].duration > 0.0);
-    }
-
-    int w = 0, h = 0;
-    previewSizeFor(1920, 1080, w, h);
-    CHECK(w == 960 && h == 540);
-    previewSizeFor(1080, 1920, w, h);
-    CHECK(h == 540 && w < 960);
-    previewSizeFor(640, 360, w, h);
-    CHECK(w == 640 && h == 360);
 }
 
 static bool near(double a, double b, double eps = 1e-6) { return std::abs(a - b) < eps; }
@@ -404,31 +150,6 @@ static void testMapping() {
     bad.sanitize();
     CHECK(bad.meshCols == kMaxMeshDivisions && bad.brightness == 2.0 && bad.blendGamma == 1.0 && bad.meshIsValid());
 
-    // Projeto com vários canvas, layers e saídas por canvas + mapping.
-    Project pr = Project::makeDefault();
-    pr.canvases.push_back({"C2", "LED", 3840, 1080});
-    pr.layers[1].canvasId = "C2";
-    pr.outputs[0].canvasId = "C2";
-    pr.outputs[0].mapping = cells[1].mapping;
-    pr.outputs[0].mapping.mode = WarpMode::Mesh;
-    pr.outputs[0].mapping.mesh[0] = {0.02, 0.03};
-    auto rr = parseProject(serializeProject(pr));
-    CHECK(rr.project.has_value());
-    if (rr.project) {
-        CHECK(rr.project->canvases.size() == 2 && rr.project->canvases[1].width == 3840);
-        CHECK(rr.project->layers[1].canvasId == "C2" && rr.project->layers[0].canvasId.empty());
-        CHECK(rr.project->outputs[0].mapping == pr.outputs[0].mapping);
-        CHECK(rr.project->canvasOf("XX").id == "C1" && rr.project->resolveCanvasId("C2") == "C2");
-    }
-    // Comando ao vivo.
-    protocol::Command mc;
-    mc.type = protocol::CommandType::SetOutputMapping;
-    mc.output = "O1";
-    mc.mapping = pr.outputs[0].mapping;
-    auto mb = protocol::parseCommand(protocol::serializeCommand(mc));
-    CHECK(mb.command && mb.command->output == "O1" && mb.command->mapping == mc.mapping);
-    auto pc = protocol::parseCommand(R"({"cmd":"set_preview_canvas","canvas":"C2"})");
-    CHECK(pc.command && pc.command->canvas == "C2");
 }
 
 static void testLayerProps() {
@@ -445,23 +166,6 @@ static void testLayerProps() {
     p.cropLeft = 0.1;
     p.cropBottom = 0.25;
     p.feather = 0.05;
-    // Projeto
-    Project pr = Project::makeDefault();
-    pr.layers[0].props = p;
-    auto r = parseProject(serializeProject(pr));
-    CHECK(r.project && r.project->layers[0].props == p);
-    // Protocolo
-    protocol::Command c;
-    c.type = protocol::CommandType::SetLayerProps;
-    c.layer = "L1";
-    c.props = p;
-    auto b = protocol::parseCommand(protocol::serializeCommand(c));
-    CHECK(b.command && b.command->props == p);
-    // Estado do show
-    ShowState st;
-    st.layers.push_back({"L1", "m", 1.0, p});
-    ShowState back;
-    CHECK(parseShowState(serializeShowState(st), back) && back.layers[0].props == p);
     // Valores absurdos
     LayerProps bad;
     bad.contrast = 99;
@@ -492,138 +196,343 @@ static void testLayerProps() {
           near(cs[3].y, 1080));
 }
 
-static void testCues() {
-    // Ids gerados para projectos antigos, opções da cue e saltos.
-    auto r = parseProject(R"({"format":"vthost-project","version":1,"name":"x",
-      "columns":[{"name":"a"},{"name":"b","id":"K1"},{"name":"c","id":"K1"},
-                 {"name":"d","transition":"fade-black","follow":"timer","followSeconds":-5,"jumpTo":"nope"}]})");
-    CHECK(r.project);
+static void testQuadAndPreview() {
+    // Media 4:3 num canvas 16:9 => encaixa pela altura.
+    LayerProps p;
+    auto q = computeLayerQuad(p, 1440, 1080, 1920, 1080);
+    CHECK(q.cx == 960.0 && q.cy == 540.0 && q.halfW == 720.0 && q.halfH == 540.0);
+    p.scale = 0.5;
+    p.posX = 100;
+    q = computeLayerQuad(p, 1440, 1080, 1920, 1080);
+    CHECK(q.cx == 1060.0 && q.halfW == 360.0);
+    int w = 0, h = 0;
+    previewSizeFor(1920, 1080, w, h);
+    CHECK(w == 960 && h == 540);
+    previewSizeFor(1080, 1920, w, h);
+    CHECK(h == 540 && w < 960);
+    previewSizeFor(640, 360, w, h);
+    CHECK(w == 640 && h == 360);
+}
+
+static Cue makeCue(const std::string& path) {
+    Cue q;
+    q.path = path;
+    return q;
+}
+
+static void testProject() {
+    Project p = Project::makeDefault();
+    p.name = "Gala ação";
+    p.loopPlaylist = true;
+    Cue a = makeCue("C:/v/Abertura.mp4");
+    a.id = p.newCueId();
+    a.label = "INTRO";
+    a.color = "red";
+    a.notes = "entrada do apresentador";
+    a.inPoint = 1.5;
+    a.outPoint = 21.5;
+    a.speed = 2.0;
+    a.playCount = 3;
+    a.pauseAtStart = true;
+    a.fadeIn = 0.5;
+    a.fadeOut = 1.0;
+    a.crossfade = 2.0;
+    a.volumeDb = -3.0;
+    a.loudness = -20.0;
+    a.peakDb = -6.0;
+    a.fit = FitMode::Fill;
+    a.scale = 1.2;
+    a.posX = 10;
+    p.cues.push_back(a);
+    Cue b = makeCue("C:/v/Break.mov");
+    b.id = p.newCueId();
+    b.playCount = 0;
+    b.pauseAtEnd = true;
+    b.muted = true;
+    b.gotoCue = a.id;
+    p.cues.push_back(b);
+    CHECK(a.id == "Q1" && b.id == "Q2");
+
+    auto r = parseProject(serializeProject(p));
+    CHECK(r.project && r.warnings.empty());
     if (!r.project) return;
-    auto& p = *r.project;
-    CHECK(p.columns.size() == 4);
-    std::set<std::string> ids;
-    for (const auto& c : p.columns) {
-        CHECK(!c.id.empty());
-        ids.insert(c.id);
+    const Project& q = *r.project;
+    CHECK(q.name == p.name && q.loopPlaylist && q.cues.size() == 2 && q.outputs.size() == 1);
+    const Cue& x = q.cues[0];
+    CHECK(x.id == "Q1" && x.label == "INTRO" && x.color == "red" && x.notes == a.notes);
+    CHECK(x.inPoint == 1.5 && x.outPoint == 21.5 && x.speed == 2.0 && x.playCount == 3);
+    CHECK(x.pauseAtStart && !x.pauseAtEnd && x.fadeIn == 0.5 && x.fadeOut == 1.0 && x.crossfade == 2.0);
+    CHECK(x.volumeDb == -3.0 && x.loudness && *x.loudness == -20.0 && x.peakDb && *x.peakDb == -6.0);
+    CHECK(x.fit == FitMode::Fill && x.scale == 1.2 && x.posX == 10);
+    CHECK(q.cues[1].playCount == 0 && q.cues[1].pauseAtEnd && q.cues[1].muted && q.cues[1].gotoCue == "Q1");
+    CHECK(x.displayName() == "Abertura.mp4");
+
+    // Tempos: trim + velocidade + repetições.
+    CHECK(x.effectiveOut(30.0) == 21.5);
+    CHECK(x.passSeconds(30.0) == 10.0);
+    CHECK(x.totalSeconds(30.0) == 30.0);
+    CHECK(q.cues[1].totalSeconds(10.0) == 0.0); // infinito
+    Cue t = makeCue("x");
+    t.outPoint = 50.0;
+    CHECK(t.effectiveOut(30.0) == 30.0); // out depois do fim do ficheiro: até ao fim
+    CHECK(t.passSeconds(0.0) == 50.0);    // duração desconhecida: usa o out
+
+    // Sequência e "ir para".
+    CHECK(q.nextCue(-1) == 0 && q.nextCue(0) == 1 && q.nextCue(1) == 0);
+    Project s = q;
+    s.cues[1].gotoCue.clear();
+    s.loopPlaylist = false;
+    CHECK(s.nextCue(1) == -1);
+    s.loopPlaylist = true;
+    CHECK(s.nextCue(1) == 0);
+    CHECK(Project().nextCue(0) == -1);
+
+    // Normalização: -20 LUFS para alvo -16 = +4 dB, mas o pico (-6) só deixa +5.
+    CHECK(std::abs(x.gainDb(-16.0) - (-3.0 + 4.0)) < 1e-9);
+    CHECK(std::abs(normalizationGainDb(-30.0, -3.0, -16.0) - 2.0) < 1e-9); // limitado pelo pico
+    CHECK(normalizationGainDb(-80.0, std::nullopt, -16.0) == 0.0);         // silêncio
+    CHECK(normalizationGainDb(-60.0, std::nullopt, -16.0) == 20.0);        // máximo +20
+    Cue off = x;
+    off.normalize = false;
+    CHECK(off.gainDb(-16.0) == -3.0);
+}
+
+static void testProjectTolerance() {
+    const std::string bad = R"({
+      "format":"vthost-project","version":2,"width":999999,"height":"x",
+      "cues":[{"id":"Q1","path":"a.mp4","in":-5,"out":3,"speed":99,"playCount":-2,"fadeIn":1e9,
+               "volumeDb":80,"color":"azul","goto":"QX","loudness":"alto","scale":0},
+              {"id":"Q1","path":"b.mp4"},{"path":""},5,
+              {"path":"c.mp4","out":0.01}],
+      "outputs":[{"id":"O1","monitor":-5},{"id":"O1"}]
+    })";
+    const auto r = parseProject(bad);
+    CHECK(r.project.has_value());
+    if (!r.project) return;
+    const Project& p = *r.project;
+    CHECK(p.width == kMaxCanvasSize && p.height == 1080);
+    CHECK(p.cues.size() == 3);
+    const Cue& a = p.cues[0];
+    CHECK(a.inPoint == 0.0 && a.outPoint == 3.0 && a.speed == 4.0 && a.playCount == 0 && a.fadeIn == 60.0);
+    CHECK(a.volumeDb == 12.0 && a.color.empty() && a.gotoCue.empty() && !a.loudness && a.scale == 0.01);
+    CHECK(p.cues[1].id != "Q1" && !p.cues[1].id.empty()); // id repetido recebe um novo
+    CHECK(p.cues[2].outPoint == 0.0);                      // trim minúsculo anulado
+    CHECK(p.outputs.size() == 1 && p.outputs[0].monitor == 0);
+    CHECK(!r.warnings.empty());
+    CHECK(!parseProject("{}").project);
+    CHECK(!parseProject("lixo").project);
+
+    // Projecto antigo (0.6): cada media passa a uma cue.
+    auto old = parseProject(R"({"format":"vthost-project","version":1,"canvases":[{"id":"C1","width":1280,"height":720}],
+        "media":[{"id":"m1","path":"a.mp4","loopMode":"infinite"},{"id":"m2","path":"b.mov","loopMode":"once-freeze"}],
+        "outputs":[{"id":"O1","type":"ndi"}]})");
+    CHECK(old.project && old.project->cues.size() == 2 && old.project->width == 1280);
+    if (old.project && old.project->cues.size() == 2) {
+        CHECK(old.project->cues[0].playCount == 0 && old.project->cues[1].playCount == 1);
+        CHECK(old.project->outputs.size() == 1 && old.project->outputs[0].type == OutputType::Ndi);
     }
-    CHECK(ids.size() == 4);
-    CHECK(p.columns[1].id == "K1");
-    CHECK(p.columns[3].transition == TransitionType::FadeThroughBlack);
-    CHECK(p.columns[3].follow == FollowMode::Timer);
-    CHECK(p.columns[3].followSeconds == 0.1);
-    CHECK(p.columns[3].jumpTo.empty()); // destino inexistente descartado
-    CHECK(p.columns[0].transition == TransitionType::Crossfade && p.columns[0].follow == FollowMode::None);
+}
 
-    // nextColumn: sequência, fim, loop e salto.
-    CHECK(p.nextColumn(-1, false) == 0);
-    CHECK(p.nextColumn(0, false) == 1);
-    CHECK(p.nextColumn(3, false) == -1);
-    CHECK(p.nextColumn(3, true) == 0);
-    p.columns[3].jumpTo = p.columns[1].id;
-    CHECK(p.nextColumn(3, false) == 1);
-    p.columns[2].jumpTo = p.columns[2].id; // salto para si própria: repete
-    CHECK(p.nextColumn(2, false) == 2);
-    CHECK(Project().nextColumn(0, true) == -1);
-
-    // Ida e volta.
-    p.columns[0].transition = TransitionType::Cut;
-    p.columns[0].follow = FollowMode::MediaEnd;
-    p.columns[0].followSeconds = 7.5;
-    auto back = parseProject(serializeProject(p));
-    CHECK(back.project);
-    if (back.project) {
-        const auto& b = back.project->columns;
-        CHECK(b.size() == 4 && b[0].id == p.columns[0].id && b[0].transition == TransitionType::Cut);
-        CHECK(b[0].follow == FollowMode::MediaEnd && b[0].followSeconds == 7.5);
-        CHECK(b[3].jumpTo == p.columns[1].id && b[2].jumpTo == p.columns[2].id);
-    }
-    const std::string nid = p.newColumnId();
-    CHECK(p.columnIndex(nid) < 0 && !nid.empty());
-    CHECK(Project::makeDefault().columns[0].id == "K1");
-
-    // Protocolo: seek/pausa de layer e duração no estado.
+static void testProtocol() {
     using namespace vthost::protocol;
-    auto sk = parseCommand(R"({"cmd":"layer_seek","layer":"L1","time":12.5})");
-    CHECK(sk.command && sk.command->type == CommandType::LayerSeek && sk.command->value == 12.5);
-    CHECK(!parseCommand(R"({"cmd":"layer_seek","layer":"L1"})").command);
-    auto neg = parseCommand(R"({"cmd":"layer_seek","layer":"L1","time":-3})");
-    CHECK(neg.command && neg.command->value == 0.0);
-    Command pz;
-    pz.type = CommandType::LayerPause;
-    pz.layer = "L2";
-    pz.on = true;
-    auto pb = parseCommand(serializeCommand(pz));
-    CHECK(pb.command && pb.command->type == CommandType::LayerPause && pb.command->on && pb.command->layer == "L2");
-    CHECK(!parseCommand(R"({"cmd":"layer_pause","layer":"L1"})").command);
-    EngineStatus st;
-    st.activeColumnTime = 4.5;
-    LayerStatus ls;
-    ls.id = "L1";
-    ls.duration = 30.0;
-    ls.paused = true;
-    st.layers.push_back(ls);
-    auto sr = parseResponse(statusResponse(st));
-    CHECK(sr.status && sr.status->activeColumnTime == 4.5);
-    CHECK(sr.status && sr.status->layers.size() == 1 && sr.status->layers[0].duration == 30.0 &&
-          sr.status->layers[0].paused);
+    auto play = parseCommand(R"({"cmd":"play","cue":3,"paused":true})");
+    CHECK(play.command && play.command->type == CommandType::Play && play.command->cue == 3 && play.command->paused &&
+          !play.command->cut);
+    CHECK(!parseCommand(R"({"cmd":"play"})").command);
+    CHECK(!parseCommand(R"({"cmd":"play","cue":-1})").command);
+    CHECK(!parseCommand(R"({"cmd":"transport","action":"fly"})").command);
+    CHECK(!parseCommand(R"({"cmd":"seek"})").command);
+    CHECK(!parseCommand("nada").command);
+    CHECK(!parseCommand(R"({"cmd":"explodir"})").command);
+    auto neg = parseCommand(R"({"cmd":"seek","time":-4})");
+    CHECK(neg.command && neg.command->time == 0.0);
+
+    // Ida e volta de todos os comandos.
+    std::vector<Command> all;
+    for (int t = 0; t <= static_cast<int>(CommandType::Shutdown); ++t) {
+        Command c;
+        c.type = static_cast<CommandType>(t);
+        c.path = "C:/shows/ação.vthost";
+        c.cue = 7;
+        c.cut = true;
+        c.on = true;
+        c.time = 12.5;
+        c.action = TransportAction::Stop;
+        c.settings.audioDevice = "{0.0.0.00000000}.{abc}";
+        c.settings.previewFps = 25;
+        all.push_back(c);
+    }
+    for (const auto& c : all) {
+        auto b = parseCommand(serializeCommand(c));
+        CHECK(b.command && b.command->type == c.type);
+        if (!b.command) continue;
+        switch (c.type) {
+        case CommandType::LoadProject: CHECK(b.command->path == c.path); break;
+        case CommandType::Play: CHECK(b.command->cue == 7 && b.command->cut && !b.command->paused); break;
+        case CommandType::Transport: CHECK(b.command->action == TransportAction::Stop); break;
+        case CommandType::Seek:
+        case CommandType::SeekRemaining: CHECK(b.command->time == 12.5); break;
+        case CommandType::SetSettings: CHECK(b.command->settings == c.settings); break;
+        case CommandType::SetShowMode:
+        case CommandType::SetTestCard: CHECK(b.command->on); break;
+        default: break;
+        }
+    }
+
+    EngineStatus s;
+    s.version = "0.7.0";
+    s.cue = 2;
+    s.cueId = "Q3";
+    s.state = "playing";
+    s.mediaTime = 14.0;
+    s.elapsed = 4.0;
+    s.remaining = 26.0;
+    s.passDuration = 10.0;
+    s.pass = 1;
+    s.nextCue = 3;
+    s.audioOk = true;
+    s.audioDevice = "Altifalantes";
+    s.levelL = 0.5;
+    s.outputs.push_back({"O1", 1, true, "", "display", "OMEN 27"});
+    auto r = parseResponse(statusResponse(s));
+    CHECK(r.ok && r.status);
+    if (r.status) {
+        const auto& x = *r.status;
+        CHECK(x.cue == 2 && x.cueId == "Q3" && x.state == "playing" && x.mediaTime == 14.0 && x.elapsed == 4.0);
+        CHECK(x.remaining == 26.0 && x.passDuration == 10.0 && x.pass == 1 && x.nextCue == 3 && !x.infinite);
+        CHECK(x.audioOk && x.audioDevice == "Altifalantes" && x.levelL == 0.5);
+        CHECK(x.outputs.size() == 1 && x.outputs[0].detail == "OMEN 27");
+    }
+    DisplayInfo d;
+    d.id = "\\\\.\\DISPLAY2";
+    d.name = "OMEN 27";
+    d.width = 2560;
+    d.index = 1;
+    auto dr = parseResponse(displaysResponse({d}));
+    CHECK(dr.ok && dr.displays && dr.displays->size() == 1 && dr.displays->front().name == "OMEN 27");
+    auto ar = parseResponse(audioDevicesResponse({{"id1", "Colunas", true}}));
+    CHECK(ar.ok && ar.audioDevices && ar.audioDevices->size() == 1 && ar.audioDevices->front().isDefault);
+    auto e = parseResponse(errorResponse("falhou"));
+    CHECK(!e.ok && e.error == "falhou");
+}
+
+static void testShowState() {
+    ShowState s;
+    s.projectPath = "C:/shows/gala.vthost";
+    s.showMode = true;
+    s.cueId = "Q4";
+    s.cueTime = 33.25;
+    s.paused = true;
+    ShowState b;
+    CHECK(parseShowState(serializeShowState(s), b));
+    CHECK(b.projectPath == s.projectPath && b.showMode && b.cueId == "Q4" && b.cueTime == 33.25 && b.paused);
+    CHECK(!parseShowState("{}", b));
+    CHECK(!parseShowState(R"({"format":"outro"})", b));
 }
 
 static void testCountdown() {
-    Project p = Project::makeDefault();
-    p.media.push_back({"m1", "C:/v/Abertura.mp4", LoopMode::OnceFreeze});
-    p.media.push_back({"m2", "C:/v/loop.mov", LoopMode::Infinite});
-    const std::string l1 = p.layers[0].id, l2 = p.layers[1].id;
-    p.columns[0].cells[l1] = "m1";
-    p.columns[0].cells[l2] = "m2";
+    Project p;
+    Cue a = makeCue("C:/v/Abertura.mp4");
+    a.id = "Q1";
+    a.label = "INTRO";
+    Cue b = makeCue("C:/v/Break.mov");
+    b.id = "Q2";
+    p.cues = {a, b};
     protocol::EngineStatus s;
-    CHECK(!computeCountdown(p, s, false).active); // nada no ar
-    s.activeColumn = 0;
-    s.layers.push_back({l1, "m1", "playing", 20.0, "", 80.0, false});
-    s.layers.push_back({l2, "m2", "playing", 5.0, "", 10.0, false});
-    auto c = computeCountdown(p, s, false);
-    CHECK(c.active && c.mode == "cue" && c.remaining == 60.0 && c.duration == 80.0 && c.running);
-    CHECK(c.mediaName == "Abertura" && c.cueNumber == 1 && c.nextName == p.columns[1].name && !c.loops);
-    auto a = advanceCountdown(c, 2.5);
-    CHECK(std::abs(a.remaining - 57.5) < 1e-9);
+    CHECK(!computeCountdown(p, s).active); // nada no ar
+    s.cue = 0;
+    s.state = "playing";
+    s.passDuration = 80.0;
+    s.elapsed = 20.0;
+    s.remaining = 60.0;
+    s.nextCue = 1;
+    auto c = computeCountdown(p, s);
+    CHECK(c.active && c.running && c.remaining == 60.0 && c.duration == 80.0 && c.elapsed == 20.0);
+    CHECK(c.cueLabel == "INTRO" && c.cueNumber == 1 && c.nextName == "Break.mov" && c.mediaName == "Abertura");
+    auto adv = advanceCountdown(c, 2.5);
+    CHECK(std::abs(adv.remaining - 57.5) < 1e-9);
     CHECK(advanceCountdown(c, 500).remaining == 0.0);
-    s.layers[0].paused = true;
-    CHECK(!computeCountdown(p, s, false).running);
-    CHECK(advanceCountdown(computeCountdown(p, s, false), 3).remaining == 60.0);
-    // Cue com tempo: conta até à cue seguinte.
-    p.columns[0].follow = FollowMode::Timer;
-    p.columns[0].followSeconds = 30.0;
-    s.activeColumnTime = 12.0;
-    c = computeCountdown(p, s, false);
-    CHECK(c.mode == "timer" && c.remaining == 18.0);
-    // Última cue sem loop: sem "a seguir".
-    s.activeColumn = 3;
-    CHECK(computeCountdown(p, s, false).nextName.empty());
-    // Timeline.
-    s.timelineId = "T1";
-    if (p.timelines.empty()) p.timelines.push_back({"T1", "Timeline 1", {}, {}});
-    p.timelines[0].clips.push_back({"c1", l1, "m1", 0.0, 40.0});
-    s.timelineTime = 10.0;
-    s.timelinePlaying = true;
-    c = computeCountdown(p, s, false);
-    CHECK(c.mode == "timeline" && c.remaining == 30.0);
+    // Segunda passagem de 3: conta o total.
+    s.pass = 1;
+    s.remaining = 140.0;
+    c = computeCountdown(p, s);
+    CHECK(c.elapsed == 100.0 && c.duration == 240.0);
+    // Pausa: não anda.
+    s.state = "paused";
+    c = computeCountdown(p, s);
+    CHECK(!c.running && advanceCountdown(c, 3).remaining == 140.0);
+    // Loop infinito: conta a passagem e recomeça.
+    s.state = "playing";
+    s.infinite = true;
+    s.pass = 5;
+    s.elapsed = 70.0;
+    c = computeCountdown(p, s);
+    CHECK(c.loops && c.remaining == 10.0 && c.duration == 80.0);
+    CHECK(std::abs(advanceCountdown(c, 15).remaining - 75.0) < 1e-9);
+    s.state = "stopped";
+    CHECK(!computeCountdown(p, s).active);
     CHECK(formatCountdown(0.2) == "00:01" && formatCountdown(61) == "01:01" && formatCountdown(3725) == "1:02:05");
     CHECK(formatCountdown(-4) == "00:00" && formatCountdown(std::nan("")) == "00:00");
-    CHECK(countdownJson(c, "Show").find("\"remaining\":30") != std::string::npos);
+    CHECK(countdownJson(computeCountdown(p, protocol::EngineStatus{}), "Show").find("\"active\":false") != std::string::npos);
+}
+
+static void testLoudness() {
+    // EBU Tech 3341: seno de 1 kHz a -23 dBFS em L e R = -23 LUFS (±0.1).
+    const int rate = 48000;
+    const double amp = std::pow(10.0, -23.0 / 20.0);
+    std::vector<float> buf(static_cast<std::size_t>(rate) * 2 * 20);
+    for (std::size_t i = 0; i < buf.size() / 2; ++i) {
+        const float v = static_cast<float>(amp * std::sin(2.0 * 3.14159265358979 * 1000.0 * i / rate));
+        buf[2 * i] = v;
+        buf[2 * i + 1] = v;
+    }
+    LoudnessMeter m(rate, 2);
+    m.add(buf.data(), buf.size() / 2);
+    auto l = m.integrated();
+    CHECK(l && std::abs(*l - (-23.0)) < 0.1);
+    CHECK(m.peakDb() && std::abs(*m.peakDb() - (-23.0)) < 0.05);
+    CHECK(std::abs(m.seconds() - 20.0) < 1e-9);
+    // A 44.1 kHz dá o mesmo.
+    LoudnessMeter m44(44100, 2);
+    std::vector<float> b44(44100 * 2 * 10);
+    for (std::size_t i = 0; i < b44.size() / 2; ++i) {
+        const float v = static_cast<float>(amp * std::sin(2.0 * 3.14159265358979 * 1000.0 * i / 44100.0));
+        b44[2 * i] = v;
+        b44[2 * i + 1] = v;
+    }
+    m44.add(b44.data(), b44.size() / 2);
+    CHECK(m44.integrated() && std::abs(*m44.integrated() - (-23.0)) < 0.1);
+    // Silêncio e entradas estranhas.
+    LoudnessMeter s(48000, 2);
+    std::vector<float> zero(48000 * 2 * 3, 0.0f);
+    s.add(zero.data(), zero.size() / 2);
+    CHECK(!s.integrated() && !s.peakDb());
+    std::vector<float> nan(1000, std::nanf(""));
+    s.add(nan.data(), 500);
+    s.add(nullptr, 100);
+    CHECK(!s.integrated());
+    // Porta relativa: 10 s a -23 + 10 s a -60 -> o silêncio relativo é ignorado.
+    LoudnessMeter g(rate, 2);
+    g.add(buf.data(), buf.size() / 4);
+    std::vector<float> quiet(buf.size() / 2);
+    const double qa = std::pow(10.0, -60.0 / 20.0) / amp;
+    for (std::size_t i = 0; i < quiet.size(); ++i) quiet[i] = static_cast<float>(buf[i] * qa);
+    g.add(quiet.data(), quiet.size() / 2);
+    CHECK(g.integrated() && std::abs(*g.integrated() - (-23.0)) < 0.2);
 }
 
 int main() {
+    testLoudness();
+    testProject();
+    testProjectTolerance();
+    testProtocol();
+    testShowState();
     testCountdown();
-    testCues();
+    testQuadAndPreview();
     testMapping();
     testLayerProps();
     testVersion();
-    testTimelineAndQuad();
-    testProjectRoundTrip();
-    testCompatAndFades();
-    testProjectTolerance();
     testFuzzNeverThrows();
-    testProtocol();
-    testShowState();
     testAtomicWrite();
     std::printf("%d verificações, %d falhas\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

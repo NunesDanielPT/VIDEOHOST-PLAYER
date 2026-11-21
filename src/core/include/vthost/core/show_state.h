@@ -1,30 +1,19 @@
 #pragma once
 // Fotografia do estado do show, gravada várias vezes por segundo pelo motor.
 // Se o motor crashar, o watchdog relança-o com --recover e o motor retoma a
-// partir daqui: mesmo projecto, mesma coluna, mesma media e posição em cada layer.
-
-#include "vthost/core/project.h"
+// partir daqui: mesmo projecto, mesma cue, mesma posição (e pausa).
 
 #include <string>
-#include <vector>
 
 namespace vthost {
-
-struct LayerPlayback {
-    std::string layerId;
-    std::string mediaId;
-    double positionSeconds = 0.0;
-    LayerProps props; // propriedades ao vivo (podem diferir do ficheiro em Show Mode)
-};
 
 struct ShowState {
     std::string projectPath;
     bool showMode = false;
-    int activeColumn = -1;
-    std::string timelineId;  // timeline em reprodução/pausa ("" = modo dashboard)
-    double timelineTime = 0.0;
-    bool timelinePlaying = false;
-    std::vector<LayerPlayback> layers;
+    std::string cueId;       // cue no ar ("" = nada)
+    double cueTime = 0.0;    // tempo de cue acumulado (posição no ficheiro + passagens já feitas)
+    bool paused = false;
+    bool testCard = false;
 };
 
 std::string serializeShowState(const ShowState& s);

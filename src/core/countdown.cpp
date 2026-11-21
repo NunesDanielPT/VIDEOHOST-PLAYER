@@ -21,69 +21,31 @@ std::string baseName(const std::string& path) {
 
 } // namespace
 
-Countdown computeCountdown(const Project& project, const protocol::EngineStatus& s, bool loopBoard) {
+Countdown computeCountdown(const Project& project, const protocol::EngineStatus& s) {
     Countdown c;
     c.mode = "idle";
-
-    // Timeline a tocar ou em pausa.
-    if (!s.timelineId.empty()) {
-        const Timeline* tl = project.findTimeline(s.timelineId);
-        if (!tl) return c;
-        double end = 0.0;
-        for (const auto& clip : tl->clips) end = std::max(end, clip.end());
-        if (end <= 0.0) return c;
-        c.mode = "timeline";
-        c.active = true;
-        c.running = s.timelinePlaying;
-        c.duration = end;
-        c.elapsed = std::clamp(finiteOr0(s.timelineTime), 0.0, end);
-        c.remaining = end - c.elapsed;
-        c.cueName = tl->name;
-        return c;
-    }
-
-    const int n = static_cast<int>(project.columns.size());
-    if (s.activeColumn < 0 || s.activeColumn >= n) return c;
-    const Column& col = project.columns[static_cast<std::size_t>(s.activeColumn)];
-    c.cueNumber = s.activeColumn + 1;
-    c.cueName = col.name;
-    if (const int next = project.nextColumn(s.activeColumn, loopBoard); next >= 0)
-        c.nextName = project.columns[static_cast<std::size_t>(next)].name;
-
-    if (col.follow == FollowMode::Timer) {
-        c.mode = "timer";
-        c.active = true;
-        c.running = true;
-        c.duration = col.followSeconds;
-        c.elapsed = std::clamp(finiteOr0(s.activeColumnTime), 0.0, col.followSeconds);
-        c.remaining = col.followSeconds - c.elapsed;
-        return c;
-    }
-
-    // Vídeo com mais tempo por tocar entre as layers desta cue.
-    bool found = false;
-    for (const auto& ls : s.layers) {
-        auto cell = col.cells.find(ls.id);
-        if (cell == col.cells.end() || cell->second != ls.mediaId) continue;
-        const double d = finiteOr0(ls.duration);
-        if (d <= 0.0) continue; // imagem fixa
-        const double pos = std::clamp(finiteOr0(ls.position), 0.0, d);
-        const bool ended = ls.state == "ended";
-        const double rem = ended ? 0.0 : d - pos;
-        if (found && rem <= c.remaining) continue;
-        found = true;
-        const MediaItem* m = project.findMedia(ls.mediaId);
-        c.remaining = rem;
-        c.duration = d;
-        c.elapsed = ended ? d : pos;
-        c.running = ls.state == "playing" && !ls.paused;
-        // Com "seguir no fim do vídeo" o motor toca sem loop.
-        c.loops = m && m->loops() && col.follow != FollowMode::MediaEnd;
-        c.mediaName = m ? baseName(m->path) : std::string();
-    }
-    if (found) {
-        c.mode = "cue";
-        c.active = true;
+    c.state = s.state;
+    const int n = static_cast<int>(project.cues.size());
+    if (s.cue < 0 || s.cue >= n || s.state == "stopped" || s.state == "error") return c;
+    const Cue& q = project.cues[static_cast<std::size_t>(s.cue)];
+    c.mode = "cue";
+    c.active = true;
+    c.cueNumber = s.cue + 1;
+    c.cueLabel = q.label;
+    c.cueName = q.displayName();
+    c.mediaName = baseName(q.path);
+    if (s.nextCue >= 0 && s.nextCue < n) c.nextName = project.cues[static_cast<std::size_t>(s.nextCue)].displayName();
+    c.running = s.state == "playing";
+    c.loops = s.infinite;
+    const double pass = finiteOr0(s.passDuration);
+    if (s.infinite) {
+        c.duration = pass;
+        c.elapsed = std::clamp(finiteOr0(s.elapsed), 0.0, pass);
+        c.remaining = std::max(0.0, pass - c.elapsed);
+    } else {
+        c.elapsed = std::max(0.0, s.pass * pass + finiteOr0(s.elapsed));
+        c.remaining = s.state == "ended" ? 0.0 : std::max(0.0, finiteOr0(s.remaining));
+        c.duration = c.elapsed + c.remaining;
     }
     return c;
 }
@@ -119,10 +81,12 @@ std::string countdownJson(const Countdown& c, const std::string& projectName) {
                      {"elapsed", c.elapsed},
                      {"text", formatCountdown(c.remaining)},
                      {"cueNumber", c.cueNumber},
+                     {"label", c.cueLabel},
                      {"cue", c.cueName},
                      {"next", c.nextName},
                      {"media", c.mediaName},
                      {"mode", c.mode},
+                     {"state", c.state},
                      {"project", projectName}};
     return j.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }

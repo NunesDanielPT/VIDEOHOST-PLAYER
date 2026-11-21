@@ -4,22 +4,18 @@
 //
 // Pedidos:
 //   {"cmd":"ping"}
-//   {"cmd":"load_project","path":"C:/shows/x.vthost"}
-//   {"cmd":"go","column":2,"fade":-1}       // dispara a coluna 2 (fade -1 = o da coluna; 0 = corte)
-//   {"cmd":"set_settings","vsync":true,"previewFps":30,"priority":"above_normal","loopBoard":false}
-//   {"cmd":"stop_all","fade":1.0}
-//   {"cmd":"set_layer_props","layer":"L1","props":{"opacity":0.5,"blend":"add","x":0,"y":0,"scale":1,"rotation":0}}
-//   {"cmd":"set_layer_visible","layer":"L1","on":false}   // olho da layer, ao vivo
-//   {"cmd":"layer_seek","layer":"L1","time":12.5}         // salta dentro do vídeo da layer
-//   {"cmd":"layer_pause","layer":"L1","on":true}          // pausa/retoma o vídeo da layer
-//   {"cmd":"timeline","action":"play|pause|stop|seek","timeline":"T1","time":12.5}
+//   {"cmd":"load_project","path":"C:/shows/x.vthost"}   // a cue no ar continua (actualiza volume/fades/...)
+//   {"cmd":"play","cue":2,"paused":false,"cut":false}  // começa a cue 2 (paused = pronta no 1.º frame)
+//   {"cmd":"transport","action":"pause|resume|toggle|stop"}
+//   {"cmd":"seek","time":12.5}          // dentro da cue actual (segundos desde o ponto In, a velocidade 1)
+//   {"cmd":"seek_remaining","time":30}  // GOTO 30/20/10: fica a faltar `time` segundos
+//   {"cmd":"set_settings","vsync":true,"previewFps":30,"priority":"above_normal","audioDevice":""}
 //   {"cmd":"set_show_mode","on":true}
+//   {"cmd":"set_test_card","on":true}
 //   {"cmd":"get_status"}
-//   {"cmd":"set_output_mapping","output":"O1","mapping":{...}} // warp/soft-edge ao vivo
-//   {"cmd":"set_test_card","on":true}       // test card em todas as saídas
-//   {"cmd":"set_preview_canvas","canvas":"C2"} // canvas mostrado no Workspace
-//   {"cmd":"list_displays"}                // ecrãs ligados: placa gráfica, nome, resolução
-//   {"cmd":"shutdown"}                     // pára o motor de propósito (sem recuperação)
+//   {"cmd":"list_displays"}             // ecrãs ligados: placa gráfica, nome, resolução
+//   {"cmd":"list_audio_devices"}        // placas de som (saídas)
+//   {"cmd":"shutdown"}                  // pára o motor de propósito (sem recuperação)
 //
 // Respostas: {"ok":true, ...} ou {"ok":false,"error":"..."}
 
@@ -33,32 +29,42 @@ namespace vthost::protocol {
 
 inline constexpr std::size_t kMaxLineBytes = 1024 * 1024;
 
-enum class CommandType { Ping, LoadProject, Go, StopAll, SetLayerProps, SetLayerVisible, Timeline, SetShowMode, GetStatus, ListDisplays, SetSettings, SetOutputMapping, SetTestCard, SetPreviewCanvas, LayerSeek, LayerPause, Shutdown };
-enum class TimelineAction { Play, Pause, Stop, Seek };
+enum class CommandType {
+    Ping,
+    LoadProject,
+    Play,
+    Transport,
+    Seek,
+    SeekRemaining,
+    SetSettings,
+    SetShowMode,
+    SetTestCard,
+    GetStatus,
+    ListDisplays,
+    ListAudioDevices,
+    Shutdown
+};
+enum class TransportAction { Pause, Resume, Toggle, Stop };
 
 // Preferências do motor (enviadas pelo Studio ao ligar e quando mudam).
 struct EngineSettings {
     bool vsync = true;
-    int previewFps = 30;                     // 0 = sem preview; 5..60
-    std::string priority = "above_normal";   // "normal" | "above_normal" | "high"
-    bool loopBoard = false;                  // auto-follow na última coluna volta à primeira
+    int previewFps = 30;                   // 0 = sem preview; 5..60
+    std::string priority = "above_normal"; // "normal" | "above_normal" | "high"
+    std::string audioDevice;               // id WASAPI ("" = placa de som por omissão)
     friend bool operator==(const EngineSettings&, const EngineSettings&) = default;
 };
 
 struct Command {
     CommandType type = CommandType::Ping;
     std::string path;
-    std::string layer;
-    int column = -1;
-    double value = 0.0; // fade (stop_all, go: -1 = o da coluna) / tempo (timeline -1 = posição actual; layer_seek)
+    int cue = -1;
+    bool paused = false; // play: fica pronta no 1.º frame
+    bool cut = false;    // play: sem crossfade nem fade in (SHIFT)
     bool on = false;
-    LayerProps props;
-    std::string timeline;
-    TimelineAction action = TimelineAction::Play;
+    double time = 0.0;
+    TransportAction action = TransportAction::Toggle;
     EngineSettings settings;
-    std::string output;     // set_output_mapping
-    std::string canvas;     // set_preview_canvas
-    OutputMapping mapping;  // set_output_mapping
 };
 
 struct ParsedCommand {
@@ -68,16 +74,6 @@ struct ParsedCommand {
 
 ParsedCommand parseCommand(const std::string& line);
 std::string serializeCommand(const Command& c);
-
-struct LayerStatus {
-    std::string id;
-    std::string mediaId;
-    std::string state; // "idle" | "loading" | "playing" | "error"
-    double position = 0.0;
-    std::string error;
-    double duration = 0.0; // segundos (0 = desconhecida / imagem)
-    bool paused = false;
-};
 
 struct OutputStatus {
     std::string id;
@@ -102,22 +98,43 @@ struct DisplayInfo {
     int index = 0;       // ordem usada pelo VTHOST (0 = principal)
 };
 
+struct AudioDeviceInfo {
+    std::string id;   // id WASAPI
+    std::string name; // ex. "Altifalantes (Realtek)"
+    bool isDefault = false;
+};
+
 struct EngineStatus {
     std::string version;
     std::string projectName;
     std::string projectPath;
     bool showMode = false;
-    int activeColumn = -1;
-    double activeColumnTime = 0.0; // segundos desde o disparo da cue activa
     double fps = 0.0;
     double uptimeSeconds = 0.0;
     bool recovered = false; // motor reiniciado pelo watchdog e show retomado
-    std::string timelineId; // "" = modo dashboard
-    double timelineTime = 0.0;
-    bool timelinePlaying = false;
     bool testCard = false;
-    std::string previewCanvas;
-    std::vector<LayerStatus> layers;
+
+    // Cue no ar.
+    int cue = -1;            // índice (-1 = nada)
+    std::string cueId;
+    std::string state = "stopped"; // "stopped" | "loading" | "playing" | "paused" | "ended" | "error"
+    std::string error;
+    double mediaTime = 0.0;  // posição no ficheiro (segundos) - cabeça de leitura da waveform
+    double elapsed = 0.0;    // tempo real decorrido na passagem actual
+    double remaining = 0.0;  // tempo real que falta (todas as passagens; infinito -> só a actual)
+    double passDuration = 0.0; // tempo real de uma passagem
+    int pass = 0;            // passagem actual (0 = primeira)
+    bool infinite = false;   // loop infinito
+    double fileDuration = 0.0;
+    int nextCue = -1;        // o que vem a seguir (respeita "ir para")
+
+    // Áudio.
+    std::string audioDevice; // nome
+    bool audioOk = false;
+    std::string audioError;
+    double levelL = 0.0;     // pico recente 0..1
+    double levelR = 0.0;
+
     std::vector<OutputStatus> outputs;
     std::vector<std::string> warnings;
 };
@@ -126,12 +143,14 @@ std::string okResponse();
 std::string errorResponse(const std::string& message);
 std::string statusResponse(const EngineStatus& s);
 std::string displaysResponse(const std::vector<DisplayInfo>& displays);
+std::string audioDevicesResponse(const std::vector<AudioDeviceInfo>& devices);
 
 struct ParsedResponse {
     bool ok = false;
     std::string error;
-    std::optional<EngineStatus> status; // presente nas respostas a get_status
-    std::optional<std::vector<DisplayInfo>> displays; // presente nas respostas a list_displays
+    std::optional<EngineStatus> status;                      // respostas a get_status
+    std::optional<std::vector<DisplayInfo>> displays;        // respostas a list_displays
+    std::optional<std::vector<AudioDeviceInfo>> audioDevices; // respostas a list_audio_devices
 };
 ParsedResponse parseResponse(const std::string& line);
 
