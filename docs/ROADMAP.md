@@ -48,8 +48,12 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [x] Soft-edge por lado (suavidade, gama) e brilho por saída
 - [x] Test card contínuo em todas as saídas
 - [x] Solo de layer e barra de ícones das layers (como no Premiere)
-- [ ] Máscaras por layer e por saída
-- [ ] Warp por layer (perspetiva da media na superfície)
+- [x] Properties: ajuste (fit/fill/stretch/nativo), espelhar, corner pin por layer (pegas no Workspace)
+- [x] Efeitos de cor por layer: brilho, contraste, saturação, gama, matiz, inverter
+- [x] Máscara por layer: recorte de cada lado com contorno suave
+- [x] Controlos ao vivo sem atraso (comandos coalescidos, motor processa em lote)
+- [ ] Máscaras desenhadas (pontos/bezier) e por saída
+- [ ] Mais efeitos: chroma key, LUT, blur, levels, ISF
 - [ ] Importar projetos do MapSim (projetores, zonas de blend)
 
 ## Fase 3.5 — Áudio (0.6.0)
