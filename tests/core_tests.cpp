@@ -5,6 +5,7 @@
 #include "vthost/core/countdown.h"
 #include "vthost/core/loudness.h"
 #include "vthost/core/mapping.h"
+#include "vthost/core/osc.h"
 #include "vthost/core/preview.h"
 #include "vthost/core/project.h"
 #include "vthost/core/protocol.h"
@@ -535,6 +536,52 @@ static void testLoudness() {
     CHECK(g.integrated() && std::abs(*g.integrated() - (-23.0)) < 0.2);
 }
 
+void testOsc() {
+    using namespace vthost::osc;
+    // Ida e volta com os três tipos.
+    Message m{"/mitti/playCueWithCueID", {std::string("12"), std::int32_t{3}, 0.5f}};
+    const auto bytes = encodeMessage(m);
+    CHECK(bytes.size() % 4 == 0);
+    auto d = decodePacket(bytes.data(), bytes.size());
+    CHECK(d.size() == 1 && d[0].address == m.address && d[0].args.size() == 3);
+    if (d.size() == 1 && d[0].args.size() == 3) {
+        CHECK(d[0].stringArg(0) == "12" && d[0].stringArg(1) == "3");
+        double v = 0;
+        CHECK(d[0].numberArg(v, 2) && v == 0.5);
+        CHECK(d[0].numberArg(v, 0) && v == 12.0);
+    }
+    // Sem argumentos (tag ",") e sem type tag nenhuma.
+    auto e = encodeMessage({"/mitti/play", {}});
+    d = decodePacket(e.data(), e.size());
+    CHECK(d.size() == 1 && d[0].address == "/mitti/play" && d[0].args.empty());
+    const std::uint8_t bare[] = {'/', 'a', 0, 0};
+    CHECK(decodePacket(bare, sizeof bare).size() == 1);
+    // Bundle com duas mensagens.
+    std::vector<std::uint8_t> b = {'#', 'b', 'u', 'n', 'd', 'l', 'e', 0, 0, 0, 0, 0, 0, 0, 0, 1};
+    for (const auto& part : {encodeMessage({"/mitti/goto30", {}}), encodeMessage({"/mitti/togglePlay", {}})}) {
+        const auto n = static_cast<std::uint32_t>(part.size());
+        b.insert(b.end(), {static_cast<std::uint8_t>(n >> 24), static_cast<std::uint8_t>(n >> 16),
+                           static_cast<std::uint8_t>(n >> 8), static_cast<std::uint8_t>(n)});
+        b.insert(b.end(), part.begin(), part.end());
+    }
+    d = decodePacket(b.data(), b.size());
+    CHECK(d.size() == 2 && d[1].address == "/mitti/togglePlay");
+    // Lixo: nunca lança, devolve nada.
+    const std::uint8_t junk[] = {'x', 'y', 'z', 0};
+    CHECK(decodePacket(junk, sizeof junk).empty());
+    CHECK(decodePacket(nullptr, 0).empty());
+    std::mt19937 rng(7);
+    for (int i = 0; i < 3000; ++i) {
+        std::vector<std::uint8_t> r(static_cast<std::size_t>(4 * (rng() % 40)));
+        for (auto& c : r) c = static_cast<std::uint8_t>(rng());
+        if (!r.empty() && rng() % 2) r[0] = '/';
+        (void)decodePacket(r.data(), r.size());
+    }
+    // String sem terminador dentro do pacote: rejeitada.
+    const std::uint8_t open[] = {'/', 'a', 'b', 'c'};
+    CHECK(decodePacket(open, sizeof open).empty());
+}
+
 int main() {
     testLoudness();
     testProject();
@@ -548,6 +595,7 @@ int main() {
     testVersion();
     testFuzzNeverThrows();
     testAtomicWrite();
+    testOsc();
     std::printf("%d verificações, %d falhas\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

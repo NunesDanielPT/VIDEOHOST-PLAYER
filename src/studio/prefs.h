@@ -46,6 +46,14 @@ inline bool countdownWebEnabled() { return get("countdown/webEnabled", true); }
 inline int countdownWebPort() { return get("countdown/webPort", 8088); }
 inline QString countdownBindAddress() { return get("countdown/bindAddress", QString()); } // "" = todas as placas
 
+// OSC (Bitfocus Companion). Desligado por omissão: só controla quem o utilizador escolher.
+inline bool oscEnabled() { return get("osc/enabled", false); }
+inline QString oscBindAddress() { return get("osc/bindAddress", QString()); } // "" = todas as placas
+inline int oscPort() { return get("osc/port", 51000); }
+inline QString oscFeedbackHost() { return get("osc/feedbackHost", QString()); }
+inline int oscFeedbackPort() { return get("osc/feedbackPort", 51001); }
+inline bool oscOnlyFromFeedbackHost() { return get("osc/onlyFromFeedbackHost", true); }
+
 // Show Mode
 inline bool confirmLeaveShowMode() { return get("show/confirmLeave", true); }
 

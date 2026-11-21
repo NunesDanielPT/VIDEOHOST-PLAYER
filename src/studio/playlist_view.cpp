@@ -1,5 +1,8 @@
 #include "playlist_view.h"
 
+#include <QHelpEvent>
+#include <QToolTip>
+
 #include "media_cache.h"
 
 #include <QContextMenuEvent>
@@ -247,6 +250,39 @@ void PlaylistView::dropEvent(QDropEvent* e) {
 }
 
 bool PlaylistView::event(QEvent* e) {
+    // Dica ao passar o rato nos ícones de cada cue (o que fazem e como se mudam).
+    if (e->type() == QEvent::ToolTip) {
+        auto* he = static_cast<QHelpEvent*>(e);
+        const QPoint pos = viewport()->mapFrom(this, he->pos());
+        const QModelIndex idx = indexAt(pos);
+        QString tip;
+        if (idx.isValid()) {
+            const QRect row = visualRect(idx);
+            auto name = [this](int i) -> QString {
+                switch (static_cast<CueIcon>(i)) {
+                case CueIcon::Audio: return tr("Sound on / off (mute)");
+                case CueIcon::PauseStart: return tr("Pause at start: the cue waits on its first frame for Play (Space)");
+                case CueIcon::FadeIn: return tr("Fade in from black");
+                case CueIcon::Loop: return tr("Loop: repeat the cue (number of repeats in the Inspector)");
+                case CueIcon::Crossfade: return tr("Crossfade from the previous cue");
+                case CueIcon::FadeOut: return tr("Fade out to black at the end");
+                case CueIcon::PauseEnd: return tr("Pause at end: holds the last frame");
+                case CueIcon::Clear: return tr("Clear at end: black when the cue ends");
+                case CueIcon::Goto: return tr("Goto: after this cue, jump to another one");
+                case CueIcon::Count: break;
+                }
+                return {};
+            };
+            for (int i = 0; i < static_cast<int>(CueIcon::Count); ++i)
+                if (CueDelegate::iconRect(row, i).contains(pos))
+                    tip = name(i) + QStringLiteral("\n") + tr("Click to turn on / off (Ctrl+Z undoes).");
+            if (tip.isEmpty() && idx.row() == playing_ && CueDelegate::thumbButtonRect(row).contains(pos))
+                tip = tr("Use the current frame as the thumbnail (Ctrl+P)");
+        }
+        if (tip.isEmpty()) QToolTip::hideText();
+        else QToolTip::showText(he->globalPos(), tip, this);
+        return true;
+    }
     // A lista não "come" o ESPAÇO: fica para o play/pausa.
     if (e->type() == QEvent::ShortcutOverride) {
         auto* ke = static_cast<QKeyEvent*>(e);

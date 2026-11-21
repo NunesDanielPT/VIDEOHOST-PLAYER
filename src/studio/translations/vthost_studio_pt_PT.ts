@@ -333,6 +333,10 @@
         <translation>(máx ≈ %1)</translation>
     </message>
     <message>
+        <source>&lt;h3&gt;Bitfocus Companion&lt;/h3&gt;&lt;ol&gt;&lt;li&gt;Here: Settings → Network → &lt;b&gt;Allow control by OSC&lt;/b&gt;, choose the network card, and write the &lt;b&gt;Companion IP&lt;/b&gt; (127.0.0.1 if Companion runs on this PC).&lt;/li&gt;&lt;li&gt;In Companion: Connections → add &lt;b&gt;Imimot Mitti&lt;/b&gt;. Mitti Connection: &lt;b&gt;Manual&lt;/b&gt;, IP address: &lt;b&gt;%1&lt;/b&gt;. Feedback port: &lt;b&gt;%2&lt;/b&gt;.&lt;/li&gt;&lt;li&gt;Use the module's presets: Play / Pause, Play Cue by ID (one button per cue, with its name), GOTO 30/20/10, previous / next, time remaining &lt;code&gt;$(mitti:cueTimeLeft)&lt;/code&gt;...&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;The cue ID is the number in the playlist (or the text you wrote in ID).&lt;/p&gt;&lt;h3&gt;Commands (UDP port %3)&lt;/h3&gt;&lt;table cellspacing=4&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/play&lt;/code&gt;, &lt;code&gt;/mitti/togglePlay&lt;/code&gt;, &lt;code&gt;/mitti/stop&lt;/code&gt; (pause)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/panic&lt;/code&gt; — stop everything (black)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/playCueWithCueID "3"&lt;/code&gt;, &lt;code&gt;/mitti/playCueAtIndex 3&lt;/code&gt; (add &lt;code&gt;ForceCut&lt;/code&gt; for no transition)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/jumpToNextCue&lt;/code&gt;, &lt;code&gt;/mitti/jumpToPrevCue&lt;/code&gt;, &lt;code&gt;/mitti/goto30&lt;/code&gt; / &lt;code&gt;goto20&lt;/code&gt; / &lt;code&gt;goto10&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/mainFader 0..1&lt;/code&gt; — master volume&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/testPattern&lt;/code&gt; (toggle, or 1 / 0) — test card. Not in the Mitti module: send it with a &lt;b&gt;Generic OSC&lt;/b&gt; connection.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;p&gt;State sent to Companion: &lt;code&gt;/mitti/cueTimeLeft&lt;/code&gt; (-HH:MM:SS), &lt;code&gt;cueTimeElapsed&lt;/code&gt;, &lt;code&gt;currentCueID&lt;/code&gt;, &lt;code&gt;currentCueName&lt;/code&gt;, &lt;code&gt;togglePlay&lt;/code&gt; (1 = playing)...&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;Bitfocus Companion&lt;/h3&gt;&lt;ol&gt;&lt;li&gt;Aqui: Definições → Rede → &lt;b&gt;Permitir controlo por OSC&lt;/b&gt;, escolha a placa de rede e escreva o &lt;b&gt;IP do Companion&lt;/b&gt; (127.0.0.1 se o Companion estiver neste PC).&lt;/li&gt;&lt;li&gt;No Companion: Connections → adicione &lt;b&gt;Imimot Mitti&lt;/b&gt;. Mitti Connection: &lt;b&gt;Manual&lt;/b&gt;, IP address: &lt;b&gt;%1&lt;/b&gt;. Feedback port: &lt;b&gt;%2&lt;/b&gt;.&lt;/li&gt;&lt;li&gt;Use os presets do módulo: Play / Pause, Play Cue by ID (um botão por cue, com o nome), GOTO 30/20/10, anterior / seguinte, tempo que falta &lt;code&gt;$(mitti:cueTimeLeft)&lt;/code&gt;...&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;O ID da cue é o número na playlist (ou o texto que escreveu no ID).&lt;/p&gt;&lt;h3&gt;Comandos (porta UDP %3)&lt;/h3&gt;&lt;table cellspacing=4&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/play&lt;/code&gt;, &lt;code&gt;/mitti/togglePlay&lt;/code&gt;, &lt;code&gt;/mitti/stop&lt;/code&gt; (pausa)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/panic&lt;/code&gt; — pára tudo (preto)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/playCueWithCueID "3"&lt;/code&gt;, &lt;code&gt;/mitti/playCueAtIndex 3&lt;/code&gt; (junte &lt;code&gt;ForceCut&lt;/code&gt; para sem transição)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/jumpToNextCue&lt;/code&gt;, &lt;code&gt;/mitti/jumpToPrevCue&lt;/code&gt;, &lt;code&gt;/mitti/goto30&lt;/code&gt; / &lt;code&gt;goto20&lt;/code&gt; / &lt;code&gt;goto10&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/mainFader 0..1&lt;/code&gt; — volume geral&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/testPattern&lt;/code&gt; (alterna, ou 1 / 0) — test card. Não existe no módulo do Mitti: envie-o com uma ligação &lt;b&gt;Generic OSC&lt;/b&gt;.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;p&gt;Estado enviado para o Companion: &lt;code&gt;/mitti/cueTimeLeft&lt;/code&gt; (-HH:MM:SS), &lt;code&gt;cueTimeElapsed&lt;/code&gt;, &lt;code&gt;currentCueID&lt;/code&gt;, &lt;code&gt;currentCueName&lt;/code&gt;, &lt;code&gt;togglePlay&lt;/code&gt; (1 = a tocar)...&lt;/p&gt;</translation>
+    </message>
+    <message>
         <source>About VIDEOHOST PLAYER</source>
         <translation>Sobre o VIDEOHOST PLAYER</translation>
     </message>
@@ -561,6 +565,18 @@
     <message>
         <source>Normalized %1%2 dB (%3 → %4 LUFS)</source>
         <translation>Normalizado %1%2 dB (%3 → %4 LUFS)</translation>
+    </message>
+    <message>
+        <source>OSC commands (Companion)</source>
+        <translation>Comandos OSC (Companion)</translation>
+    </message>
+    <message>
+        <source>OSC commands (Companion)...</source>
+        <translation>Comandos OSC (Companion)...</translation>
+    </message>
+    <message>
+        <source>OSC: could not open port %1 (%2)</source>
+        <translation>OSC: não foi possível abrir a porta %1 (%2)</translation>
     </message>
     <message>
         <source>Open logs folder</source>
@@ -805,6 +821,10 @@
         <translation>limitado pelo pico</translation>
     </message>
     <message>
+        <source>the IP of this PC</source>
+        <translation>o IP deste PC</translation>
+    </message>
+    <message>
         <source>vthost-watchdog was not found next to the Studio.</source>
         <translation>O vthost-watchdog não foi encontrado junto do Studio.</translation>
     </message>
@@ -943,6 +963,30 @@
 <context>
     <name>PlaylistView</name>
     <message>
+        <source>Clear at end: black when the cue ends</source>
+        <translation>Apagar no fim: preto quando a cue acaba</translation>
+    </message>
+    <message>
+        <source>Click to turn on / off (Ctrl+Z undoes).</source>
+        <translation>Clique para ligar / desligar (Ctrl+Z desfaz).</translation>
+    </message>
+    <message>
+        <source>Crossfade from the previous cue</source>
+        <translation>Crossfade a partir da cue anterior</translation>
+    </message>
+    <message>
+        <source>Fade in from black</source>
+        <translation>Fade in a partir do preto</translation>
+    </message>
+    <message>
+        <source>Fade out to black at the end</source>
+        <translation>Fade out para preto no fim</translation>
+    </message>
+    <message>
+        <source>Goto: after this cue, jump to another one</source>
+        <translation>Ir para: depois desta cue, salta para outra</translation>
+    </message>
+    <message>
         <source>Holding last frame</source>
         <translation>No último frame</translation>
     </message>
@@ -951,12 +995,32 @@
         <translation>A carregar...</translation>
     </message>
     <message>
+        <source>Loop: repeat the cue (number of repeats in the Inspector)</source>
+        <translation>Loop: repete a cue (número de repetições no Inspector)</translation>
+    </message>
+    <message>
+        <source>Pause at end: holds the last frame</source>
+        <translation>Pausa no fim: fica na última imagem</translation>
+    </message>
+    <message>
+        <source>Pause at start: the cue waits on its first frame for Play (Space)</source>
+        <translation>Pausa no início: a cue espera na primeira imagem pelo Play (Espaço)</translation>
+    </message>
+    <message>
         <source>Paused</source>
         <translation>Em pausa</translation>
     </message>
     <message>
         <source>Plays: %1</source>
         <translation>Repetições: %1</translation>
+    </message>
+    <message>
+        <source>Sound on / off (mute)</source>
+        <translation>Som ligado / desligado (mute)</translation>
+    </message>
+    <message>
+        <source>Use the current frame as the thumbnail (Ctrl+P)</source>
+        <translation>Usar a imagem actual como miniatura (Ctrl+P)</translation>
     </message>
 </context>
 <context>
@@ -1017,6 +1081,10 @@
         <translation>Acima do normal (recomendado)</translation>
     </message>
     <message>
+        <source>Accept commands only from the Companion IP</source>
+        <translation>Aceitar comandos só do IP do Companion</translation>
+    </message>
+    <message>
         <source>Action</source>
         <translation>Acção</translation>
     </message>
@@ -1033,6 +1101,10 @@
         <translation>Todas as placas de rede</translation>
     </message>
     <message>
+        <source>Allow control by OSC (Companion, Stream Deck...)</source>
+        <translation>Permitir controlo por OSC (Companion, Stream Deck...)</translation>
+    </message>
+    <message>
         <source>Ask before quitting</source>
         <translation>Perguntar antes de sair</translation>
     </message>
@@ -1045,6 +1117,10 @@
         <translation>Áudio</translation>
     </message>
     <message>
+        <source>Bitfocus Companion (OSC)</source>
+        <translation>Bitfocus Companion (OSC)</translation>
+    </message>
+    <message>
         <source>Check for updates automatically (at startup and every 30 minutes)</source>
         <translation>Procurar atualizações automaticamente (ao arrancar e de 30 em 30 minutos)</translation>
     </message>
@@ -1055,6 +1131,10 @@
     <message>
         <source>Closing VIDEOHOST PLAYER never stops the engine: the show keeps running.</source>
         <translation>Fechar o VIDEOHOST PLAYER nunca pára o motor: o show continua.</translation>
+    </message>
+    <message>
+        <source>Companion IP:</source>
+        <translation>IP do Companion:</translation>
     </message>
     <message>
         <source>Countdown</source>
@@ -1149,6 +1229,10 @@
         <translation>SHIFT para tocar sem transição (corte)</translation>
     </message>
     <message>
+        <source>In Companion add the connection "Imimot Mitti" with the IP of this PC (Manual) and feedback port 51001. Keep the receive port at 51000: the Mitti module always sends there. Its presets work: play, pause, play cue by ID, GOTO, time remaining... Help → OSC commands lists everything.</source>
+        <translation>No Companion adicione a ligação "Imimot Mitti" com o IP deste PC (Manual) e a porta de feedback 51001. Mantenha a porta de receção em 51000: o módulo do Mitti envia sempre para lá. Os presets funcionam: play, pausa, tocar cue por ID, GOTO, tempo que falta... Ajuda → Comandos OSC tem a lista completa.</translation>
+    </message>
+    <message>
         <source>In Show Mode editing is locked, the engine cannot be stopped and updates are not installed. Playback controls (play, pause, next, GOTO) keep working.</source>
         <translation>Em Show Mode a edição fica bloqueada, o motor não pode ser parado e não se instalam atualizações. Os controlos de reprodução (play, pausa, seguinte, GOTO) continuam a funcionar.</translation>
     </message>
@@ -1171,6 +1255,10 @@
     <message>
         <source>Network</source>
         <translation>Rede</translation>
+    </message>
+    <message>
+        <source>Network card (OSC):</source>
+        <translation>Placa de rede (OSC):</translation>
     </message>
     <message>
         <source>Network card:</source>
@@ -1265,6 +1353,10 @@
         <translation>Sair</translation>
     </message>
     <message>
+        <source>Receive on port:</source>
+        <translation>Receber na porta:</translation>
+    </message>
+    <message>
         <source>Red when less than:</source>
         <translation>Vermelho quando faltar menos de:</translation>
     </message>
@@ -1295,6 +1387,10 @@
     <message>
         <source>Select the cue on air automatically</source>
         <translation>Selecionar automaticamente a cue no ar</translation>
+    </message>
+    <message>
+        <source>Send state to port:</source>
+        <translation>Enviar o estado para a porta:</translation>
     </message>
     <message>
         <source>Set In / Out</source>
@@ -1375,6 +1471,10 @@
     <message>
         <source>Workspace preview frame rate:</source>
         <translation>Fotogramas por segundo do preview do Workspace:</translation>
+    </message>
+    <message>
+        <source>e.g. 192.168.1.50 (127.0.0.1 if Companion runs on this PC)</source>
+        <translation>ex. 192.168.1.50 (127.0.0.1 se o Companion estiver neste PC)</translation>
     </message>
     <message>
         <source>© %1 %2. All rights reserved.</source>

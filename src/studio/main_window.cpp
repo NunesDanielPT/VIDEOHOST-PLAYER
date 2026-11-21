@@ -3,6 +3,7 @@
 #include "app_info.h"
 #include "countdown_server.h"
 #include "countdown_view.h"
+#include "osc_server.h"
 #include "inspector_panel.h"
 #include "outputs_dialog.h"
 #include "prefs.h"
@@ -271,6 +272,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(&pushTimer_, &QTimer::timeout, this, &MainWindow::pushToEngine);
 
     // Countdown: o servidor web responde com o estado interpolado no momento do pedido.
+    osc_ = new OscServer(this);
+    connect(osc_, &OscServer::messageReceived, this, &MainWindow::onOscMessage);
+    oscTimer_.setInterval(100); // tempo que falta para o Companion, 10×/s
+    connect(&oscTimer_, &QTimer::timeout, this, [this] { sendOscState(false); });
+
     countdownServer_ = new CountdownServer(
         [this] {
             QByteArray j = QByteArray::fromStdString(countdownJson(currentCountdown(), project_.name));
@@ -618,6 +624,7 @@ void MainWindow::buildMenus() {
 
     auto* help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("Check for updates..."), this, [this] { checkForUpdates(true); });
+    help->addAction(tr("OSC commands (Companion)..."), this, &MainWindow::showOscHelp);
     help->addSeparator();
     help->addAction(tr("About VIDEOHOST PLAYER"), this, [this] { openSettings(SettingsDialog::kAboutTab); });
 }
@@ -657,9 +664,209 @@ void MainWindow::updatePerf() {
         }
         parts << fps;
     }
+    if (osc_ && osc_->isListening()) parts.prepend(QStringLiteral("OSC %1").arg(osc_->config().port));
     perfLabel_->setText(parts.join(QStringLiteral("  ·  ")));
     perfLabel_->setToolTip(tip.join(QStringLiteral("\n")));
     perfLabel_->setStyleSheet(warn ? QStringLiteral("color: #e0a030; padding: 0 8px;") : QStringLiteral("color: #8a8a8a; padding: 0 8px;"));
+}
+
+// ------------------------------------------------------------------ OSC (Companion)
+
+void MainWindow::applyOsc() {
+    OscServer::Config c;
+    c.enabled = prefs::oscEnabled();
+    c.bindAddress = prefs::oscBindAddress();
+    c.port = static_cast<quint16>(std::clamp(prefs::oscPort(), 1024, 65535));
+    c.feedbackHost = prefs::oscFeedbackHost();
+    c.feedbackPort = static_cast<quint16>(std::clamp(prefs::oscFeedbackPort(), 1024, 65535));
+    c.onlyFromFeedbackHost = prefs::oscOnlyFromFeedbackHost();
+    QString err;
+    if (!osc_->configure(c, &err)) infoLabel_->setText(tr("OSC: could not open port %1 (%2)").arg(c.port).arg(err));
+    if (osc_->isListening()) {
+        oscPlaylistSignature_.clear();
+        sendOscState(true);
+        oscTimer_.start();
+    } else {
+        oscTimer_.stop();
+    }
+    updatePerf();
+}
+
+QString MainWindow::cueOscId(int index) const {
+    if (index < 0 || index >= static_cast<int>(project_.cues.size())) return QStringLiteral("-");
+    const Cue& q = project_.cues[static_cast<std::size_t>(index)];
+    // Como o módulo do Companion: maiúsculas, no máximo 6 caracteres.
+    return q.label.empty() ? QString::number(index + 1) : qs(q.label).toUpper().left(6);
+}
+
+int MainWindow::cueByOscId(const QString& raw) const {
+    const QString id = raw.trimmed().toUpper();
+    if (id.isEmpty()) return -1;
+    for (int i = 0; i < static_cast<int>(project_.cues.size()); ++i)
+        if (cueOscId(i) == id) return i;
+    bool ok = false;
+    const int n = id.toInt(&ok);
+    return ok && n >= 1 && n <= static_cast<int>(project_.cues.size()) ? n - 1 : -1;
+}
+
+void MainWindow::onOscMessage(const osc::Message& m) {
+    // Protocolo do Mitti: /mitti/<comando> [valor]. Também aceita /videohost/<comando>.
+    QString addr = qs(m.address);
+    if (addr.startsWith(QStringLiteral("/mitti/"))) addr = addr.mid(7);
+    else if (addr.startsWith(QStringLiteral("/videohost/"))) addr = addr.mid(11);
+    else return;
+    const QString arg = qs(m.stringArg());
+    double num = 0.0;
+    const bool hasNum = m.numberArg(num);
+    const bool connected = engine_->isConnected();
+    auto transport = [this](protocol::TransportAction a) {
+        protocol::Command c;
+        c.type = protocol::CommandType::Transport;
+        c.action = a;
+        engine_->send(c);
+    };
+    const QString state = engine_->hasStatus() ? qs(engine_->lastStatus().state) : QString();
+    const bool onAir = state == QStringLiteral("playing") || state == QStringLiteral("paused") ||
+                       state == QStringLiteral("loading") || state == QStringLiteral("ended");
+
+    if (addr == QStringLiteral("ping")) {
+        osc_->send(QStringLiteral("/mitti/pong"), QString(), true);
+    } else if (addr == QStringLiteral("resendOSCFeedback")) {
+        oscPlaylistSignature_.clear();
+        sendOscState(true);
+    } else if (!connected) {
+        return; // comandos de reprodução precisam do motor
+    } else if (addr == QStringLiteral("togglePlay")) {
+        playPause();
+    } else if (addr == QStringLiteral("play")) {
+        if (state == QStringLiteral("paused")) transport(protocol::TransportAction::Resume);
+        else if (!onAir || state == QStringLiteral("ended")) playPause();
+    } else if (addr == QStringLiteral("stop") || addr == QStringLiteral("pause")) {
+        transport(protocol::TransportAction::Pause); // no Mitti "stop" = pausa
+    } else if (addr == QStringLiteral("panic") || addr == QStringLiteral("stopAll")) {
+        stopPlayback();
+    } else if (addr == QStringLiteral("rewind")) {
+        if (playingCue_ >= 0) seekTo(project_.cues[static_cast<std::size_t>(playingCue_)].inPoint);
+    } else if (addr == QStringLiteral("jumpToNextCue")) {
+        nextCue();
+    } else if (addr == QStringLiteral("jumpToPrevCue")) {
+        previousCue();
+    } else if (addr == QStringLiteral("selectNextCue") || addr == QStringLiteral("selectPrevCue")) {
+        const int n = static_cast<int>(project_.cues.size());
+        if (n > 0) playlist_->selectIndex(std::clamp(selectedCue() + (addr == QStringLiteral("selectNextCue") ? 1 : -1), 0, n - 1));
+    } else if (addr == QStringLiteral("jumpToSelectedCue") || addr == QStringLiteral("playSelectedCue") ||
+               addr == QStringLiteral("playSelectedCueForceCut")) {
+        if (selectedCue() >= 0) playCue(selectedCue(), addr.endsWith(QStringLiteral("ForceCut")));
+    } else if (addr == QStringLiteral("playCueWithCueID") || addr == QStringLiteral("playCueWithCueIDForceCut")) {
+        const int i = cueByOscId(arg);
+        if (i >= 0) playCue(i, addr.endsWith(QStringLiteral("ForceCut")));
+    } else if (addr == QStringLiteral("playCueAtIndex") || addr == QStringLiteral("playCueAtIndexForceCut")) {
+        if (hasNum && num >= 1 && num <= static_cast<double>(project_.cues.size()))
+            playCue(static_cast<int>(num) - 1, addr.endsWith(QStringLiteral("ForceCut")));
+    } else if (addr == QStringLiteral("playCueWithName") || addr == QStringLiteral("playCueWithNameForceCut") ||
+               addr == QStringLiteral("jumpToCueWithName")) {
+        for (int i = 0; i < static_cast<int>(project_.cues.size()); ++i)
+            if (qs(project_.cues[static_cast<std::size_t>(i)].displayName()).compare(arg, Qt::CaseInsensitive) == 0) {
+                playCue(i, addr.endsWith(QStringLiteral("ForceCut")));
+                break;
+            }
+    } else if (addr == QStringLiteral("goto30") || addr == QStringLiteral("goto20") || addr == QStringLiteral("goto10")) {
+        gotoRemaining(addr.mid(4).toDouble());
+    } else if (addr == QStringLiteral("gotoRemaining") && hasNum) {
+        gotoRemaining(std::clamp(num, 0.0, 36000.0));
+    } else if (addr == QStringLiteral("mainFader") && hasNum) {
+        // 0..1 como no Mitti (1 = 0 dB).
+        const double db = num <= 0.001 ? -60.0 : std::clamp(20.0 * std::log10(num), -60.0, 12.0);
+        master_->setValue(static_cast<int>(std::lround(db * 10.0)));
+    } else if (addr == QStringLiteral("testPattern") || addr == QStringLiteral("testCard")) {
+        testBtn_->setChecked(hasNum ? num != 0.0 : !testBtn_->isChecked());
+    } else if (addr.endsWith(QStringLiteral("/jump")) || addr.endsWith(QStringLiteral("/play"))) {
+        const int i = cueByOscId(addr.section(QLatin1Char('/'), 0, 0));
+        if (i >= 0) playCue(i);
+    } else if (addr.endsWith(QStringLiteral("/select"))) {
+        const int i = cueByOscId(addr.section(QLatin1Char('/'), 0, 0));
+        if (i >= 0) playlist_->selectIndex(i);
+    }
+    sendOscState(false);
+}
+
+void MainWindow::sendOscState(bool force) {
+    if (!osc_ || !osc_->isListening()) return;
+    auto hms = [](double s, bool up) {
+        s = std::max(0.0, s);
+        const qint64 t = up ? static_cast<qint64>(std::ceil(s - 1e-6)) : static_cast<qint64>(std::floor(s));
+        return QStringLiteral("%1:%2:%3")
+            .arg(t / 3600, 2, 10, QLatin1Char('0'))
+            .arg((t / 60) % 60, 2, 10, QLatin1Char('0'))
+            .arg(t % 60, 2, 10, QLatin1Char('0'));
+    };
+    auto name = [this](int i) {
+        return i >= 0 && i < static_cast<int>(project_.cues.size()) ? qs(project_.cues[static_cast<std::size_t>(i)].displayName())
+                                                                     : QStringLiteral("-");
+    };
+    // Lista de cues (só quando muda): dá os botões "Play Cue <ID>" do Companion com o nome.
+    QString sig;
+    for (int i = 0; i < static_cast<int>(project_.cues.size()); ++i) sig += cueOscId(i) + QLatin1Char('\x1f') + name(i) + QLatin1Char('\x1e');
+    if (force || sig != oscPlaylistSignature_) {
+        oscPlaylistSignature_ = sig;
+        for (int i = 0; i < static_cast<int>(project_.cues.size()); ++i)
+            osc_->send(QStringLiteral("/mitti/%1/cueName").arg(cueOscId(i)), name(i), true);
+        force = true;
+    }
+    const auto& s = engine_->lastStatus();
+    const bool hasStatus = engine_->isConnected() && engine_->hasStatus();
+    const int cur = hasStatus && s.state != "stopped" ? playingCue_ : -1;
+    const int base = cur >= 0 ? cur : selectedCue();
+    osc_->send(QStringLiteral("/mitti/togglePlay"), hasStatus && s.state == "playing" ? 1 : 0, force);
+    osc_->send(QStringLiteral("/mitti/currentCueID"), cur >= 0 ? cueOscId(cur) : QStringLiteral("-"), force);
+    osc_->send(QStringLiteral("/mitti/currentCueName"), cur >= 0 ? name(cur) : QStringLiteral("-"), force);
+    osc_->send(QStringLiteral("/mitti/previousCueName"), name(base - 1), force);
+    osc_->send(QStringLiteral("/mitti/nextCueName"), name(cur >= 0 ? project_.nextCue(cur) : base + 1), force);
+    osc_->send(QStringLiteral("/mitti/selectedCueID"), selectedCue() >= 0 ? cueOscId(selectedCue()) : QStringLiteral("-"), force);
+    osc_->send(QStringLiteral("/mitti/selectedCueName"), name(selectedCue()), force);
+    const Countdown c = currentCountdown();
+    if (cur >= 0 && c.active) {
+        osc_->send(QStringLiteral("/mitti/cueTimeLeft"), QStringLiteral("-") + hms(c.remaining, true), force);
+        osc_->send(QStringLiteral("/mitti/cueTimeElapsed"), hms(c.elapsed, false), force);
+        osc_->send(QStringLiteral("/mitti/currentCueTRT"), hms(c.duration, true), force);
+    }
+    osc_->send(QStringLiteral("/mitti/toggleVideoOutputs"), testBtn_->isChecked() ? 0 : 1, force);
+}
+
+void MainWindow::showOscHelp() {
+    const QString ip = prefs::oscBindAddress().isEmpty() ? tr("the IP of this PC") : prefs::oscBindAddress();
+    QMessageBox box(this);
+    box.setWindowTitle(tr("OSC commands (Companion)"));
+    box.setTextFormat(Qt::RichText);
+    box.setText(tr("<h3>Bitfocus Companion</h3>"
+                   "<ol>"
+                   "<li>Here: Settings → Network → <b>Allow control by OSC</b>, choose the network card, and write the "
+                   "<b>Companion IP</b> (127.0.0.1 if Companion runs on this PC).</li>"
+                   "<li>In Companion: Connections → add <b>Imimot Mitti</b>. Mitti Connection: <b>Manual</b>, IP "
+                   "address: <b>%1</b>. Feedback port: <b>%2</b>.</li>"
+                   "<li>Use the module's presets: Play / Pause, Play Cue by ID (one button per cue, with its name), "
+                   "GOTO 30/20/10, previous / next, time remaining <code>$(mitti:cueTimeLeft)</code>...</li>"
+                   "</ol>"
+                   "<p>The cue ID is the number in the playlist (or the text you wrote in ID).</p>"
+                   "<h3>Commands (UDP port %3)</h3>"
+                   "<table cellspacing=4>"
+                   "<tr><td><code>/mitti/play</code>, <code>/mitti/togglePlay</code>, <code>/mitti/stop</code> (pause)</td></tr>"
+                   "<tr><td><code>/mitti/panic</code> — stop everything (black)</td></tr>"
+                   "<tr><td><code>/mitti/playCueWithCueID \"3\"</code>, <code>/mitti/playCueAtIndex 3</code> "
+                   "(add <code>ForceCut</code> for no transition)</td></tr>"
+                   "<tr><td><code>/mitti/jumpToNextCue</code>, <code>/mitti/jumpToPrevCue</code>, "
+                   "<code>/mitti/goto30</code> / <code>goto20</code> / <code>goto10</code></td></tr>"
+                   "<tr><td><code>/mitti/mainFader 0..1</code> — master volume</td></tr>"
+                   "<tr><td><code>/mitti/testPattern</code> (toggle, or 1 / 0) — test card. Not in the Mitti module: "
+                   "send it with a <b>Generic OSC</b> connection.</td></tr>"
+                   "</table>"
+                   "<p>State sent to Companion: <code>/mitti/cueTimeLeft</code> (-HH:MM:SS), "
+                   "<code>cueTimeElapsed</code>, <code>currentCueID</code>, <code>currentCueName</code>, "
+                   "<code>togglePlay</code> (1 = playing)...</p>")
+                    .arg(ip)
+                    .arg(prefs::oscFeedbackPort())
+                    .arg(prefs::oscPort()));
+    box.exec();
 }
 
 // ------------------------------------------------------------------ projecto
@@ -1055,7 +1262,7 @@ void MainWindow::thumbnailFromPlayhead() {
 
 // ------------------------------------------------------------------ reprodução
 
-void MainWindow::playCue(int index) {
+void MainWindow::playCue(int index, bool forceCut) {
     if (index < 0 || index >= static_cast<int>(project_.cues.size())) return;
     // Garante que o motor tem a versão mais recente antes de tocar.
     if (pushTimer_.isActive()) {
@@ -1066,7 +1273,7 @@ void MainWindow::playCue(int index) {
     c.type = protocol::CommandType::Play;
     c.cue = index;
     // SHIFT = sem transição (corte seco).
-    c.cut = prefs::shiftSkipsTransitions() && (QApplication::keyboardModifiers() & Qt::ShiftModifier);
+    c.cut = forceCut || (prefs::shiftSkipsTransitions() && (QApplication::keyboardModifiers() & Qt::ShiftModifier));
     engine_->send(c, [this](const protocol::ParsedResponse& r) {
         if (!r.ok) infoLabel_->setText(tr("Play failed: %1").arg(qs(r.error)));
     });
@@ -1168,6 +1375,7 @@ void MainWindow::setMasterVolume(double db) {
 void MainWindow::applyPreferences() {
     sendEngineSettings();
     applyCountdownServer();
+    applyOsc();
     playlist_->refresh();
     updateSelection();
     pushTimer_.start(); // alvo de normalização pode ter mudado
