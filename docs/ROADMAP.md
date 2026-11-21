@@ -40,14 +40,25 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [ ] Sincronização de saídas (vsync partilhado)
 - [ ] Testes de resistência de 72 h e com ficheiros corrompidos
 
-## Fase 3 — Mapping
-- [ ] Transformação de perspetiva por layer e por saída
-- [ ] Mesh warp
-- [ ] Máscaras
-- [ ] Soft-edge blending entre projetores
+## Fase 3 — Mapping (0.5.0)
+- [x] Vários canvas com resolução à medida (favoritos: HD, 4K, 3×HD, vertical…)
+- [x] Layers atribuídas a canvas; saídas mostram uma região de um canvas
+- [x] Assistente de layout: N×M saídas com sobreposição para soft-edge
+- [x] Warp por saída: perspetiva (4 cantos) + grelha de warping (Catmull-Rom), editor ao vivo com setas
+- [x] Soft-edge por lado (suavidade, gama) e brilho por saída
+- [x] Test card contínuo em todas as saídas
+- [x] Solo de layer e barra de ícones das layers (como no Premiere)
+- [ ] Máscaras por layer e por saída
+- [ ] Warp por layer (perspetiva da media na superfície)
 - [ ] Importar projetos do MapSim (projetores, zonas de blend)
 
-## Fase 4 — Controlo
+## Fase 3.5 — Áudio (0.6.0)
+- [ ] Som por layer (WASAPI), escolha da placa de som
+- [ ] Volume por media e por layer, mute
+- [ ] Normalização: análise de loudness (LUFS) por media e ganho automático
+
+## Fase 4 — Controlo (0.7.0)
+- [ ] OSC entrada/saída, MIDI learn, DMX/Art-Net de entrada
 - [ ] Várias timelines por projeto, timelines disparadas a partir do Dashboard
 - [ ] OSC, MIDI, Art-Net/DMX de entrada
 - [ ] Timecode LTC / MTC

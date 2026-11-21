@@ -32,6 +32,10 @@
 
 **Núcleo** (`src/core`): portátil, sem Windows nem Qt, testado em Linux com ASan/UBSan e em Windows. Projeto (parser tolerante), protocolo, escrita atómica, log, estado do show.
 
+## Canvas e mapping
+
+Cada canvas é um render target com a sua resolução; as layers compõem-se no canvas a que pertencem. Cada saída desenha uma **região** de um canvas através de uma malha de 48×48 quads (`buildWarpGrid`, `src/core/mapping.cpp`): perspetiva por homografia (4 cantos) composta com uma grelha de pontos interpolada por Catmull-Rom (pontos-fantasma nas bordas: grelha regular = identidade exata). O shader de saída aplica soft-edge por lado (curva em S + gama, as duas metades somam 1 em luz linear), brilho e, se ligado, o test card procedural no espaço do canvas — contínuo entre saídas, para alinhar projetores. O editor de mapping envia `set_output_mapping` ao vivo; o motor só reconstrói a malha da saída, sem recarregar o projeto.
+
 ## Saídas
 
 | Tipo | Como funciona |
