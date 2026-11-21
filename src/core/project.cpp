@@ -1,6 +1,7 @@
 #include "vthost/core/project.h"
 
 #include "vthost/core/atomic_file.h"
+#include "mapping_json.h"
 
 #include <algorithm>
 #include <cmath>
@@ -75,6 +76,20 @@ const Clip* Timeline::findClip(const std::string& clipId) const {
     return nullptr;
 }
 
+const Canvas* Project::findCanvas(const std::string& id) const {
+    for (const auto& c : canvases)
+        if (c.id == id) return &c;
+    return nullptr;
+}
+
+const Canvas& Project::canvasOf(const std::string& canvasId) const {
+    static const Canvas fallback{"C1", "Canvas 1", 1920, 1080};
+    if (const Canvas* c = findCanvas(canvasId)) return *c;
+    return canvases.empty() ? fallback : canvases.front();
+}
+
+std::string Project::resolveCanvasId(const std::string& canvasId) const { return canvasOf(canvasId).id; }
+
 const Timeline* Project::findTimeline(const std::string& id) const {
     for (const auto& t : timelines)
         if (t.id == id) return &t;
@@ -138,7 +153,8 @@ const Layer* Project::findLayer(const std::string& id) const {
 
 Project Project::makeDefault() {
     Project p;
-    p.layers = {{"L1", "Layer 1", {}, true}, {"L2", "Layer 2", {}, true}};
+    p.canvases = {{"C1", "Canvas 1", 1920, 1080}};
+    p.layers = {{"L1", "Layer 1", "", {}, true}, {"L2", "Layer 2", "", {}, true}};
     p.timelines = {{"T1", "Timeline 1", {}, {}}};
     for (int i = 1; i <= 4; ++i) p.columns.push_back({"Cue " + std::to_string(i), 1.0, {}});
     Output o;
@@ -195,9 +211,28 @@ ParseResult parseProject(const std::string& text) {
             r.warnings.push_back("projecto criado numa versão mais recente do VTHOST");
         p.name = getString(j, "name", "Untitled");
 
-        if (auto c = j.find("canvas"); c != j.end() && c->is_object()) {
-            p.canvasWidth = std::clamp(getInt(*c, "width", 1920), 16, kMaxCanvasSize);
-            p.canvasHeight = std::clamp(getInt(*c, "height", 1080), 16, kMaxCanvasSize);
+        std::set<std::string> canvasIds;
+        if (auto a = j.find("canvases"); a != j.end() && a->is_array()) {
+            for (const auto& c : *a) {
+                if (!c.is_object()) continue;
+                Canvas cv;
+                cv.id = getString(c, "id");
+                if (cv.id.empty() || !canvasIds.insert(cv.id).second) continue;
+                cv.name = getString(c, "name", cv.id);
+                cv.width = std::clamp(getInt(c, "width", 1920), 16, kMaxCanvasSize);
+                cv.height = std::clamp(getInt(c, "height", 1080), 16, kMaxCanvasSize);
+                p.canvases.push_back(std::move(cv));
+            }
+        }
+        if (p.canvases.empty()) {
+            // Projetos até à 0.4: um só canvas em "canvas": {width, height}.
+            Canvas cv{"C1", "Canvas 1", 1920, 1080};
+            if (auto c = j.find("canvas"); c != j.end() && c->is_object()) {
+                cv.width = std::clamp(getInt(*c, "width", 1920), 16, kMaxCanvasSize);
+                cv.height = std::clamp(getInt(*c, "height", 1080), 16, kMaxCanvasSize);
+            }
+            p.canvases.push_back(cv);
+            canvasIds.insert(cv.id);
         }
 
         std::set<std::string> mediaIds;
@@ -227,6 +262,8 @@ ParseResult parseProject(const std::string& text) {
                     continue;
                 }
                 it.name = getString(l, "name", it.id);
+                it.canvasId = getString(l, "canvas");
+                if (!it.canvasId.empty() && !canvasIds.count(it.canvasId)) it.canvasId.clear();
                 it.props.opacity = getNumber(l, "opacity", 1.0);
                 it.props.blend = blendModeFromString(getString(l, "blend", "normal"));
                 it.props.posX = getNumber(l, "x", 0.0);
@@ -277,6 +314,10 @@ ParseResult parseProject(const std::string& text) {
                 it.ndiName = getString(o, "ndiName");
                 it.ndiAlpha = getBool(o, "ndiAlpha", false);
                 it.deviceId = getString(o, "device");
+                it.canvasId = getString(o, "canvas");
+                if (!it.canvasId.empty() && !canvasIds.count(it.canvasId)) it.canvasId.clear();
+                if (auto mp = o.find("mapping"); mp != o.end()) mappingFromJson(*mp, it.mapping);
+                it.mapping.sanitize();
                 if (it.id.empty() || !outputIds.insert(it.id).second) continue;
                 if (it.name.empty()) it.name = it.id;
                 p.outputs.push_back(std::move(it));
@@ -344,13 +385,17 @@ std::string serializeProject(const Project& p) {
     j["format"] = "vthost-project";
     j["version"] = kProjectFormatVersion;
     j["name"] = p.name;
-    j["canvas"] = {{"width", p.canvasWidth}, {"height", p.canvasHeight}};
+    j["canvases"] = json::array();
+    for (const auto& c : p.canvases)
+        j["canvases"].push_back({{"id", c.id}, {"name", c.name}, {"width", c.width}, {"height", c.height}});
+    // Compatibilidade: versões antigas leem o primeiro canvas daqui.
+    if (!p.canvases.empty()) j["canvas"] = {{"width", p.canvases.front().width}, {"height", p.canvases.front().height}};
     j["media"] = json::array();
     for (const auto& m : p.media)
         j["media"].push_back({{"id", m.id}, {"path", m.path}, {"loopMode", toString(m.loopMode)}});
     j["layers"] = json::array();
     for (const auto& l : p.layers)
-        j["layers"].push_back({{"id", l.id}, {"name", l.name}, {"opacity", l.props.opacity},
+        j["layers"].push_back({{"id", l.id}, {"name", l.name}, {"canvas", l.canvasId}, {"opacity", l.props.opacity},
                                {"blend", toString(l.props.blend)}, {"x", l.props.posX}, {"y", l.props.posY},
                                {"scale", l.props.scale}, {"rotation", l.props.rotation}, {"visible", l.visible},
                                {"locked", l.locked}});
@@ -372,7 +417,9 @@ std::string serializeProject(const Project& p) {
                                 {"windowHeight", o.windowHeight},
                                 {"ndiName", o.ndiName},
                                 {"ndiAlpha", o.ndiAlpha},
-                                {"device", o.deviceId}});
+                                {"device", o.deviceId},
+                                {"canvas", o.canvasId},
+                                {"mapping", mappingToJson(o.mapping)}});
     j["timelines"] = json::array();
     for (const auto& t : p.timelines) {
         json clips = json::array();

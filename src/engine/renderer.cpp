@@ -9,11 +9,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 namespace vthost {
 namespace {
 
-constexpr char kShaderSource[] = R"(
+// ---- Composição das layers no canvas
+constexpr char kLayerShader[] = R"(
 cbuffer Params : register(b0) {
     float4 c01;      // cantos 0 e 1 em NDC (sup-esq, sup-dir)
     float4 c23;      // cantos 2 e 3 em NDC (inf-esq, inf-dir)
@@ -44,6 +46,83 @@ float4 PSMain(VSOut i) : SV_Target {
 }
 )";
 
+// ---- Saídas: região do canvas + warp (malha) + soft-edge + brilho + test card
+constexpr char kOutputShader[] = R"(
+cbuffer OutParams : register(b0) {
+    float4 region;      // x, y, w, h da região no canvas (0..1)
+    float4 blend;       // esquerda, direita, cima, baixo (fração da saída)
+    float smoothness;
+    float gamma;
+    float brightness;
+    float testCard;
+    float2 canvasSize;  // píxeis
+    float2 pad;
+};
+Texture2D tex : register(t0);
+SamplerState smp : register(s0);
+
+struct VSIn { float2 pos : POSITION; float2 uv : TEXCOORD0; };
+struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
+
+VSOut VSMain(VSIn v) {
+    VSOut o;
+    o.pos = float4(v.pos.x * 2.0 - 1.0, 1.0 - v.pos.y * 2.0, 0.0, 1.0);
+    o.uv = v.uv;
+    return o;
+}
+
+float edge(float x) {
+    x = saturate(x);
+    float c = x < 0.5 ? 0.5 * pow(2.0 * x, smoothness) : 1.0 - 0.5 * pow(2.0 * (1.0 - x), smoothness);
+    return pow(max(c, 0.0), 1.0 / gamma);
+}
+
+float lineMask(float d, float w) { return 1.0 - smoothstep(w * 0.5, w * 0.5 + 1.0, abs(d)); }
+
+// Test card contínuo no canvas: o mesmo desenho atravessa todas as saídas,
+// por isso as linhas e círculos têm de coincidir nas zonas de sobreposição.
+float3 testPattern(float2 cuv) {
+    float2 p = cuv * canvasSize;
+    float2 cell = floor(p / 120.0);
+    float checker = fmod(cell.x + cell.y, 2.0);
+    float3 col = lerp(float3(0.16, 0.16, 0.16), float3(0.22, 0.22, 0.22), checker);
+    // Grelha de 8 x 8 divisões.
+    float2 step8 = canvasSize / 8.0;
+    float2 g = p - round(p / step8) * step8;
+    col = lerp(col, float3(0.85, 0.85, 0.85), max(lineMask(g.x, 2.0), lineMask(g.y, 2.0)));
+    // Diagonais.
+    float2 n = cuv;
+    float diag = min(abs(n.x - n.y), abs(n.x - (1.0 - n.y))) * min(canvasSize.x, canvasSize.y);
+    col = lerp(col, float3(0.2, 0.75, 0.9), lineMask(diag, 2.0));
+    // Círculo central e cruz.
+    float2 c = canvasSize * 0.5;
+    float r = 0.45 * min(canvasSize.x, canvasSize.y);
+    col = lerp(col, float3(1.0, 0.53, 0.0), lineMask(length(p - c) - r, 4.0));
+    col = lerp(col, float3(1.0, 0.53, 0.0), max(lineMask(p.x - c.x, 4.0), lineMask(p.y - c.y, 4.0)));
+    // Círculos em cada um dos 4 quadrantes.
+    for (int qx = 0; qx < 2; ++qx)
+        for (int qy = 0; qy < 2; ++qy) {
+            float2 qc = canvasSize * float2(0.25 + 0.5 * qx, 0.25 + 0.5 * qy);
+            col = lerp(col, float3(1, 1, 1), lineMask(length(p - qc) - r * 0.45, 3.0));
+        }
+    // Moldura do canvas.
+    float border = min(min(p.x, p.y), min(canvasSize.x - p.x, canvasSize.y - p.y));
+    col = lerp(col, float3(1.0, 0.53, 0.0), 1.0 - smoothstep(6.0, 7.0, border));
+    return col;
+}
+
+float4 PSMain(VSOut i) : SV_Target {
+    float2 cuv = region.xy + i.uv * region.zw;
+    float3 rgb = testCard > 0.5 ? testPattern(cuv) : tex.Sample(smp, cuv).rgb;
+    float f = 1.0;
+    if (blend.x > 0) f *= edge(i.uv.x / blend.x);
+    if (blend.y > 0) f *= edge((1.0 - i.uv.x) / blend.y);
+    if (blend.z > 0) f *= edge(i.uv.y / blend.z);
+    if (blend.w > 0) f *= edge((1.0 - i.uv.y) / blend.w);
+    return float4(saturate(rgb * brightness * f), 1.0);
+}
+)";
+
 struct alignas(16) Params {
     float corners[4][2];
     float opacity;
@@ -51,10 +130,22 @@ struct alignas(16) Params {
     float pad[2];
 };
 
-bool compile(const char* entry, const char* target, ComPtr<ID3DBlob>& out, std::string* error) {
+struct alignas(16) OutParams {
+    float region[4];
+    float blend[4];
+    float smoothness;
+    float gamma;
+    float brightness;
+    float testCard;
+    float canvasSize[2];
+    float pad[2];
+};
+
+bool compile(const char* src, std::size_t len, const char* entry, const char* target, ComPtr<ID3DBlob>& out,
+             std::string* error) {
     ComPtr<ID3DBlob> err;
-    const HRESULT hr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1, "vthost", nullptr, nullptr,
-                                  entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &out, &err);
+    const HRESULT hr = D3DCompile(src, len, "vthost", nullptr, nullptr, entry, target,
+                                  D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &out, &err);
     if (FAILED(hr)) {
         if (error)
             *error = std::string("shader: ") +
@@ -68,26 +159,14 @@ bool compile(const char* entry, const char* target, ComPtr<ID3DBlob>& out, std::
 void rectCorners(const float r[4], float out[4][2]) {
     const float x0 = r[0] * 2.f - 1.f, x1 = (r[0] + r[2]) * 2.f - 1.f;
     const float y0 = 1.f - r[1] * 2.f, y1 = 1.f - (r[1] + r[3]) * 2.f;
-    out[0][0] = x0; out[0][1] = y0;
-    out[1][0] = x1; out[1][1] = y0;
-    out[2][0] = x0; out[2][1] = y1;
-    out[3][0] = x1; out[3][1] = y1;
-}
-
-// Retângulo que encaixa src em dst mantendo a proporção (letterbox), em 0..1.
-void fitRect(int srcW, int srcH, int dstW, int dstH, float out[4]) {
-    out[0] = 0.f;
-    out[1] = 0.f;
-    out[2] = 1.f;
-    out[3] = 1.f;
-    if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) return;
-    const double s = std::min(static_cast<double>(dstW) / srcW, static_cast<double>(dstH) / srcH);
-    const double w = srcW * s / dstW;
-    const double h = srcH * s / dstH;
-    out[0] = static_cast<float>((1.0 - w) / 2.0);
-    out[1] = static_cast<float>((1.0 - h) / 2.0);
-    out[2] = static_cast<float>(w);
-    out[3] = static_cast<float>(h);
+    out[0][0] = x0;
+    out[0][1] = y0;
+    out[1][0] = x1;
+    out[1][1] = y0;
+    out[2][0] = x0;
+    out[2][1] = y1;
+    out[3][0] = x1;
+    out[3][1] = y1;
 }
 
 ComPtr<ID3D11BlendState> makeBlend(ID3D11Device* dev, bool enable, D3D11_BLEND src, D3D11_BLEND dst,
@@ -107,20 +186,27 @@ ComPtr<ID3D11BlendState> makeBlend(ID3D11Device* dev, bool enable, D3D11_BLEND s
     return s;
 }
 
+bool makeCBuffer(ID3D11Device* dev, UINT size, ComPtr<ID3D11Buffer>& out) {
+    D3D11_BUFFER_DESC cbd{};
+    cbd.ByteWidth = size;
+    cbd.Usage = D3D11_USAGE_DYNAMIC;
+    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    return SUCCEEDED(dev->CreateBuffer(&cbd, nullptr, &out));
+}
+
 } // namespace
 
 bool Renderer::init(std::string* error) {
-    const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0,
-                                        D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0};
+    const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1,
+                                        D3D_FEATURE_LEVEL_10_0};
     const UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
     HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, levels,
-                                   static_cast<UINT>(std::size(levels)), D3D11_SDK_VERSION, &device_,
-                                   nullptr, &ctx_);
+                                   static_cast<UINT>(std::size(levels)), D3D11_SDK_VERSION, &device_, nullptr, &ctx_);
     if (FAILED(hr)) {
         log::warn("GPU indisponível (hr=" + std::to_string(hr) + "), a usar WARP (software)");
         hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags, levels,
-                               static_cast<UINT>(std::size(levels)), D3D11_SDK_VERSION, &device_,
-                               nullptr, &ctx_);
+                               static_cast<UINT>(std::size(levels)), D3D11_SDK_VERSION, &device_, nullptr, &ctx_);
         warp_ = true;
     }
     if (FAILED(hr)) {
@@ -142,21 +228,27 @@ bool Renderer::init(std::string* error) {
         log::info(std::string("GPU: ") + name);
     }
 
-    ComPtr<ID3DBlob> vsb, psb;
-    if (!compile("VSMain", "vs_4_0", vsb, error) || !compile("PSMain", "ps_4_0", psb, error)) return false;
+    ComPtr<ID3DBlob> vsb, psb, ovsb, opsb;
+    if (!compile(kLayerShader, sizeof(kLayerShader) - 1, "VSMain", "vs_4_0", vsb, error) ||
+        !compile(kLayerShader, sizeof(kLayerShader) - 1, "PSMain", "ps_4_0", psb, error) ||
+        !compile(kOutputShader, sizeof(kOutputShader) - 1, "VSMain", "vs_4_0", ovsb, error) ||
+        !compile(kOutputShader, sizeof(kOutputShader) - 1, "PSMain", "ps_4_0", opsb, error))
+        return false;
+    const D3D11_INPUT_ELEMENT_DESC layout[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
     if (FAILED(device_->CreateVertexShader(vsb->GetBufferPointer(), vsb->GetBufferSize(), nullptr, &vs_)) ||
-        FAILED(device_->CreatePixelShader(psb->GetBufferPointer(), psb->GetBufferSize(), nullptr, &ps_))) {
+        FAILED(device_->CreatePixelShader(psb->GetBufferPointer(), psb->GetBufferSize(), nullptr, &ps_)) ||
+        FAILED(device_->CreateVertexShader(ovsb->GetBufferPointer(), ovsb->GetBufferSize(), nullptr, &outVs_)) ||
+        FAILED(device_->CreatePixelShader(opsb->GetBufferPointer(), opsb->GetBufferSize(), nullptr, &outPs_)) ||
+        FAILED(device_->CreateInputLayout(layout, 2, ovsb->GetBufferPointer(), ovsb->GetBufferSize(), &outLayout_))) {
         if (error) *error = "falha a criar shaders";
         return false;
     }
-
-    D3D11_BUFFER_DESC cbd{};
-    cbd.ByteWidth = sizeof(Params);
-    cbd.Usage = D3D11_USAGE_DYNAMIC;
-    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    if (FAILED(device_->CreateBuffer(&cbd, nullptr, &cbuffer_))) {
-        if (error) *error = "falha a criar constant buffer";
+    if (!makeCBuffer(device_.Get(), sizeof(Params), cbuffer_) ||
+        !makeCBuffer(device_.Get(), sizeof(OutParams), outCbuffer_)) {
+        if (error) *error = "falha a criar constant buffers";
         return false;
     }
 
@@ -171,28 +263,27 @@ bool Renderer::init(std::string* error) {
     rd.CullMode = D3D11_CULL_NONE;
     device_->CreateRasterizerState(&rd, &raster_);
 
-    blendNormal_ = makeBlend(device_.Get(), true, D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_ALPHA,
-                             D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_ALPHA);
-    blendAdd_ = makeBlend(device_.Get(), true, D3D11_BLEND_ONE, D3D11_BLEND_ONE, D3D11_BLEND_ONE,
-                          D3D11_BLEND_ONE);
-    blendMultiply_ = makeBlend(device_.Get(), true, D3D11_BLEND_ZERO, D3D11_BLEND_SRC_COLOR,
-                               D3D11_BLEND_ZERO, D3D11_BLEND_ONE);
-    blendScreen_ = makeBlend(device_.Get(), true, D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_COLOR,
-                             D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_ALPHA);
-    blendOpaque_ = makeBlend(device_.Get(), false, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, D3D11_BLEND_ONE,
-                             D3D11_BLEND_ZERO);
+    blendNormal_ = makeBlend(device_.Get(), true, D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_ONE,
+                             D3D11_BLEND_INV_SRC_ALPHA);
+    blendAdd_ = makeBlend(device_.Get(), true, D3D11_BLEND_ONE, D3D11_BLEND_ONE, D3D11_BLEND_ONE, D3D11_BLEND_ONE);
+    blendMultiply_ = makeBlend(device_.Get(), true, D3D11_BLEND_ZERO, D3D11_BLEND_SRC_COLOR, D3D11_BLEND_ZERO,
+                               D3D11_BLEND_ONE);
+    blendScreen_ = makeBlend(device_.Get(), true, D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_COLOR, D3D11_BLEND_ONE,
+                             D3D11_BLEND_INV_SRC_ALPHA);
+    blendOpaque_ =
+        makeBlend(device_.Get(), false, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, D3D11_BLEND_ONE, D3D11_BLEND_ZERO);
     return true;
 }
 
-bool Renderer::resizeCanvas(int width, int height) {
+// ------------------------------------------------------------------ canvas
+
+bool Renderer::ensureCanvas(const std::string& id, int width, int height) {
     width = std::clamp(width, 16, kMaxCanvasSize);
     height = std::clamp(height, 16, kMaxCanvasSize);
-    if (canvas_ && width == canvasW_ && height == canvasH_) return true;
+    auto it = canvases_.find(id);
+    if (it != canvases_.end() && it->second.tex && it->second.w == width && it->second.h == height) return true;
 
-    canvas_.Reset();
-    canvasRtv_.Reset();
-    canvasSrv_.Reset();
-
+    CanvasTarget t;
     D3D11_TEXTURE2D_DESC td{};
     td.Width = static_cast<UINT>(width);
     td.Height = static_cast<UINT>(height);
@@ -202,26 +293,45 @@ bool Renderer::resizeCanvas(int width, int height) {
     td.SampleDesc.Count = 1;
     td.Usage = D3D11_USAGE_DEFAULT;
     td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-    if (FAILED(device_->CreateTexture2D(&td, nullptr, &canvas_)) ||
-        FAILED(device_->CreateRenderTargetView(canvas_.Get(), nullptr, &canvasRtv_)) ||
-        FAILED(device_->CreateShaderResourceView(canvas_.Get(), nullptr, &canvasSrv_))) {
-        log::error("falha a criar canvas " + std::to_string(width) + "x" + std::to_string(height));
-        canvas_.Reset();
+    if (FAILED(device_->CreateTexture2D(&td, nullptr, &t.tex)) ||
+        FAILED(device_->CreateRenderTargetView(t.tex.Get(), nullptr, &t.rtv)) ||
+        FAILED(device_->CreateShaderResourceView(t.tex.Get(), nullptr, &t.srv))) {
+        log::error("falha a criar canvas " + id + " " + std::to_string(width) + "x" + std::to_string(height));
         return false;
     }
-    canvasW_ = width;
-    canvasH_ = height;
-    log::info("canvas " + std::to_string(width) + "x" + std::to_string(height));
+    t.w = width;
+    t.h = height;
+    current_ = nullptr;
+    canvases_[id] = std::move(t);
+    log::info("canvas " + id + " " + std::to_string(width) + "x" + std::to_string(height));
     return true;
 }
 
-void Renderer::beginCanvas() {
-    if (!canvasRtv_) return;
+void Renderer::keepOnlyCanvases(const std::set<std::string>& ids) {
+    current_ = nullptr;
+    for (auto it = canvases_.begin(); it != canvases_.end();) {
+        if (!ids.count(it->first)) it = canvases_.erase(it);
+        else ++it;
+    }
+}
+
+void Renderer::canvasSize(const std::string& id, int& w, int& h) const {
+    auto it = canvases_.find(id);
+    w = it != canvases_.end() ? it->second.w : 0;
+    h = it != canvases_.end() ? it->second.h : 0;
+}
+
+void Renderer::beginCanvas(const std::string& id) {
+    auto it = canvases_.find(id);
+    current_ = it != canvases_.end() ? &it->second : nullptr;
+    if (!current_) return;
+    ID3D11ShaderResourceView* none = nullptr;
+    ctx_->PSSetShaderResources(0, 1, &none);
     const float black[4] = {0.f, 0.f, 0.f, 0.f};
-    ctx_->ClearRenderTargetView(canvasRtv_.Get(), black);
-    ID3D11RenderTargetView* rtv = canvasRtv_.Get();
+    ctx_->ClearRenderTargetView(current_->rtv.Get(), black);
+    ID3D11RenderTargetView* rtv = current_->rtv.Get();
     ctx_->OMSetRenderTargets(1, &rtv, nullptr);
-    D3D11_VIEWPORT vp{0.f, 0.f, static_cast<float>(canvasW_), static_cast<float>(canvasH_), 0.f, 1.f};
+    D3D11_VIEWPORT vp{0.f, 0.f, static_cast<float>(current_->w), static_cast<float>(current_->h), 0.f, 1.f};
     ctx_->RSSetViewports(1, &vp);
 }
 
@@ -237,148 +347,20 @@ void Renderer::setBlend(BlendMode blend, bool opaqueCopy) {
 
 void Renderer::drawLayer(const GpuTexture& tex, const LayerProps& props, float extraOpacity) {
     const float opacity = static_cast<float>(props.opacity) * extraOpacity;
-    if (!tex.valid() || !canvasRtv_ || opacity <= 0.0f) return;
-    const LayerQuad q = computeLayerQuad(props, tex.width, tex.height, canvasW_, canvasH_);
+    if (!tex.valid() || !current_ || opacity <= 0.0f) return;
+    const int cw = current_->w, ch = current_->h;
+    const LayerQuad q = computeLayerQuad(props, tex.width, tex.height, cw, ch);
     const double c = std::cos(q.rotationRad), s = std::sin(q.rotationRad);
     const double local[4][2] = {{-q.halfW, -q.halfH}, {q.halfW, -q.halfH}, {-q.halfW, q.halfH}, {q.halfW, q.halfH}};
     float corners[4][2];
     for (int i = 0; i < 4; ++i) {
         const double x = q.cx + local[i][0] * c - local[i][1] * s;
         const double y = q.cy + local[i][0] * s + local[i][1] * c;
-        corners[i][0] = static_cast<float>(x / canvasW_ * 2.0 - 1.0);
-        corners[i][1] = static_cast<float>(1.0 - y / canvasH_ * 2.0);
+        corners[i][0] = static_cast<float>(x / cw * 2.0 - 1.0);
+        corners[i][1] = static_cast<float>(1.0 - y / ch * 2.0);
     }
     setBlend(props.blend, false);
     drawQuad(tex.srv.Get(), corners, std::clamp(opacity, 0.0f, 1.0f), static_cast<unsigned>(props.blend));
-}
-
-void Renderer::drawCanvasTo(ID3D11RenderTargetView* rtv, int width, int height) {
-    if (!rtv) return;
-    const float black[4] = {0.f, 0.f, 0.f, 1.f};
-    ctx_->ClearRenderTargetView(rtv, black);
-    if (!canvasSrv_) return;
-    ctx_->OMSetRenderTargets(1, &rtv, nullptr);
-    D3D11_VIEWPORT vp{0.f, 0.f, static_cast<float>(width), static_cast<float>(height), 0.f, 1.f};
-    ctx_->RSSetViewports(1, &vp);
-    float rect[4];
-    fitRect(canvasW_, canvasH_, width, height, rect);
-    float corners[4][2];
-    rectCorners(rect, corners);
-    setBlend(BlendMode::Normal, true);
-    drawQuad(canvasSrv_.Get(), corners, 1.0f, 4);
-    // Desliga o canvas como SRV antes de voltar a ser render target no frame seguinte.
-    ID3D11ShaderResourceView* none = nullptr;
-    ctx_->PSSetShaderResources(0, 1, &none);
-}
-
-bool Renderer::ensurePreviewTargets(int w, int h) {
-    if (previewRt_ && w == previewW_ && h == previewH_) return true;
-    previewRt_.Reset();
-    previewRtv_.Reset();
-    for (int i = 0; i < kPreviewRing; ++i) {
-        previewStaging_[i].Reset();
-        previewPending_[i] = false;
-    }
-    D3D11_TEXTURE2D_DESC td{};
-    td.Width = static_cast<UINT>(w);
-    td.Height = static_cast<UINT>(h);
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_DEFAULT;
-    td.BindFlags = D3D11_BIND_RENDER_TARGET;
-    if (FAILED(device_->CreateTexture2D(&td, nullptr, &previewRt_)) ||
-        FAILED(device_->CreateRenderTargetView(previewRt_.Get(), nullptr, &previewRtv_)))
-        return false;
-    td.Usage = D3D11_USAGE_STAGING;
-    td.BindFlags = 0;
-    td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    for (int i = 0; i < kPreviewRing; ++i)
-        if (FAILED(device_->CreateTexture2D(&td, nullptr, &previewStaging_[i]))) {
-            previewRt_.Reset();
-            return false;
-        }
-    previewW_ = w;
-    previewH_ = h;
-    return true;
-}
-
-void Renderer::capturePreview(const PreviewSink& sink) {
-    if (!canvasSrv_) return;
-    int w = 0, h = 0;
-    previewSizeFor(canvasW_, canvasH_, w, h);
-    if (!ensurePreviewTargets(w, h)) return;
-
-    // 1) Reduz o canvas para o alvo do preview e copia para a próxima staging.
-    ID3D11RenderTargetView* rtv = previewRtv_.Get();
-    ctx_->OMSetRenderTargets(1, &rtv, nullptr);
-    D3D11_VIEWPORT vp{0.f, 0.f, static_cast<float>(w), static_cast<float>(h), 0.f, 1.f};
-    ctx_->RSSetViewports(1, &vp);
-    const float full[4] = {0.f, 0.f, 1.f, 1.f};
-    float corners[4][2];
-    rectCorners(full, corners);
-    setBlend(BlendMode::Normal, true);
-    drawQuad(canvasSrv_.Get(), corners, 1.0f, 4);
-    ID3D11ShaderResourceView* none = nullptr;
-    ctx_->PSSetShaderResources(0, 1, &none);
-
-    const int write = previewIndex_;
-    ctx_->CopyResource(previewStaging_[write].Get(), previewRt_.Get());
-    previewPending_[write] = true;
-    previewIndex_ = (previewIndex_ + 1) % kPreviewRing;
-
-    // 2) Lê a staging mais antiga, se a GPU já a tiver acabado (sem esperar).
-    const int read = previewIndex_; // a próxima a ser escrita = a mais antiga
-    if (!previewPending_[read]) return;
-    D3D11_MAPPED_SUBRESOURCE m{};
-    const HRESULT hr = ctx_->Map(previewStaging_[read].Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m);
-    if (hr == DXGI_ERROR_WAS_STILL_DRAWING || FAILED(hr)) return;
-    try {
-        sink(static_cast<const std::uint8_t*>(m.pData), static_cast<int>(m.RowPitch), w, h);
-    } catch (...) {
-    }
-    ctx_->Unmap(previewStaging_[read].Get(), 0);
-    previewPending_[read] = false;
-}
-
-void Renderer::captureCanvas(const PreviewSink& sink) {
-    if (!canvas_) return;
-    if (fullW_ != canvasW_ || fullH_ != canvasH_ || !fullStaging_[0]) {
-        D3D11_TEXTURE2D_DESC td{};
-        canvas_->GetDesc(&td);
-        td.Usage = D3D11_USAGE_STAGING;
-        td.BindFlags = 0;
-        td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-        td.MiscFlags = 0;
-        for (int i = 0; i < kPreviewRing; ++i) {
-            fullStaging_[i].Reset();
-            fullPending_[i] = false;
-            if (FAILED(device_->CreateTexture2D(&td, nullptr, &fullStaging_[i]))) {
-                fullStaging_[0].Reset();
-                return;
-            }
-        }
-        fullW_ = canvasW_;
-        fullH_ = canvasH_;
-        fullIndex_ = 0;
-    }
-    const int write = fullIndex_;
-    ctx_->CopyResource(fullStaging_[write].Get(), canvas_.Get());
-    fullPending_[write] = true;
-    fullIndex_ = (fullIndex_ + 1) % kPreviewRing;
-
-    const int read = fullIndex_;
-    if (!fullPending_[read]) return;
-    D3D11_MAPPED_SUBRESOURCE m{};
-    const HRESULT hr = ctx_->Map(fullStaging_[read].Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m);
-    if (FAILED(hr)) return; // inclui DXGI_ERROR_WAS_STILL_DRAWING: tenta no próximo frame
-    try {
-        sink(static_cast<const std::uint8_t*>(m.pData), static_cast<int>(m.RowPitch), fullW_, fullH_);
-    } catch (...) {
-    }
-    ctx_->Unmap(fullStaging_[read].Get(), 0);
-    fullPending_[read] = false;
 }
 
 void Renderer::drawQuad(ID3D11ShaderResourceView* srv, const float corners[4][2], float opacity, unsigned mode) {
@@ -404,6 +386,173 @@ void Renderer::drawQuad(ID3D11ShaderResourceView* srv, const float corners[4][2]
     ctx_->RSSetState(raster_.Get());
     ctx_->Draw(4, 0);
 }
+
+// ------------------------------------------------------------------ saídas
+
+bool Renderer::buildWarpMesh(const OutputMapping& mapping, WarpMesh& out) {
+    // Perspetiva pura é exata com poucos triângulos? Não (interpolação afim por
+    // triângulo), por isso usa-se sempre uma grelha densa.
+    const int div = mapping.mode == WarpMode::None ? 1 : 48;
+    const std::vector<WarpVertex> verts = buildWarpGrid(mapping, div);
+    D3D11_BUFFER_DESC bd{};
+    bd.ByteWidth = static_cast<UINT>(verts.size() * sizeof(WarpVertex));
+    bd.Usage = D3D11_USAGE_IMMUTABLE;
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA init{verts.data(), 0, 0};
+    ComPtr<ID3D11Buffer> vb;
+    if (verts.empty() || FAILED(device_->CreateBuffer(&bd, &init, &vb))) return false;
+    out.vb = vb;
+    out.vertexCount = static_cast<UINT>(verts.size());
+    return true;
+}
+
+void Renderer::drawOutput(ID3D11RenderTargetView* rtv, int width, int height, const std::string& canvasId,
+                          const OutputMapping& mapping, const WarpMesh& mesh, bool testCard) {
+    if (!rtv) return;
+    const float black[4] = {0.f, 0.f, 0.f, 1.f};
+    ctx_->ClearRenderTargetView(rtv, black);
+    auto it = canvases_.find(canvasId);
+    if (it == canvases_.end() || !mesh.vb || width <= 0 || height <= 0) return;
+    const CanvasTarget& cv = it->second;
+
+    OutParams p{};
+    const double sw = mapping.srcW > 0 ? mapping.srcW : cv.w;
+    const double sh = mapping.srcH > 0 ? mapping.srcH : cv.h;
+    p.region[0] = static_cast<float>(mapping.srcX / cv.w);
+    p.region[1] = static_cast<float>(mapping.srcY / cv.h);
+    p.region[2] = static_cast<float>(sw / cv.w);
+    p.region[3] = static_cast<float>(sh / cv.h);
+    p.blend[0] = static_cast<float>(mapping.blendLeft / width);
+    p.blend[1] = static_cast<float>(mapping.blendRight / width);
+    p.blend[2] = static_cast<float>(mapping.blendTop / height);
+    p.blend[3] = static_cast<float>(mapping.blendBottom / height);
+    p.smoothness = static_cast<float>(mapping.blendSmoothness);
+    p.gamma = static_cast<float>(mapping.blendGamma);
+    p.brightness = static_cast<float>(mapping.brightness);
+    p.testCard = testCard ? 1.0f : 0.0f;
+    p.canvasSize[0] = static_cast<float>(cv.w);
+    p.canvasSize[1] = static_cast<float>(cv.h);
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if (FAILED(ctx_->Map(outCbuffer_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) return;
+    std::memcpy(m.pData, &p, sizeof(p));
+    ctx_->Unmap(outCbuffer_.Get(), 0);
+
+    ctx_->OMSetRenderTargets(1, &rtv, nullptr);
+    D3D11_VIEWPORT vp{0.f, 0.f, static_cast<float>(width), static_cast<float>(height), 0.f, 1.f};
+    ctx_->RSSetViewports(1, &vp);
+    setBlend(BlendMode::Normal, true);
+    const UINT stride = sizeof(WarpVertex), offset = 0;
+    ID3D11Buffer* vb = mesh.vb.Get();
+    ID3D11Buffer* cb = outCbuffer_.Get();
+    ID3D11ShaderResourceView* srv = cv.srv.Get();
+    ID3D11SamplerState* smp = sampler_.Get();
+    ctx_->IASetInputLayout(outLayout_.Get());
+    ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx_->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+    ctx_->VSSetShader(outVs_.Get(), nullptr, 0);
+    ctx_->VSSetConstantBuffers(0, 1, &cb);
+    ctx_->PSSetShader(outPs_.Get(), nullptr, 0);
+    ctx_->PSSetConstantBuffers(0, 1, &cb);
+    ctx_->PSSetShaderResources(0, 1, &srv);
+    ctx_->PSSetSamplers(0, 1, &smp);
+    ctx_->RSSetState(raster_.Get());
+    ctx_->Draw(mesh.vertexCount, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    ctx_->PSSetShaderResources(0, 1, &none);
+}
+
+// ------------------------------------------------------------------ cópias para a CPU
+
+bool Renderer::ensureReadback(Readback& rb, int w, int h) {
+    if (rb.staging[0] && rb.w == w && rb.h == h) return true;
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = static_cast<UINT>(w);
+    td.Height = static_cast<UINT>(h);
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_STAGING;
+    td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    for (int i = 0; i < Readback::kRing; ++i) {
+        rb.staging[i].Reset();
+        rb.pending[i] = false;
+        if (FAILED(device_->CreateTexture2D(&td, nullptr, &rb.staging[i]))) {
+            rb.staging[0].Reset();
+            return false;
+        }
+    }
+    rb.w = w;
+    rb.h = h;
+    rb.index = 0;
+    return true;
+}
+
+void Renderer::readback(Readback& rb, ID3D11Texture2D* source, const PixelSink& sink) {
+    const int write = rb.index;
+    ctx_->CopyResource(rb.staging[write].Get(), source);
+    rb.pending[write] = true;
+    rb.index = (rb.index + 1) % Readback::kRing;
+    // Lê a cópia mais antiga, se a GPU já a tiver acabado (nunca espera).
+    const int read = rb.index;
+    if (!rb.pending[read]) return;
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if (FAILED(ctx_->Map(rb.staging[read].Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m))) return;
+    try {
+        sink(static_cast<const std::uint8_t*>(m.pData), static_cast<int>(m.RowPitch), rb.w, rb.h);
+    } catch (...) {
+    }
+    ctx_->Unmap(rb.staging[read].Get(), 0);
+    rb.pending[read] = false;
+}
+
+void Renderer::capturePreview(const std::string& canvasId, const PixelSink& sink) {
+    auto it = canvases_.find(canvasId);
+    if (it == canvases_.end()) return;
+    const CanvasTarget& cv = it->second;
+    int w = 0, h = 0;
+    previewSizeFor(cv.w, cv.h, w, h);
+    if (!previewRt_ || preview_.w != w || preview_.h != h) {
+        previewRt_.Reset();
+        previewRtv_.Reset();
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = static_cast<UINT>(w);
+        td.Height = static_cast<UINT>(h);
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET;
+        if (FAILED(device_->CreateTexture2D(&td, nullptr, &previewRt_)) ||
+            FAILED(device_->CreateRenderTargetView(previewRt_.Get(), nullptr, &previewRtv_)))
+            return;
+    }
+    if (!ensureReadback(preview_, w, h)) return;
+
+    ID3D11RenderTargetView* rtv = previewRtv_.Get();
+    ctx_->OMSetRenderTargets(1, &rtv, nullptr);
+    D3D11_VIEWPORT vp{0.f, 0.f, static_cast<float>(w), static_cast<float>(h), 0.f, 1.f};
+    ctx_->RSSetViewports(1, &vp);
+    const float full[4] = {0.f, 0.f, 1.f, 1.f};
+    float corners[4][2];
+    rectCorners(full, corners);
+    setBlend(BlendMode::Normal, true);
+    drawQuad(cv.srv.Get(), corners, 1.0f, 4);
+    ID3D11ShaderResourceView* none = nullptr;
+    ctx_->PSSetShaderResources(0, 1, &none);
+    readback(preview_, previewRt_.Get(), sink);
+}
+
+void Renderer::captureCanvas(const std::string& canvasId, const PixelSink& sink) {
+    auto it = canvases_.find(canvasId);
+    if (it == canvases_.end()) return;
+    CanvasTarget& cv = it->second;
+    if (!ensureReadback(cv.full, cv.w, cv.h)) return;
+    readback(cv.full, cv.tex.Get(), sink);
+}
+
+// ------------------------------------------------------------------ texturas de media
 
 bool Renderer::upload(GpuTexture& tex, const VideoFrame& frame) {
     if (frame.width <= 0 || frame.height <= 0 ||
@@ -441,8 +590,6 @@ bool Renderer::upload(GpuTexture& tex, const VideoFrame& frame) {
     return true;
 }
 
-bool Renderer::deviceLost() const {
-    return device_ && device_->GetDeviceRemovedReason() != S_OK;
-}
+bool Renderer::deviceLost() const { return device_ && device_->GetDeviceRemovedReason() != S_OK; }
 
 } // namespace vthost

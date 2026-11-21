@@ -13,6 +13,9 @@
 //   {"cmd":"timeline","action":"play|pause|stop|seek","timeline":"T1","time":12.5}
 //   {"cmd":"set_show_mode","on":true}
 //   {"cmd":"get_status"}
+//   {"cmd":"set_output_mapping","output":"O1","mapping":{...}} // warp/soft-edge ao vivo
+//   {"cmd":"set_test_card","on":true}       // test card em todas as saídas
+//   {"cmd":"set_preview_canvas","canvas":"C2"} // canvas mostrado no Workspace
 //   {"cmd":"list_displays"}                // ecrãs ligados: placa gráfica, nome, resolução
 //   {"cmd":"shutdown"}                     // pára o motor de propósito (sem recuperação)
 //
@@ -28,7 +31,7 @@ namespace vthost::protocol {
 
 inline constexpr std::size_t kMaxLineBytes = 1024 * 1024;
 
-enum class CommandType { Ping, LoadProject, Go, StopAll, SetLayerProps, SetLayerVisible, Timeline, SetShowMode, GetStatus, ListDisplays, SetSettings, Shutdown };
+enum class CommandType { Ping, LoadProject, Go, StopAll, SetLayerProps, SetLayerVisible, Timeline, SetShowMode, GetStatus, ListDisplays, SetSettings, SetOutputMapping, SetTestCard, SetPreviewCanvas, Shutdown };
 enum class TimelineAction { Play, Pause, Stop, Seek };
 
 // Preferências do motor (enviadas pelo Studio ao ligar e quando mudam).
@@ -51,6 +54,9 @@ struct Command {
     std::string timeline;
     TimelineAction action = TimelineAction::Play;
     EngineSettings settings;
+    std::string output;     // set_output_mapping
+    std::string canvas;     // set_preview_canvas
+    OutputMapping mapping;  // set_output_mapping
 };
 
 struct ParsedCommand {
@@ -104,6 +110,8 @@ struct EngineStatus {
     std::string timelineId; // "" = modo dashboard
     double timelineTime = 0.0;
     bool timelinePlaying = false;
+    bool testCard = false;
+    std::string previewCanvas;
     std::vector<LayerStatus> layers;
     std::vector<OutputStatus> outputs;
     std::vector<std::string> warnings;

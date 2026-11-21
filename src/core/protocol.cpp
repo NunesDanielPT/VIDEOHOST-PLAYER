@@ -1,5 +1,7 @@
 #include "vthost/core/protocol.h"
 
+#include "mapping_json.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -121,6 +123,22 @@ ParsedCommand parseCommand(const std::string& line) {
             c.settings.previewFps = fps <= 0.0 ? 0 : static_cast<int>(std::clamp(fps, 5.0, 60.0));
             const std::string pr = str(j, "priority");
             c.settings.priority = (pr == "normal" || pr == "high") ? pr : "above_normal";
+        } else if (cmd == "set_output_mapping") {
+            c.type = CommandType::SetOutputMapping;
+            c.output = str(j, "output");
+            auto mp = j.find("mapping");
+            if (c.output.empty() || mp == j.end() || !mp->is_object()) {
+                r.error = "set_output_mapping: faltam 'output'/'mapping'";
+                return r;
+            }
+            mappingFromJson(*mp, c.mapping);
+        } else if (cmd == "set_test_card") {
+            c.type = CommandType::SetTestCard;
+            auto it = j.find("on");
+            c.on = it != j.end() && it->is_boolean() && it->get<bool>();
+        } else if (cmd == "set_preview_canvas") {
+            c.type = CommandType::SetPreviewCanvas;
+            c.canvas = str(j, "canvas");
         } else if (cmd == "list_displays") {
             c.type = CommandType::ListDisplays;
         } else if (cmd == "shutdown") {
@@ -177,6 +195,11 @@ std::string serializeCommand(const Command& c) {
     case CommandType::SetShowMode: j = {{"cmd", "set_show_mode"}, {"on", c.on}}; break;
     case CommandType::GetStatus: j["cmd"] = "get_status"; break;
     case CommandType::ListDisplays: j["cmd"] = "list_displays"; break;
+    case CommandType::SetOutputMapping:
+        j = {{"cmd", "set_output_mapping"}, {"output", c.output}, {"mapping", mappingToJson(c.mapping)}};
+        break;
+    case CommandType::SetTestCard: j = {{"cmd", "set_test_card"}, {"on", c.on}}; break;
+    case CommandType::SetPreviewCanvas: j = {{"cmd", "set_preview_canvas"}, {"canvas", c.canvas}}; break;
     case CommandType::Shutdown: j["cmd"] = "shutdown"; break;
     }
     return dump(j);
@@ -210,6 +233,8 @@ std::string statusResponse(const EngineStatus& s) {
                 {"timeline", s.timelineId},
                 {"timelineTime", s.timelineTime},
                 {"timelinePlaying", s.timelinePlaying},
+                {"testCard", s.testCard},
+                {"previewCanvas", s.previewCanvas},
                 {"layers", layers},
                 {"outputs", outputs},
                 {"warnings", s.warnings}}}};
@@ -251,6 +276,8 @@ ParsedResponse parseResponse(const std::string& line) {
             es.timelineId = str(s, "timeline");
             es.timelineTime = num(s, "timelineTime").value_or(0.0);
             es.timelinePlaying = s.value("timelinePlaying", false);
+            es.testCard = s.value("testCard", false);
+            es.previewCanvas = str(s, "previewCanvas");
             if (auto a = s.find("layers"); a != s.end() && a->is_array())
                 for (const auto& l : *a)
                     if (l.is_object())

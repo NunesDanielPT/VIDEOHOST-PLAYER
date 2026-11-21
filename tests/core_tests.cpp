@@ -2,12 +2,14 @@
 // sai com código != 0 (o CTest/CI marca a build como falhada).
 
 #include "vthost/core/atomic_file.h"
+#include "vthost/core/mapping.h"
 #include "vthost/core/preview.h"
 #include "vthost/core/project.h"
 #include "vthost/core/protocol.h"
 #include "vthost/core/show_state.h"
 #include "vthost/core/version.h"
 
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <random>
@@ -114,8 +116,8 @@ static void testProjectTolerance() {
     const auto r = parseProject(bad);
     CHECK(r.project.has_value());
     if (!r.project) return;
-    CHECK(r.project->canvasWidth == kMaxCanvasSize);
-    CHECK(r.project->canvasHeight == 1080);
+    CHECK(r.project->canvases.size() == 1);
+    CHECK(r.project->canvases[0].width == kMaxCanvasSize && r.project->canvases[0].height == 1080);
     CHECK(r.project->media.size() == 1);
     CHECK(r.project->layers.size() == 1);
     CHECK(r.project->layers[0].props.opacity == 1.0);
@@ -336,7 +338,99 @@ static void testTimelineAndQuad() {
     CHECK(w == 640 && h == 360);
 }
 
+static bool near(double a, double b, double eps = 1e-6) { return std::abs(a - b) < eps; }
+
+static void testMapping() {
+    OutputMapping m;
+    m.resetMesh();
+    // Sem warp: identidade.
+    auto p = warpPoint(m, 0.25, 0.75);
+    CHECK(near(p.x, 0.25) && near(p.y, 0.75));
+    // Perspetiva: os cantos vão exatamente para onde foram arrastados.
+    m.mode = WarpMode::Perspective;
+    m.corners = {{{0.1, 0.05}, {0.95, 0.0}, {0.9, 1.0}, {0.0, 0.92}}};
+    const double us[4] = {0, 1, 1, 0}, vs[4] = {0, 0, 1, 1};
+    for (int k = 0; k < 4; ++k) {
+        auto c = warpPoint(m, us[k], vs[k]);
+        CHECK(near(c.x, m.corners[static_cast<std::size_t>(k)].x) && near(c.y, m.corners[static_cast<std::size_t>(k)].y));
+    }
+    // Inverso da perspetiva.
+    auto mid = warpPoint(m, 0.3, 0.6);
+    WarpPoint back;
+    CHECK(unwarpPerspective(m, mid, back) && near(back.x, 0.3, 1e-9) && near(back.y, 0.6, 1e-9));
+    // Malha regular = identidade (com Catmull-Rom e pontos-fantasma).
+    OutputMapping g;
+    g.mode = WarpMode::Mesh;
+    g.meshCols = 4;
+    g.meshRows = 3;
+    g.resetMesh();
+    for (double u : {0.0, 0.13, 0.5, 0.77, 1.0})
+        for (double v : {0.0, 0.31, 0.5, 1.0}) {
+            auto q = warpPoint(g, u, v);
+            CHECK(near(q.x, u, 1e-9) && near(q.y, v, 1e-9));
+        }
+    // Mover um ponto da malha desloca a imagem perto dele (e passa exatamente nele).
+    g.mesh[static_cast<std::size_t>(1 * 5 + 2)] = {0.55, 0.40};
+    auto moved = warpPoint(g, 2.0 / 4.0, 1.0 / 3.0);
+    CHECK(near(moved.x, 0.55, 1e-9) && near(moved.y, 0.40, 1e-9));
+    // Soft-edge: 1 fora da zona, 0 na borda, sobreposição soma ~1 em linear.
+    OutputMapping b;
+    b.blendRight = 100;
+    CHECK(near(softEdgeFactor(b, 0.5, 0.5, 1000, 500), 1.0));
+    CHECK(near(softEdgeFactor(b, 1.0, 0.5, 1000, 500), 0.0));
+    const double a1 = std::pow(softEdgeFactor(b, 0.95, 0.5, 1000, 500), b.blendGamma);
+    OutputMapping b2;
+    b2.blendLeft = 100;
+    const double a2 = std::pow(softEdgeFactor(b2, 0.05, 0.5, 1000, 500), b2.blendGamma);
+    CHECK(near(a1 + a2, 1.0, 1e-6));
+    // Malha de triângulos.
+    CHECK(buildWarpGrid(g, 8).size() == 8u * 8u * 6u);
+    // Layout 3x1 de 1920x1080 com 200 px de sobreposição.
+    int cw = 0, ch = 0;
+    auto cells = computeLayout(3, 1, 1920, 1080, 200, 0, cw, ch);
+    CHECK(cw == 3 * 1920 - 2 * 200 && ch == 1080 && cells.size() == 3);
+    if (cells.size() == 3) {
+        CHECK(cells[1].mapping.srcX == 1720 && cells[1].mapping.blendLeft == 200 && cells[1].mapping.blendRight == 200);
+        CHECK(cells[0].mapping.blendLeft == 0 && cells[2].mapping.blendRight == 0);
+    }
+    // Valores absurdos são corrigidos.
+    OutputMapping bad;
+    bad.meshCols = 99;
+    bad.brightness = 50;
+    bad.blendGamma = 0;
+    bad.mesh = {{1, 2}};
+    bad.sanitize();
+    CHECK(bad.meshCols == kMaxMeshDivisions && bad.brightness == 2.0 && bad.blendGamma == 1.0 && bad.meshIsValid());
+
+    // Projeto com vários canvas, layers e saídas por canvas + mapping.
+    Project pr = Project::makeDefault();
+    pr.canvases.push_back({"C2", "LED", 3840, 1080});
+    pr.layers[1].canvasId = "C2";
+    pr.outputs[0].canvasId = "C2";
+    pr.outputs[0].mapping = cells[1].mapping;
+    pr.outputs[0].mapping.mode = WarpMode::Mesh;
+    pr.outputs[0].mapping.mesh[0] = {0.02, 0.03};
+    auto rr = parseProject(serializeProject(pr));
+    CHECK(rr.project.has_value());
+    if (rr.project) {
+        CHECK(rr.project->canvases.size() == 2 && rr.project->canvases[1].width == 3840);
+        CHECK(rr.project->layers[1].canvasId == "C2" && rr.project->layers[0].canvasId.empty());
+        CHECK(rr.project->outputs[0].mapping == pr.outputs[0].mapping);
+        CHECK(rr.project->canvasOf("XX").id == "C1" && rr.project->resolveCanvasId("C2") == "C2");
+    }
+    // Comando ao vivo.
+    protocol::Command mc;
+    mc.type = protocol::CommandType::SetOutputMapping;
+    mc.output = "O1";
+    mc.mapping = pr.outputs[0].mapping;
+    auto mb = protocol::parseCommand(protocol::serializeCommand(mc));
+    CHECK(mb.command && mb.command->output == "O1" && mb.command->mapping == mc.mapping);
+    auto pc = protocol::parseCommand(R"({"cmd":"set_preview_canvas","canvas":"C2"})");
+    CHECK(pc.command && pc.command->canvas == "C2");
+}
+
 int main() {
+    testMapping();
     testVersion();
     testTimelineAndQuad();
     testProjectRoundTrip();

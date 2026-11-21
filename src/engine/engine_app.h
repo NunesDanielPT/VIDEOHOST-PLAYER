@@ -63,6 +63,7 @@ private:
     void writePreview(const std::uint8_t* data, int rowPitch, int width, int height);
     void syncLayers();
     void syncOutputs();
+    void syncCanvases();
     void handleMediaEnds(); // modos de loop: once-stop / auto-follow
     void recover();
     void renderFrame();
@@ -82,6 +83,8 @@ private:
     std::vector<std::string> warnings_;
     bool showMode_ = false;
     protocol::EngineSettings settings_;
+    bool testCard_ = false;
+    std::string previewCanvas_; // "" = primeiro canvas
     Clock::time_point lastPreview_{};
     int activeColumn_ = -1;
     bool running_ = true;

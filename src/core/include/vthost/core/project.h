@@ -12,6 +12,8 @@
 // referências inválidas são descartadas com aviso, em vez de falhar o projecto
 // inteiro. Um projecto ligeiramente danificado deve abrir na mesma.
 
+#include "vthost/core/mapping.h"
+
 #include <map>
 #include <optional>
 #include <string>
@@ -64,9 +66,19 @@ struct LayerQuad {
 };
 LayerQuad computeLayerQuad(const LayerProps& p, int mediaW, int mediaH, int canvasW, int canvasH);
 
+// Canvas: superfície de composição com resolução própria. Cada layer pertence a
+// um canvas; cada saída mostra uma região de um canvas.
+struct Canvas {
+    std::string id;
+    std::string name;
+    int width = 1920;
+    int height = 1080;
+};
+
 struct Layer {
     std::string id;
     std::string name;
+    std::string canvasId; // "" = primeiro canvas
     LayerProps props;
     bool visible = true;
     bool locked = false; // bloqueada: não se move, escala nem roda
@@ -127,6 +139,8 @@ OutputType outputTypeFromString(const std::string& s);
 struct Output {
     std::string id;
     std::string name;
+    std::string canvasId; // "" = primeiro canvas
+    OutputMapping mapping; // região do canvas, warp, soft-edge, brilho
     OutputType type = OutputType::Display;
     bool enabled = true;
     std::string displayId;    // ecrã (ex. "\\.\DISPLAY2"); identifica o ecrã mesmo que a ordem mude
@@ -141,8 +155,7 @@ struct Output {
 struct Project {
     int version = kProjectFormatVersion;
     std::string name = "Untitled";
-    int canvasWidth = 1920;
-    int canvasHeight = 1080;
+    std::vector<Canvas> canvases; // nunca vazio depois de parse/makeDefault
     std::vector<MediaItem> media;
     std::vector<Layer> layers;
     std::vector<Column> columns;
@@ -150,6 +163,11 @@ struct Project {
     std::vector<Timeline> timelines;
 
     const Timeline* findTimeline(const std::string& id) const;
+    const Canvas* findCanvas(const std::string& id) const;
+    // Canvas de uma layer/saída: o indicado ou, se não existir, o primeiro.
+    const Canvas& canvasOf(const std::string& canvasId) const;
+    // Id efetivo (resolve "" e ids inexistentes para o primeiro canvas).
+    std::string resolveCanvasId(const std::string& canvasId) const;
     const MediaItem* findMedia(const std::string& id) const;
     const Layer* findLayer(const std::string& id) const;
 

@@ -166,9 +166,19 @@ void OutputWindow::resize(int w, int h) {
     height_ = h;
 }
 
-void OutputWindow::present(bool vsync) {
+void OutputWindow::setSource(const std::string& canvasId, const OutputMapping& mapping) {
+    canvasId_ = canvasId;
+    config_.canvasId = canvasId;
+    config_.mapping = mapping;
+    config_.mapping.sanitize();
+    WarpMesh m;
+    if (renderer_.buildWarpMesh(config_.mapping, m)) mesh_ = m;
+}
+
+void OutputWindow::present(bool vsync, bool testCard) {
     if (!swapChain_ || !rtv_) return;
-    renderer_.drawCanvasTo(rtv_.Get(), width_, height_);
+    if (!mesh_.vb) setSource(canvasId_, config_.mapping);
+    renderer_.drawOutput(rtv_.Get(), width_, height_, canvasId_, config_.mapping, mesh_, testCard);
     const HRESULT hr = swapChain_->Present(vsync ? 1 : 0, 0);
     if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
         lost_ = true;

@@ -71,7 +71,7 @@ bool EngineApp::loadProject(const std::string& path, std::string* error) {
     for (const auto& w : warnings_) log::warn("projecto: " + w);
     log::info("projecto carregado: " + project_.name + " (" + path + ")");
 
-    renderer_.resizeCanvas(project_.canvasWidth, project_.canvasHeight);
+    syncCanvases();
     syncLayers();
     syncOutputs();
     if (activeColumn_ >= static_cast<int>(project_.columns.size())) activeColumn_ = -1;
@@ -101,6 +101,19 @@ void EngineApp::syncLayers() {
     }
 }
 
+void EngineApp::syncCanvases() {
+    std::set<std::string> ids;
+    if (project_.canvases.empty()) {
+        renderer_.ensureCanvas("C1", 1920, 1080);
+        ids.insert("C1");
+    }
+    for (const auto& c : project_.canvases) {
+        renderer_.ensureCanvas(c.id, c.width, c.height);
+        ids.insert(c.id);
+    }
+    renderer_.keepOnlyCanvases(ids);
+}
+
 namespace {
 bool sameOutput(const Output& a, const Output& b) {
     return a.id == b.id && a.name == b.name && a.type == b.type && a.enabled == b.enabled &&
@@ -111,9 +124,19 @@ bool sameOutput(const Output& a, const Output& b) {
 } // namespace
 
 void EngineApp::syncOutputs() {
+    // Canvas e mapping mudam-se sem recriar janelas (sem piscar).
+    for (auto& w : outputs_)
+        for (const auto& o : project_.outputs)
+            if (o.id == w->id()) {
+                const std::string cid = project_.resolveCanvasId(o.canvasId);
+                if (cid != w->config().canvasId || !(o.mapping == w->config().mapping)) w->setSource(cid, o.mapping);
+            }
     bool same = outputConfig_.size() == project_.outputs.size();
     for (std::size_t i = 0; same && i < outputConfig_.size(); ++i) same = sameOutput(outputConfig_[i], project_.outputs[i]);
-    if (same) return;
+    if (same) {
+        outputConfig_ = project_.outputs;
+        return;
+    }
 
     // Só recria as saídas que mudaram: as outras continuam sem piscar.
     std::vector<std::unique_ptr<OutputWindow>> oldWindows = std::move(outputs_);
@@ -126,11 +149,13 @@ void EngineApp::syncOutputs() {
             auto it = std::find_if(oldWindows.begin(), oldWindows.end(),
                                    [&](const auto& w) { return w && sameOutput(w->config(), o); });
             if (it != oldWindows.end()) {
+                (*it)->setSource(project_.resolveCanvasId(o.canvasId), o.mapping);
                 outputs_.push_back(std::move(*it));
                 continue;
             }
             auto w = std::make_unique<OutputWindow>(renderer_, o);
             if (!w->create()) log::error("output " + o.id + ": " + w->error());
+            w->setSource(project_.resolveCanvasId(o.canvasId), o.mapping);
             outputs_.push_back(std::move(w));
         } else if (o.type == OutputType::Ndi) {
             const std::string name = o.ndiName.empty() ? "VTHOST - " + o.name : o.ndiName;
@@ -147,6 +172,8 @@ void EngineApp::syncOutputs() {
     }
     outputConfig_ = project_.outputs;
 }
+
+
 
 bool EngineApp::go(int column, std::string* error, double fadeOverride) {
     if (column < 0 || column >= static_cast<int>(project_.columns.size())) {
@@ -265,6 +292,26 @@ std::string EngineApp::handle(const std::string& line) {
     case CommandType::SetSettings:
         applySettings(c.settings);
         return okResponse();
+    case CommandType::SetOutputMapping: {
+        // Ao vivo (editor de mapping): sem recarregar o projeto nem recriar a janela.
+        for (auto& o : project_.outputs)
+            if (o.id == c.output) {
+                o.mapping = c.mapping;
+                for (auto& w : outputs_)
+                    if (w->id() == o.id) w->setSource(project_.resolveCanvasId(o.canvasId), o.mapping);
+                for (auto& cfg : outputConfig_)
+                    if (cfg.id == o.id) cfg.mapping = o.mapping;
+                return okResponse();
+            }
+        return errorResponse("saída inexistente");
+    }
+    case CommandType::SetTestCard:
+        testCard_ = c.on;
+        log::info(testCard_ ? "test card ligado" : "test card desligado");
+        return okResponse();
+    case CommandType::SetPreviewCanvas:
+        previewCanvas_ = c.canvas;
+        return okResponse();
     case CommandType::StopAll:
         stopAll(c.value);
         return okResponse();
@@ -329,6 +376,8 @@ protocol::EngineStatus EngineApp::buildStatus() const {
     s.timelineId = activeTimeline_;
     s.timelineTime = timelineTime();
     s.timelinePlaying = tlPlaying_;
+    s.testCard = testCard_;
+    s.previewCanvas = project_.resolveCanvasId(previewCanvas_);
     for (const auto& l : project_.layers) {
         auto it = players_.find(l.id);
         if (it == players_.end()) continue;
@@ -532,8 +581,10 @@ void EngineApp::writePreview(const std::uint8_t* data, int rowPitch, int width, 
     h->width = static_cast<std::uint32_t>(width);
     h->height = static_cast<std::uint32_t>(height);
     h->stride = static_cast<std::uint32_t>(width * 4);
-    h->canvasWidth = static_cast<std::uint32_t>(renderer_.canvasWidth());
-    h->canvasHeight = static_cast<std::uint32_t>(renderer_.canvasHeight());
+    int cw = 0, ch = 0;
+    renderer_.canvasSize(project_.resolveCanvasId(previewCanvas_), cw, ch);
+    h->canvasWidth = static_cast<std::uint32_t>(cw);
+    h->canvasHeight = static_cast<std::uint32_t>(ch);
     std::uint8_t* dst = previewBlock_ + sizeof(PreviewHeader);
     const std::size_t row = static_cast<std::size_t>(width) * 4;
     for (int y = 0; y < height; ++y) std::memcpy(dst + y * row, data + static_cast<std::size_t>(y) * rowPitch, row);
@@ -572,10 +623,14 @@ void EngineApp::renderFrame() {
     handleMediaEnds();
     for (auto& [id, p] : players_) p->update(renderer_);
 
-    renderer_.beginCanvas();
-    // layers[0] é a de cima (como na grelha do Studio): desenha de baixo para cima.
+    // Cada canvas compõe as suas layers. layers[0] é a de cima: desenha de baixo para cima.
+    std::vector<std::string> canvasIds;
+    for (const auto& c : project_.canvases) canvasIds.push_back(c.id);
+    if (canvasIds.empty()) canvasIds.push_back("C1");
+    for (const auto& cid : canvasIds) {
+    renderer_.beginCanvas(cid);
     for (auto it = project_.layers.rbegin(); it != project_.layers.rend(); ++it) {
-        if (!it->visible) continue;
+        if (!it->visible || project_.resolveCanvasId(it->canvasId) != cid) continue;
         auto p = players_.find(it->id);
         if (p == players_.end()) continue;
         const auto pr = layerProps_.find(it->id);
@@ -583,13 +638,28 @@ void EngineApp::renderFrame() {
         p->second->draw(renderer_, pr != layerProps_.end() ? pr->second : it->props,
                         cf != clipFade_.end() ? cf->second : 1.0f);
     }
+    }
 
-    // Saídas NDI: canvas em resolução total, copiado sem esperar pela GPU.
-    bool anyNdi = false;
-    for (const auto& n : ndi_) anyNdi = anyNdi || n->ok();
-    if (anyNdi)
-        renderer_.captureCanvas([this](const std::uint8_t* d, int pitch, int w, int h) {
-            for (auto& n : ndi_) n->submit(d, pitch, w, h, fps_);
+    // Saídas NDI: canvas em resolução total, copiado sem esperar pela GPU; cada
+    // saída envia a sua região do canvas.
+    std::set<std::string> ndiCanvases;
+    for (const auto& n : ndi_)
+        if (n->ok())
+            for (const auto& o : project_.outputs)
+                if (o.id == n->id()) ndiCanvases.insert(project_.resolveCanvasId(o.canvasId));
+    for (const auto& cid : ndiCanvases)
+        renderer_.captureCanvas(cid, [this, &cid](const std::uint8_t* d, int pitch, int w, int h) {
+            for (auto& n : ndi_) {
+                for (const auto& o : project_.outputs) {
+                    if (o.id != n->id() || project_.resolveCanvasId(o.canvasId) != cid) continue;
+                    const OutputMapping& m = o.mapping;
+                    const int x0 = std::clamp(static_cast<int>(m.srcX), 0, w - 1);
+                    const int y0 = std::clamp(static_cast<int>(m.srcY), 0, h - 1);
+                    const int rw = std::clamp(m.srcW > 0 ? static_cast<int>(m.srcW) : w, 1, w - x0);
+                    const int rh = std::clamp(m.srcH > 0 ? static_cast<int>(m.srcH) : h, 1, h - y0);
+                    n->submit(d + static_cast<std::size_t>(y0) * pitch + static_cast<std::size_t>(x0) * 4, pitch, rw, rh, fps_);
+                }
+            }
         });
 
     // Preview para o Studio ao ritmo escolhido nas preferências.
@@ -597,12 +667,13 @@ void EngineApp::renderFrame() {
     if (previewBlock_ && settings_.previewFps > 0 &&
         now - lastPreview_ >= std::chrono::duration<double>(1.0 / settings_.previewFps)) {
         lastPreview_ = now;
-        renderer_.capturePreview([this](const std::uint8_t* d, int pitch, int w, int h) { writePreview(d, pitch, w, h); });
+        renderer_.capturePreview(project_.resolveCanvasId(previewCanvas_),
+                                 [this](const std::uint8_t* d, int pitch, int w, int h) { writePreview(d, pitch, w, h); });
     }
 
     bool first = true;
     for (auto& o : outputs_) {
-        o->present(first && settings_.vsync); // vsync só no primeiro, para não somar esperas
+        o->present(first && settings_.vsync, testCard_); // vsync só no primeiro, para não somar esperas
         first = false;
     }
     if (outputs_.empty() || !settings_.vsync) Sleep(outputs_.empty() ? 16 : 1);
@@ -617,7 +688,7 @@ int EngineApp::run(const Options& options) {
         log::error("renderer: " + err);
         return kExitInitFailed;
     }
-    renderer_.resizeCanvas(project_.canvasWidth, project_.canvasHeight);
+    syncCanvases();
 
     // Nada de protector de ecrã, monitores a desligar ou PC a suspender durante o show.
     SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);

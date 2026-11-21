@@ -2,6 +2,7 @@
 add_library(vthost_core STATIC
     atomic_file.cpp
     log.cpp
+    mapping.cpp
     paths.cpp
     project.cpp
     protocol.cpp

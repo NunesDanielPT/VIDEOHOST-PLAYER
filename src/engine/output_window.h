@@ -23,7 +23,9 @@ public:
     OutputWindow& operator=(const OutputWindow&) = delete;
 
     bool create();
-    void present(bool vsync); // desenha o canvas e apresenta
+    void present(bool vsync, bool testCard); // desenha a região do canvas (com warp) e apresenta
+    // Muda o canvas/mapping sem recriar a janela (edição ao vivo do warp/soft-edge).
+    void setSource(const std::string& canvasId, const OutputMapping& mapping);
     void placeOnMonitor();    // reposiciona (ex.: após mudança de monitores)
 
     const std::string& id() const { return config_.id; }
@@ -41,6 +43,8 @@ private:
 
     Renderer& renderer_;
     Output config_;
+    std::string canvasId_; // efetivo (resolvido pelo motor)
+    WarpMesh mesh_;
     std::string detail_;
     HWND hwnd_ = nullptr;
     ComPtr<IDXGISwapChain1> swapChain_;
