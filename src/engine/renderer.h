@@ -7,6 +7,8 @@
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 
+#include <cstdint>
+#include <functional>
 #include <string>
 
 namespace vthost {
@@ -35,7 +37,9 @@ public:
 
     bool resizeCanvas(int width, int height);
     void beginCanvas();
-    void drawLayer(const GpuTexture& tex, float opacity, BlendMode blend);
+    // Desenha a textura no canvas com as propriedades da layer (posição, escala,
+    // rotação, opacidade, blend). `extraOpacity` multiplica a opacidade (fades).
+    void drawLayer(const GpuTexture& tex, const LayerProps& props, float extraOpacity);
     ID3D11ShaderResourceView* canvasSrv() const { return canvasSrv_.Get(); }
 
     // Desenha o canvas no back buffer de um output (escala para caber).
@@ -44,12 +48,23 @@ public:
     // Copia o frame para a textura (recria-a se o tamanho mudou).
     bool upload(GpuTexture& tex, const VideoFrame& frame);
 
+    // Preview para o Studio: reduz o canvas e copia-o para a CPU de forma
+    // assíncrona (lê a cópia de 2 frames atrás, nunca espera pela GPU).
+    // `sink` só é chamado quando há dados prontos.
+    using PreviewSink = std::function<void(const std::uint8_t* data, int rowPitch, int width, int height)>;
+    void capturePreview(const PreviewSink& sink);
+
+    int canvasWidth() const { return canvasW_; }
+    int canvasHeight() const { return canvasH_; }
+
     // true se o dispositivo foi perdido (driver reiniciado, GPU removida...).
     bool deviceLost() const;
 
 private:
     void setBlend(BlendMode blend, bool opaqueCopy);
-    void drawQuad(ID3D11ShaderResourceView* srv, float opacity, int mode);
+    // corners: 4 cantos em NDC (sup-esq, sup-dir, inf-esq, inf-dir).
+    void drawQuad(ID3D11ShaderResourceView* srv, const float corners[4][2], float opacity, unsigned mode);
+    bool ensurePreviewTargets(int w, int h);
 
     ComPtr<ID3D11Device> device_;
     ComPtr<ID3D11DeviceContext> ctx_;
@@ -67,6 +82,15 @@ private:
     int canvasW_ = 0;
     int canvasH_ = 0;
     bool warp_ = false;
+
+    static constexpr int kPreviewRing = 3;
+    ComPtr<ID3D11Texture2D> previewRt_;
+    ComPtr<ID3D11RenderTargetView> previewRtv_;
+    ComPtr<ID3D11Texture2D> previewStaging_[kPreviewRing];
+    bool previewPending_[kPreviewRing] = {};
+    int previewIndex_ = 0;
+    int previewW_ = 0;
+    int previewH_ = 0;
 };
 
 } // namespace vthost

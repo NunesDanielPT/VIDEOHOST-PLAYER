@@ -2,6 +2,29 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="pt_PT" sourcelanguage="en">
 <context>
+    <name>LibraryPanel</name>
+    <message>
+        <source>Add media...</source>
+        <translation>Adicionar media...</translation>
+    </message>
+    <message>
+        <source>File not found: %1</source>
+        <translation>Ficheiro não encontrado: %1</translation>
+    </message>
+    <message>
+        <source>Library</source>
+        <translation>Biblioteca</translation>
+    </message>
+    <message>
+        <source>Remove the selected media</source>
+        <translation>Remover a media selecionada</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>Pesquisar</translation>
+    </message>
+</context>
+<context>
     <name>MainWindow</name>
     <message>
         <source>%1 fps</source>
@@ -42,6 +65,14 @@
     <message>
         <source>&amp;Show</source>
         <translation>E&amp;spetáculo</translation>
+    </message>
+    <message>
+        <source>+ Column</source>
+        <translation>+ Coluna</translation>
+    </message>
+    <message>
+        <source>+ Layer</source>
+        <translation>+ Layer</translation>
     </message>
     <message>
         <source>About VTHOST</source>
@@ -128,12 +159,16 @@
         <translation>Cue %1</translation>
     </message>
     <message>
-        <source>Double-click a cell to place the selected media. Click a column header to GO.</source>
-        <translation>Duplo clique numa célula para colocar a media selecionada. Clique no cabeçalho de uma coluna para GO.</translation>
+        <source>Dashboard</source>
+        <translation>Dashboard</translation>
     </message>
     <message>
         <source>Downloading VTHOST %1...</source>
         <translation>A descarregar o VTHOST %1...</translation>
+    </message>
+    <message>
+        <source>Drag media from the Library onto a cell. Click a column header to GO.</source>
+        <translation>Arraste media da Biblioteca para uma célula. Clique no cabeçalho de uma coluna para GO.</translation>
     </message>
     <message>
         <source>E&amp;ngine</source>
@@ -164,10 +199,6 @@
         <translation>Fade (segundos):</translation>
     </message>
     <message>
-        <source>File not found: %1</source>
-        <translation>Ficheiro não encontrado: %1</translation>
-    </message>
-    <message>
         <source>GO failed: %1</source>
         <translation>GO falhou: %1</translation>
     </message>
@@ -196,14 +227,6 @@
         <translation>Layer %1: %2</translation>
     </message>
     <message>
-        <source>Layer opacity</source>
-        <translation>Opacidade da layer</translation>
-    </message>
-    <message>
-        <source>Media library</source>
-        <translation>Biblioteca de media</translation>
-    </message>
-    <message>
         <source>Monitor number (0 = main monitor):</source>
         <translation>Número do monitor (0 = monitor principal):</translation>
     </message>
@@ -214,10 +237,6 @@
     <message>
         <source>No releases have been published yet.</source>
         <translation>Ainda não foi publicada nenhuma versão.</translation>
-    </message>
-    <message>
-        <source>Opacity: %1</source>
-        <translation>Opacidade: %1</translation>
     </message>
     <message>
         <source>Open logs folder</source>
@@ -238,10 +257,6 @@
     <message>
         <source>Place selected media</source>
         <translation>Colocar media selecionada</translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation>Remover</translation>
     </message>
     <message>
         <source>Remove column</source>
@@ -338,6 +353,14 @@
         <translation>A atualização está pronta. O motor vai parar e as saídas ficam a negro durante a instalação. Instalar agora?</translation>
     </message>
     <message>
+        <source>Timeline</source>
+        <translation>Timeline</translation>
+    </message>
+    <message>
+        <source>Timeline: %1</source>
+        <translation>Timeline: %1</translation>
+    </message>
+    <message>
         <source>Turn off Show Mode before updating.</source>
         <translation>Desligue o Modo Espetáculo antes de atualizar.</translation>
     </message>
@@ -388,6 +411,92 @@
     <message>
         <source>vthost-watchdog was not found next to the Studio.</source>
         <translation>O vthost-watchdog não foi encontrado junto do Studio.</translation>
+    </message>
+</context>
+<context>
+    <name>PreviewWidget</name>
+    <message>
+        <source>Canvas</source>
+        <translation>Canvas</translation>
+    </message>
+    <message>
+        <source>No signal from the engine</source>
+        <translation>Sem sinal do motor</translation>
+    </message>
+    <message>
+        <source>ON AIR</source>
+        <translation>NO AR</translation>
+    </message>
+</context>
+<context>
+    <name>PropertiesPanel</name>
+    <message>
+        <source>Coming in a future version.</source>
+        <translation>Disponível numa próxima versão.</translation>
+    </message>
+    <message>
+        <source>Effects</source>
+        <translation>Efeitos</translation>
+    </message>
+    <message>
+        <source>Layer</source>
+        <translation>Layer</translation>
+    </message>
+    <message>
+        <source>Layer: %1</source>
+        <translation>Layer: %1</translation>
+    </message>
+    <message>
+        <source>Mapping</source>
+        <translation>Mapping</translation>
+    </message>
+    <message>
+        <source>Masks</source>
+        <translation>Máscaras</translation>
+    </message>
+    <message>
+        <source>No layer selected</source>
+        <translation>Nenhuma layer selecionada</translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation>Repor</translation>
+    </message>
+    <message>
+        <source>add</source>
+        <translation>add</translation>
+    </message>
+    <message>
+        <source>blend mode</source>
+        <translation>modo de mistura</translation>
+    </message>
+    <message>
+        <source>multiply</source>
+        <translation>multiply</translation>
+    </message>
+    <message>
+        <source>normal</source>
+        <translation>normal</translation>
+    </message>
+    <message>
+        <source>opacity</source>
+        <translation>opacidade</translation>
+    </message>
+    <message>
+        <source>position</source>
+        <translation>posição</translation>
+    </message>
+    <message>
+        <source>rotation</source>
+        <translation>rotação</translation>
+    </message>
+    <message>
+        <source>scale</source>
+        <translation>escala</translation>
+    </message>
+    <message>
+        <source>screen</source>
+        <translation>screen</translation>
     </message>
 </context>
 <context>
@@ -455,6 +564,80 @@
     <message>
         <source>© %1 %2. All rights reserved.</source>
         <translation>© %1 %2. Todos os direitos reservados.</translation>
+    </message>
+</context>
+<context>
+    <name>TimelinePanel</name>
+    <message>
+        <source>+ Segment</source>
+        <translation>+ Segmento</translation>
+    </message>
+    <message>
+        <source>Add a segment at the playhead</source>
+        <translation>Adicionar um segmento na cabeça de leitura</translation>
+    </message>
+    <message>
+        <source>Play / pause the timeline</source>
+        <translation>Reproduzir / pausar a timeline</translation>
+    </message>
+    <message>
+        <source>Stop the timeline</source>
+        <translation>Parar a timeline</translation>
+    </message>
+    <message>
+        <source>Zoom</source>
+        <translation>Zoom</translation>
+    </message>
+    <message>
+        <source>Zoom (Ctrl + mouse wheel)</source>
+        <translation>Zoom (Ctrl + roda do rato)</translation>
+    </message>
+</context>
+<context>
+    <name>TimelineWidget</name>
+    <message>
+        <source>Add segment here</source>
+        <translation>Adicionar segmento aqui</translation>
+    </message>
+    <message>
+        <source>Delete clip</source>
+        <translation>Apagar clip</translation>
+    </message>
+    <message>
+        <source>Delete segment</source>
+        <translation>Apagar segmento</translation>
+    </message>
+    <message>
+        <source>Edit segment...</source>
+        <translation>Editar segmento...</translation>
+    </message>
+    <message>
+        <source>End (seconds):</source>
+        <translation>Fim (segundos):</translation>
+    </message>
+    <message>
+        <source>Loop</source>
+        <translation>Loop</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>Nome:</translation>
+    </message>
+    <message>
+        <source>Segment</source>
+        <translation>Segmento</translation>
+    </message>
+    <message>
+        <source>Segments</source>
+        <translation>Segmentos</translation>
+    </message>
+    <message>
+        <source>Start (seconds):</source>
+        <translation>Início (segundos):</translation>
+    </message>
+    <message>
+        <source>segment %1</source>
+        <translation>segmento %1</translation>
     </message>
 </context>
 <context>

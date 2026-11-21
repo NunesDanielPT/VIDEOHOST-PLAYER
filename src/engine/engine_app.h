@@ -46,6 +46,19 @@ private:
     bool loadProject(const std::string& path, std::string* error);
     bool go(int column, std::string* error);
     void stopAll(double fade);
+
+    // Timeline
+    bool timelinePlay(const std::string& id, double time, std::string* error);
+    void timelinePause();
+    void timelineStop();
+    bool timelineSeek(const std::string& id, double time, std::string* error);
+    void leaveTimeline();
+    double timelineTime() const;
+    void updateTimeline();
+
+    // Preview partilhado com o Studio
+    bool initPreview();
+    void writePreview(const std::uint8_t* data, int rowPitch, int width, int height);
     void syncLayers();
     void syncOutputs();
     void recover();
@@ -59,13 +72,23 @@ private:
     std::string projectPath_;
     std::vector<std::unique_ptr<OutputWindow>> outputs_;
     std::map<std::string, std::unique_ptr<LayerPlayer>> players_;
-    std::map<std::string, double> layerOpacity_;
+    std::map<std::string, LayerProps> layerProps_;
     std::vector<std::string> warnings_;
     bool showMode_ = false;
     int activeColumn_ = -1;
     bool running_ = true;
     int exitCode_ = kExitRequested;
     bool recovered_ = false;
+
+    std::string activeTimeline_; // "" = modo dashboard
+    double tlTime_ = 0.0;        // tempo da timeline em tlAnchor_
+    Clock::time_point tlAnchor_ = Clock::now();
+    bool tlPlaying_ = false;
+    double tlLastEval_ = 0.0;
+
+    HANDLE previewMapping_ = nullptr;
+    std::uint8_t* previewBlock_ = nullptr;
+    std::uint64_t previewFrames_ = 0;
 
     HANDLE heartbeatMapping_ = nullptr;
     HeartbeatBlock* heartbeat_ = nullptr;

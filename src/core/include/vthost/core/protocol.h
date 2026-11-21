@@ -7,12 +7,15 @@
 //   {"cmd":"load_project","path":"C:/shows/x.vthost"}
 //   {"cmd":"go","column":2}                 // dispara a coluna (cue) 2
 //   {"cmd":"stop_all","fade":1.0}
-//   {"cmd":"set_layer_opacity","layer":"L1","opacity":0.5}
+//   {"cmd":"set_layer_props","layer":"L1","props":{"opacity":0.5,"blend":"add","x":0,"y":0,"scale":1,"rotation":0}}
+//   {"cmd":"timeline","action":"play|pause|stop|seek","timeline":"T1","time":12.5}
 //   {"cmd":"set_show_mode","on":true}
 //   {"cmd":"get_status"}
 //   {"cmd":"shutdown"}                     // pára o motor de propósito (sem recuperação)
 //
 // Respostas: {"ok":true, ...} ou {"ok":false,"error":"..."}
+
+#include "vthost/core/project.h"
 
 #include <optional>
 #include <string>
@@ -22,15 +25,19 @@ namespace vthost::protocol {
 
 inline constexpr std::size_t kMaxLineBytes = 1024 * 1024;
 
-enum class CommandType { Ping, LoadProject, Go, StopAll, SetLayerOpacity, SetShowMode, GetStatus, Shutdown };
+enum class CommandType { Ping, LoadProject, Go, StopAll, SetLayerProps, Timeline, SetShowMode, GetStatus, Shutdown };
+enum class TimelineAction { Play, Pause, Stop, Seek };
 
 struct Command {
     CommandType type = CommandType::Ping;
     std::string path;
     std::string layer;
     int column = -1;
-    double value = 0.0; // opacity / fade
+    double value = 0.0; // fade (stop_all) / tempo (timeline; -1 = posição actual)
     bool on = false;
+    LayerProps props;
+    std::string timeline;
+    TimelineAction action = TimelineAction::Play;
 };
 
 struct ParsedCommand {
@@ -65,6 +72,9 @@ struct EngineStatus {
     double fps = 0.0;
     double uptimeSeconds = 0.0;
     bool recovered = false; // motor reiniciado pelo watchdog e show retomado
+    std::string timelineId; // "" = modo dashboard
+    double timelineTime = 0.0;
+    bool timelinePlaying = false;
     std::vector<LayerStatus> layers;
     std::vector<OutputStatus> outputs;
     std::vector<std::string> warnings;

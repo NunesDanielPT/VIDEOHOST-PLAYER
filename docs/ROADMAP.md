@@ -9,9 +9,11 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [x] Várias saídas em ecrã inteiro por monitor
 - [x] Studio: biblioteca, grelha layers × colunas, GO / GO seguinte, Show Mode, PT/EN
 - [ ] Áudio por layer (WASAPI) com fades
-- [ ] Posição / escala / rotação por layer
-- [ ] Miniaturas na biblioteca e na grelha
-- [ ] Pré-visualização do canvas dentro do Studio
+- [x] Posição / escala / rotação por layer (Properties, ao vivo; arrastar no Workspace)
+- [x] Miniaturas na Library, no Dashboard e na Timeline
+- [x] Workspace com preview em direto do que está no ar (memória partilhada do motor)
+- [x] Interface Library / Workspace / Properties / Dashboard + Timeline
+- [x] Timeline: clips por layer, segmentos com loop, play/pausa/stop/seek, recuperação após crash
 - [x] Instalador (Inno Setup, por utilizador, PT/EN)
 - [x] Atualizações automáticas a partir das GitHub Releases (SHA-256 verificado, bloqueadas em Show Mode)
 - [x] Definições com secção Sobre (autor, versão, créditos)
@@ -31,7 +33,7 @@ Referência funcional: media servers de espetáculo como o Millumin 5. A interfa
 - [ ] Importar projetos do MapSim (projetores, zonas de blend)
 
 ## Fase 4 — Controlo
-- [ ] Timelines
+- [ ] Várias timelines por projeto, timelines disparadas a partir do Dashboard
 - [ ] OSC, MIDI, Art-Net/DMX de entrada
 - [ ] Timecode LTC / MTC
 - [ ] NDI de entrada e saída

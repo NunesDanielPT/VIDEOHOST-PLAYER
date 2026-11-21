@@ -18,8 +18,29 @@ qt_add_executable(vthost-studio WIN32
     update_checker.cpp
     update_checker.h
     app_info.h
+    dashboard_table.cpp
+    dashboard_table.h
+    library_panel.cpp
+    library_panel.h
+    media_cache.cpp
+    media_cache.h
+    preview_widget.cpp
+    preview_widget.h
+    properties_panel.cpp
+    properties_panel.h
+    timeline_panel.cpp
+    timeline_panel.h
+    timeline_widget.cpp
+    timeline_widget.h
 )
 target_link_libraries(vthost-studio PRIVATE vthost_core Qt6::Widgets Qt6::Network)
+
+# Miniaturas e duração das media: o Studio usa as mesmas DLLs do FFmpeg que o motor.
+find_package(FFmpeg QUIET)
+if(FFmpeg_FOUND)
+    target_link_libraries(vthost-studio PRIVATE FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil FFmpeg::swscale)
+    target_compile_definitions(vthost-studio PRIVATE VTHOST_HAVE_FFMPEG)
+endif()
 
 # PT e EN: o código-fonte está em inglês; a tradução portuguesa fica em pt_PT.ts.
 # Regra do projecto: qualquer texto novo na interface tem de ser traduzido aqui.

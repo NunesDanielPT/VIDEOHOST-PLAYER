@@ -61,15 +61,38 @@ ParsedCommand parseCommand(const std::string& line) {
         } else if (cmd == "stop_all") {
             c.type = CommandType::StopAll;
             c.value = std::clamp(num(j, "fade").value_or(1.0), 0.0, 60.0);
-        } else if (cmd == "set_layer_opacity") {
-            c.type = CommandType::SetLayerOpacity;
+        } else if (cmd == "set_layer_props") {
+            c.type = CommandType::SetLayerProps;
             c.layer = str(j, "layer");
-            auto v = num(j, "opacity");
-            if (c.layer.empty() || !v) {
-                r.error = "set_layer_opacity: faltam 'layer'/'opacity'";
+            auto pr = j.find("props");
+            if (c.layer.empty() || pr == j.end() || !pr->is_object()) {
+                r.error = "set_layer_props: faltam 'layer'/'props'";
                 return r;
             }
-            c.value = std::clamp(*v, 0.0, 1.0);
+            c.props.opacity = num(*pr, "opacity").value_or(1.0);
+            c.props.blend = blendModeFromString(str(*pr, "blend"));
+            c.props.posX = num(*pr, "x").value_or(0.0);
+            c.props.posY = num(*pr, "y").value_or(0.0);
+            c.props.scale = num(*pr, "scale").value_or(1.0);
+            c.props.rotation = num(*pr, "rotation").value_or(0.0);
+            c.props.clamp();
+        } else if (cmd == "timeline") {
+            c.type = CommandType::Timeline;
+            c.timeline = str(j, "timeline");
+            const std::string action = str(j, "action");
+            if (action == "play") c.action = TimelineAction::Play;
+            else if (action == "pause") c.action = TimelineAction::Pause;
+            else if (action == "stop") c.action = TimelineAction::Stop;
+            else if (action == "seek") c.action = TimelineAction::Seek;
+            else {
+                r.error = "timeline: 'action' inválida";
+                return r;
+            }
+            if (c.timeline.empty() && c.action != TimelineAction::Stop && c.action != TimelineAction::Pause) {
+                r.error = "timeline: falta 'timeline'";
+                return r;
+            }
+            c.value = std::clamp(num(j, "time").value_or(-1.0), -1.0, kMaxTimelineSeconds);
         } else if (cmd == "set_show_mode") {
             c.type = CommandType::SetShowMode;
             auto it = j.find("on");
@@ -98,9 +121,25 @@ std::string serializeCommand(const Command& c) {
     case CommandType::LoadProject: j = {{"cmd", "load_project"}, {"path", c.path}}; break;
     case CommandType::Go: j = {{"cmd", "go"}, {"column", c.column}}; break;
     case CommandType::StopAll: j = {{"cmd", "stop_all"}, {"fade", c.value}}; break;
-    case CommandType::SetLayerOpacity:
-        j = {{"cmd", "set_layer_opacity"}, {"layer", c.layer}, {"opacity", c.value}};
+    case CommandType::SetLayerProps:
+        j = {{"cmd", "set_layer_props"},
+             {"layer", c.layer},
+             {"props",
+              {{"opacity", c.props.opacity},
+               {"blend", toString(c.props.blend)},
+               {"x", c.props.posX},
+               {"y", c.props.posY},
+               {"scale", c.props.scale},
+               {"rotation", c.props.rotation}}}};
         break;
+    case CommandType::Timeline: {
+        const char* a = "play";
+        if (c.action == TimelineAction::Pause) a = "pause";
+        else if (c.action == TimelineAction::Stop) a = "stop";
+        else if (c.action == TimelineAction::Seek) a = "seek";
+        j = {{"cmd", "timeline"}, {"action", a}, {"timeline", c.timeline}, {"time", c.value}};
+        break;
+    }
     case CommandType::SetShowMode: j = {{"cmd", "set_show_mode"}, {"on", c.on}}; break;
     case CommandType::GetStatus: j["cmd"] = "get_status"; break;
     case CommandType::Shutdown: j["cmd"] = "shutdown"; break;
@@ -132,6 +171,9 @@ std::string statusResponse(const EngineStatus& s) {
                 {"fps", s.fps},
                 {"uptime", s.uptimeSeconds},
                 {"recovered", s.recovered},
+                {"timeline", s.timelineId},
+                {"timelineTime", s.timelineTime},
+                {"timelinePlaying", s.timelinePlaying},
                 {"layers", layers},
                 {"outputs", outputs},
                 {"warnings", s.warnings}}}};
@@ -161,6 +203,9 @@ ParsedResponse parseResponse(const std::string& line) {
             es.fps = num(s, "fps").value_or(0.0);
             es.uptimeSeconds = num(s, "uptime").value_or(0.0);
             es.recovered = s.value("recovered", false);
+            es.timelineId = str(s, "timeline");
+            es.timelineTime = num(s, "timelineTime").value_or(0.0);
+            es.timelinePlaying = s.value("timelinePlaying", false);
             if (auto a = s.find("layers"); a != s.end() && a->is_array())
                 for (const auto& l : *a)
                     if (l.is_object())

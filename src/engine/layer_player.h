@@ -21,16 +21,23 @@ public:
 
     // Começa uma media nova com fade (fadeSeconds=0 => corte seco).
     // startSeconds > 0 serve para retomar após crash.
+    // `tag` identifica quem pôs a media a tocar ("" = dashboard, id do clip = timeline).
     void play(const std::string& mediaId, const std::string& utf8Path, bool loop, double fadeSeconds,
-              double startSeconds = 0.0);
+              double startSeconds = 0.0, const std::string& tag = {});
     // Fade para vazio.
     void stop(double fadeSeconds);
 
+    // Pausa: o relógio da media congela e o frame actual fica no ecrã.
+    void setPaused(bool paused);
+    bool paused() const { return paused_; }
+
     void update(Renderer& renderer); // puxa frames novos e envia para a GPU
-    void draw(Renderer& renderer, float layerOpacity, BlendMode blend);
+    void draw(Renderer& renderer, const LayerProps& props);
 
     const std::string& layerId() const { return layerId_; }
     const std::string& mediaId() const { return current_.mediaId; }
+    const std::string& tag() const { return current_.tag; }
+    void clearTag() { current_.tag = "\x01"; } // força a próxima comparação a falhar
     double position() const; // posição na media actual (segundos)
     std::string stateName() const;
     std::string error() const;
@@ -38,6 +45,7 @@ public:
 private:
     struct Slot {
         std::string mediaId;
+        std::string tag;
         std::unique_ptr<VideoDecoder> decoder;
         GpuTexture texture;
         bool clockStarted = false;
@@ -45,7 +53,8 @@ private:
         Clock::time_point clockStart{};
         double shownTime = 0.0;
         bool hasFrame = false;
-        double mediaTime() const;
+        double frozenTime = 0.0; // tempo de media no momento da pausa
+        double mediaTime(bool paused) const;
     };
 
     void updateSlot(Slot& s, Renderer& renderer);
@@ -56,6 +65,7 @@ private:
     Slot previous_;
     Clock::time_point fadeStart_{};
     double fadeSeconds_ = 0.0;
+    bool paused_ = false;
 };
 
 } // namespace vthost

@@ -1,10 +1,13 @@
 #include "main_window.h"
 
 #include "app_info.h"
+#include "dashboard_table.h"
+#include "library_panel.h"
+#include "media_cache.h"
+#include "preview_widget.h"
+#include "properties_panel.h"
 #include "settings_dialog.h"
-
-#include <memory>
-
+#include "timeline_panel.h"
 #include "vthost/core/paths.h"
 
 #include <QAction>
@@ -12,27 +15,29 @@
 #include <QCloseEvent>
 #include <QDesktopServices>
 #include <QDir>
-#include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QLabel>
-#include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPainter>
 #include <QProcess>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QSettings>
-#include <QSlider>
+#include <QSignalBlocker>
+#include <QSplitter>
 #include <QStatusBar>
-#include <QTableWidget>
+#include <QTabWidget>
 #include <QToolBar>
 #include <QUrl>
 #include <QVBoxLayout>
+
+#include <memory>
 
 using namespace vthost;
 
@@ -50,10 +55,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(engine_, &EngineClient::connectionChanged, this, &MainWindow::onEngineConnection);
     connect(engine_, &EngineClient::statusUpdated, this, &MainWindow::onEngineStatus);
 
-    // Alterações ao projecto chegam ao motor agrupadas (no máximo ~3x/s).
-    pushTimer_.setSingleShot(true);
-    pushTimer_.setInterval(300);
-    connect(&pushTimer_, &QTimer::timeout, this, &MainWindow::pushToEngine);
+    media_ = new MediaCache(this);
+    connect(media_, &MediaCache::updated, this, [this](const QString&) {
+        refreshDashboard();
+        updateSelectionViews();
+    });
 
     updater_ = new UpdateChecker(this);
     connect(updater_, &UpdateChecker::updateAvailable, this, &MainWindow::onUpdateAvailable);
@@ -67,87 +73,123 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         if (updateCheckIsManual_) QMessageBox::warning(this, tr("Updates"), err);
     });
 
+    // Alterações ao projecto chegam ao motor agrupadas (no máximo ~3x/s).
+    pushTimer_.setSingleShot(true);
+    pushTimer_.setInterval(300);
+    connect(&pushTimer_, &QTimer::timeout, this, &MainWindow::pushToEngine);
+
     buildUi();
     buildMenus();
+
+    project_ = Project::makeDefault();
+    project_.name = ss(tr("Untitled"));
+    ensureTimeline();
+    refreshAll();
+    selectLayer(0);
+
+    resize(1440, 900);
+    const QSettings st;
+    restoreGeometry(st.value(QStringLiteral("ui/geometry")).toByteArray());
+    mainSplit_->restoreState(st.value(QStringLiteral("ui/mainSplit")).toByteArray());
+    topSplit_->restoreState(st.value(QStringLiteral("ui/topSplit")).toByteArray());
 
     // Verificação automática pouco depois de arrancar (sem incomodar se falhar).
     if (SettingsDialog::checkUpdatesOnStartup())
         QTimer::singleShot(4000, this, [this] { checkForUpdates(false); });
-
-    project_ = Project::makeDefault();
-    project_.name = ss(tr("Untitled"));
-    refreshAll();
-    resize(1280, 760);
 }
 
 // ------------------------------------------------------------------ UI
 
 void MainWindow::buildUi() {
-    // Biblioteca de media (à esquerda)
-    auto* libDock = new QDockWidget(tr("Media library"), this);
-    libDock->setObjectName(QStringLiteral("library"));
-    libDock->setFeatures(QDockWidget::DockWidgetMovable);
-    auto* libWidget = new QWidget(libDock);
-    auto* libLayout = new QVBoxLayout(libWidget);
-    mediaList_ = new QListWidget(libWidget);
-    mediaList_->setSelectionMode(QAbstractItemView::SingleSelection);
-    auto* addMediaBtn = new QPushButton(tr("Add media..."), libWidget);
-    auto* removeMediaBtn = new QPushButton(tr("Remove"), libWidget);
-    connect(addMediaBtn, &QPushButton::clicked, this, &MainWindow::addMedia);
-    connect(removeMediaBtn, &QPushButton::clicked, this, &MainWindow::removeMedia);
-    libLayout->addWidget(mediaList_);
-    auto* libButtons = new QHBoxLayout;
-    libButtons->addWidget(addMediaBtn);
-    libButtons->addWidget(removeMediaBtn);
-    libLayout->addLayout(libButtons);
-    libDock->setWidget(libWidget);
-    addDockWidget(Qt::LeftDockWidgetArea, libDock);
-    editWidgets_ << addMediaBtn << removeMediaBtn;
+    library_ = new LibraryPanel(media_, this);
+    connect(library_, &LibraryPanel::addRequested, this, &MainWindow::addMedia);
+    connect(library_, &LibraryPanel::removeRequested, this, &MainWindow::removeMedia);
 
-    // Grelha layers x colunas (centro)
-    auto* central = new QWidget(this);
-    auto* layout = new QVBoxLayout(central);
-    grid_ = new QTableWidget(central);
-    grid_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    grid_->setSelectionMode(QAbstractItemView::SingleSelection);
-    grid_->setContextMenuPolicy(Qt::CustomContextMenu);
-    grid_->horizontalHeader()->setDefaultSectionSize(140);
-    grid_->verticalHeader()->setDefaultSectionSize(56);
-    grid_->horizontalHeader()->setSectionsClickable(true);
-    grid_->setToolTip(tr("Double-click a cell to place the selected media. Click a column header to GO."));
-    connect(grid_, &QTableWidget::cellDoubleClicked, this, &MainWindow::assignSelectedMedia);
-    connect(grid_, &QTableWidget::customContextMenuRequested, this, &MainWindow::showCellMenu);
-    connect(grid_->horizontalHeader(), &QHeaderView::sectionClicked, this, &MainWindow::go);
-    connect(grid_, &QTableWidget::itemSelectionChanged, this, &MainWindow::onLayerSelected);
-    layout->addWidget(grid_, 1);
+    preview_ = new PreviewWidget(this);
+    connect(preview_, &PreviewWidget::layerDragged, this, &MainWindow::onLayerDragged);
 
-    auto* controls = new QHBoxLayout;
-    goButton_ = new QPushButton(tr("GO next  [Space]"), central);
-    goButton_->setMinimumHeight(48);
-    goButton_->setStyleSheet(QStringLiteral("font-size: 16px; font-weight: bold;"));
-    stopButton_ = new QPushButton(tr("Stop all"), central);
-    stopButton_->setMinimumHeight(48);
-    connect(goButton_, &QPushButton::clicked, this, &MainWindow::goNext);
-    connect(stopButton_, &QPushButton::clicked, this, &MainWindow::stopAll);
+    properties_ = new PropertiesPanel(this);
+    connect(properties_, &PropertiesPanel::propsChanged, this, &MainWindow::onPropsChanged);
 
-    opacityLabel_ = new QLabel(tr("Layer opacity"), central);
-    opacitySlider_ = new QSlider(Qt::Horizontal, central);
-    opacitySlider_->setRange(0, 100);
-    opacitySlider_->setEnabled(false);
-    connect(opacitySlider_, &QSlider::valueChanged, this, &MainWindow::onOpacityChanged);
+    topSplit_ = new QSplitter(Qt::Horizontal, this);
+    topSplit_->addWidget(library_);
+    topSplit_->addWidget(preview_);
+    topSplit_->addWidget(properties_);
+    topSplit_->setStretchFactor(0, 0);
+    topSplit_->setStretchFactor(1, 1);
+    topSplit_->setStretchFactor(2, 0);
+    topSplit_->setSizes({260, 860, 320});
 
-    controls->addWidget(goButton_, 2);
-    controls->addWidget(stopButton_, 1);
-    controls->addSpacing(24);
-    controls->addWidget(opacityLabel_);
-    controls->addWidget(opacitySlider_, 2);
-    layout->addLayout(controls);
-    setCentralWidget(central);
+    // ---- Dashboard
+    auto* dashPage = new QWidget(this);
+    auto* dashLayout = new QVBoxLayout(dashPage);
+    dashLayout->setContentsMargins(0, 4, 0, 0);
+    auto* dashBar = new QHBoxLayout;
+    dashBar->setContentsMargins(6, 0, 6, 0);
+    auto* goBtn = new QPushButton(tr("GO next  [Space]"), dashPage);
+    goBtn->setMinimumHeight(34);
+    goBtn->setStyleSheet(QStringLiteral("font-weight: bold; padding: 0 18px;"));
+    auto* stopBtn = new QPushButton(tr("Stop all"), dashPage);
+    stopBtn->setMinimumHeight(34);
+    auto* addLayerBtn = new QPushButton(tr("+ Layer"), dashPage);
+    auto* addColBtn = new QPushButton(tr("+ Column"), dashPage);
+    connect(goBtn, &QPushButton::clicked, this, &MainWindow::goNext);
+    connect(stopBtn, &QPushButton::clicked, this, &MainWindow::stopAll);
+    connect(addLayerBtn, &QPushButton::clicked, this, &MainWindow::addLayer);
+    connect(addColBtn, &QPushButton::clicked, this, &MainWindow::addColumn);
+    dashBar->addWidget(goBtn);
+    dashBar->addWidget(stopBtn);
+    dashBar->addStretch();
+    dashBar->addWidget(addLayerBtn);
+    dashBar->addWidget(addColBtn);
+    editWidgets_ << addLayerBtn << addColBtn;
+
+    dashboard_ = new DashboardTable(dashPage);
+    dashboard_->setToolTip(tr("Drag media from the Library onto a cell. Click a column header to GO."));
+    connect(dashboard_, &DashboardTable::mediaDropped, this, &MainWindow::placeMedia);
+    connect(dashboard_, &QTableWidget::cellDoubleClicked, this,
+            [this](int r, int c) { placeMedia(r, c, library_->selectedMediaId()); });
+    connect(dashboard_, &QTableWidget::customContextMenuRequested, this, &MainWindow::showCellMenu);
+    connect(dashboard_->horizontalHeader(), &QHeaderView::sectionClicked, this, &MainWindow::go);
+    connect(dashboard_->verticalHeader(), &QHeaderView::sectionClicked, this, &MainWindow::selectLayer);
+    connect(dashboard_, &QTableWidget::currentCellChanged, this, [this](int row, int, int, int) {
+        if (row >= 0) selectLayer(row);
+    });
+    dashLayout->addLayout(dashBar);
+    dashLayout->addWidget(dashboard_, 1);
+
+    // ---- Timeline
+    timelinePanel_ = new TimelinePanel(media_, this);
+    TimelineWidget* tw = timelinePanel_->timeline();
+    connect(timelinePanel_, &TimelinePanel::playRequested, this,
+            [this] { sendTimeline(protocol::TimelineAction::Play, timelinePanel_->timeline()->playhead()); });
+    connect(timelinePanel_, &TimelinePanel::pauseRequested, this,
+            [this] { sendTimeline(protocol::TimelineAction::Pause, -1.0); });
+    connect(timelinePanel_, &TimelinePanel::stopRequested, this, [this] {
+        sendTimeline(protocol::TimelineAction::Stop, -1.0);
+        timelinePanel_->setState(0.0, false, true);
+    });
+    connect(tw, &TimelineWidget::seekRequested, this,
+            [this](double t, bool) { sendTimeline(protocol::TimelineAction::Seek, t); });
+    connect(tw, &TimelineWidget::edited, this, &MainWindow::markChanged);
+    connect(tw, &TimelineWidget::layerClicked, this, &MainWindow::selectLayer);
+
+    bottomTabs_ = new QTabWidget(this);
+    bottomTabs_->addTab(dashPage, tr("Dashboard"));
+    bottomTabs_->addTab(timelinePanel_, tr("Timeline"));
+
+    mainSplit_ = new QSplitter(Qt::Vertical, this);
+    mainSplit_->addWidget(topSplit_);
+    mainSplit_->addWidget(bottomTabs_);
+    mainSplit_->setStretchFactor(0, 3);
+    mainSplit_->setStretchFactor(1, 2);
+    setCentralWidget(mainSplit_);
 
     engineLabel_ = new QLabel(this);
     infoLabel_ = new QLabel(this);
     statusBar()->addWidget(engineLabel_);
     statusBar()->addWidget(infoLabel_, 1);
+    onEngineConnection(false);
 }
 
 void MainWindow::buildMenus() {
@@ -163,6 +205,8 @@ void MainWindow::buildMenus() {
     editActions_ << aNew << aOpen;
 
     auto* edit = menuBar()->addMenu(tr("&Edit"));
+    editActions_ << edit->addAction(tr("Add media..."), this, &MainWindow::addMedia);
+    edit->addSeparator();
     editActions_ << edit->addAction(tr("Add layer"), this, &MainWindow::addLayer)
                  << edit->addAction(tr("Remove layer"), this, &MainWindow::removeLayer)
                  << edit->addAction(tr("Rename layer..."), this, &MainWindow::renameLayer);
@@ -205,7 +249,10 @@ void MainWindow::buildMenus() {
 
     auto* tb = addToolBar(tr("Show"));
     tb->setObjectName(QStringLiteral("toolbar"));
+    tb->setMovable(false);
     tb->addAction(showModeAction_);
+    tb->addSeparator();
+    tb->addAction(tr("Start engine"), this, &MainWindow::startEngine);
 }
 
 // ------------------------------------------------------------------ projecto
@@ -213,6 +260,14 @@ void MainWindow::buildMenus() {
 QString MainWindow::livePath() const {
     // O motor lê sempre esta cópia "ao vivo"; o ficheiro do utilizador só muda ao Guardar.
     return QString::fromStdWString((paths::dataDir() / "live" / "live.vthost").wstring());
+}
+
+void MainWindow::ensureTimeline() {
+    if (project_.timelines.empty()) project_.timelines.push_back({"T1", "Timeline 1", {}, {}});
+}
+
+QString MainWindow::timelineId() const {
+    return project_.timelines.empty() ? QString() : qs(project_.timelines.front().id);
 }
 
 void MainWindow::markChanged() {
@@ -238,10 +293,12 @@ void MainWindow::pushToEngine() {
 
 void MainWindow::setProject(Project p, const QString& path) {
     project_ = std::move(p);
+    ensureTimeline();
     projectPath_ = path;
     dirty_ = false;
     if (!path.isEmpty()) QSettings().setValue(QStringLiteral("lastProject"), path);
     refreshAll();
+    selectLayer(project_.layers.empty() ? -1 : 0);
     pushTimer_.start();
 }
 
@@ -311,6 +368,10 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         event->ignore();
         return;
     }
+    QSettings st;
+    st.setValue(QStringLiteral("ui/geometry"), saveGeometry());
+    st.setValue(QStringLiteral("ui/mainSplit"), mainSplit_->saveState());
+    st.setValue(QStringLiteral("ui/topSplit"), topSplit_->saveState());
     // O motor continua a correr: fechar a interface nunca pára o show.
     event->accept();
 }
@@ -327,6 +388,7 @@ QString MainWindow::nextId(const QString& prefix) const {
 }
 
 void MainWindow::addMedia() {
+    if (showMode_) return;
     const QStringList files = QFileDialog::getOpenFileNames(
         this, tr("Add media"), QSettings().value(QStringLiteral("mediaDir")).toString(),
         tr("Video and images (*.mov *.mp4 *.m4v *.mkv *.avi *.mxf *.webm *.png *.jpg *.jpeg *.bmp *.tif *.tiff);;All files (*)"));
@@ -339,81 +401,85 @@ void MainWindow::addMedia() {
         m.loop = true;
         project_.media.push_back(std::move(m));
     }
-    refreshMediaList();
+    library_->setMedia(project_.media);
     markChanged();
 }
 
-void MainWindow::removeMedia() {
-    auto* item = mediaList_->currentItem();
-    if (!item) return;
-    const std::string id = ss(item->data(Qt::UserRole).toString());
+void MainWindow::removeMedia(const QString& mediaId) {
+    if (showMode_) return;
+    const std::string id = ss(mediaId);
     std::erase_if(project_.media, [&](const MediaItem& m) { return m.id == id; });
     for (auto& c : project_.columns) std::erase_if(c.cells, [&](const auto& kv) { return kv.second == id; });
+    for (auto& t : project_.timelines) std::erase_if(t.clips, [&](const Clip& c) { return c.mediaId == id; });
     refreshAll();
     markChanged();
 }
 
 void MainWindow::addLayer() {
+    if (showMode_) return;
     Layer l;
     l.id = ss(nextId(QStringLiteral("L")));
     l.name = ss(tr("Layer %1").arg(project_.layers.size() + 1));
     project_.layers.push_back(std::move(l));
-    refreshGrid();
+    refreshAll();
     markChanged();
 }
 
 void MainWindow::removeLayer() {
-    const int row = grid_->currentRow();
-    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
+    const int row = selectedLayer_;
+    if (showMode_ || row < 0 || row >= static_cast<int>(project_.layers.size())) return;
     const std::string id = project_.layers[static_cast<std::size_t>(row)].id;
     project_.layers.erase(project_.layers.begin() + row);
     for (auto& c : project_.columns) c.cells.erase(id);
-    refreshGrid();
+    for (auto& t : project_.timelines) std::erase_if(t.clips, [&](const Clip& c) { return c.layerId == id; });
+    refreshAll();
+    selectLayer(std::min(row, static_cast<int>(project_.layers.size()) - 1));
     markChanged();
 }
 
 void MainWindow::renameLayer() {
-    const int row = grid_->currentRow();
+    const int row = selectedLayer_;
     if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
     auto& l = project_.layers[static_cast<std::size_t>(row)];
     bool ok = false;
     const QString name = QInputDialog::getText(this, tr("Rename layer"), tr("Name:"), QLineEdit::Normal, qs(l.name), &ok);
     if (!ok || name.trimmed().isEmpty()) return;
     l.name = ss(name.trimmed());
-    refreshGrid();
+    refreshAll();
     markChanged();
 }
 
 void MainWindow::addColumn() {
+    if (showMode_) return;
     Column c;
     c.name = ss(tr("Cue %1").arg(project_.columns.size() + 1));
     project_.columns.push_back(std::move(c));
-    refreshGrid();
+    refreshDashboard();
     markChanged();
 }
 
 void MainWindow::removeColumn() {
-    const int col = grid_->currentColumn();
+    const int col = dashboard_->currentColumn();
     if (col < 0 || col >= static_cast<int>(project_.columns.size())) return;
     project_.columns.erase(project_.columns.begin() + col);
-    refreshGrid();
+    refreshDashboard();
     markChanged();
 }
 
 void MainWindow::renameColumn() {
-    const int col = grid_->currentColumn();
+    const int col = dashboard_->currentColumn();
     if (col < 0 || col >= static_cast<int>(project_.columns.size())) return;
     auto& c = project_.columns[static_cast<std::size_t>(col)];
     bool ok = false;
     const QString name = QInputDialog::getText(this, tr("Rename column"), tr("Name:"), QLineEdit::Normal, qs(c.name), &ok);
     if (!ok || name.trimmed().isEmpty()) return;
     c.name = ss(name.trimmed());
-    refreshGrid();
+    refreshDashboard();
     markChanged();
 }
 
 void MainWindow::setColumnFade() {
-    const int col = grid_->currentColumn();
+    const int col = dashboard_->currentColumn();
     if (col < 0 || col >= static_cast<int>(project_.columns.size())) return;
     auto& c = project_.columns[static_cast<std::size_t>(col)];
     bool ok = false;
@@ -421,23 +487,22 @@ void MainWindow::setColumnFade() {
                                              60.0, 2, &ok);
     if (!ok) return;
     c.fadeSeconds = v;
-    refreshGrid();
+    refreshDashboard();
     markChanged();
 }
 
-void MainWindow::assignSelectedMedia(int row, int column) {
+void MainWindow::placeMedia(int row, int column, const QString& mediaId) {
     if (showMode_) return;
     if (row < 0 || column < 0 || row >= static_cast<int>(project_.layers.size()) ||
         column >= static_cast<int>(project_.columns.size()))
         return;
-    auto* item = mediaList_->currentItem();
-    if (!item) {
+    if (mediaId.isEmpty() || !project_.findMedia(ss(mediaId))) {
         infoLabel_->setText(tr("Select a media in the library first."));
         return;
     }
     project_.columns[static_cast<std::size_t>(column)].cells[project_.layers[static_cast<std::size_t>(row)].id] =
-        ss(item->data(Qt::UserRole).toString());
-    refreshGrid();
+        ss(mediaId);
+    refreshDashboard();
     markChanged();
 }
 
@@ -446,18 +511,19 @@ void MainWindow::clearCell(int row, int column) {
         column >= static_cast<int>(project_.columns.size()))
         return;
     project_.columns[static_cast<std::size_t>(column)].cells.erase(project_.layers[static_cast<std::size_t>(row)].id);
-    refreshGrid();
+    refreshDashboard();
     markChanged();
 }
 
 void MainWindow::showCellMenu(const QPoint& pos) {
     if (showMode_) return;
-    const QModelIndex idx = grid_->indexAt(pos);
+    const QModelIndex idx = dashboard_->indexAt(pos);
     if (!idx.isValid()) return;
     QMenu menu(this);
-    menu.addAction(tr("Place selected media"), this, [this, idx] { assignSelectedMedia(idx.row(), idx.column()); });
+    menu.addAction(tr("Place selected media"), this,
+                   [this, idx] { placeMedia(idx.row(), idx.column(), library_->selectedMediaId()); });
     menu.addAction(tr("Clear cell"), this, [this, idx] { clearCell(idx.row(), idx.column()); });
-    menu.exec(grid_->viewport()->mapToGlobal(pos));
+    menu.exec(dashboard_->viewport()->mapToGlobal(pos));
 }
 
 void MainWindow::addOutput() {
@@ -489,8 +555,75 @@ void MainWindow::setCanvasSize() {
     if (!ok) return;
     project_.canvasWidth = w;
     project_.canvasHeight = h;
+    preview_->setCanvasSize(w, h);
     updateTitle();
     markChanged();
+}
+
+// ------------------------------------------------------------------ seleção e propriedades
+
+void MainWindow::selectLayer(int row) {
+    if (row >= static_cast<int>(project_.layers.size())) row = static_cast<int>(project_.layers.size()) - 1;
+    selectedLayer_ = row;
+    if (row >= 0 && dashboard_->currentRow() != row) {
+        const QSignalBlocker b(dashboard_);
+        dashboard_->setCurrentCell(row, std::max(0, dashboard_->currentColumn()));
+    }
+    updateSelectionViews();
+}
+
+void MainWindow::updateSelectionViews() {
+    const bool valid = selectedLayer_ >= 0 && selectedLayer_ < static_cast<int>(project_.layers.size());
+    const Layer* layer = valid ? &project_.layers[static_cast<std::size_t>(selectedLayer_)] : nullptr;
+    properties_->setLayer(layer);
+    if (!layer) {
+        preview_->setSelection(std::nullopt, 0, 0);
+        return;
+    }
+    // Tamanho da media que está no ar nesta layer (para o contorno no Workspace).
+    int mw = 0, mh = 0;
+    if (engine_->hasStatus()) {
+        for (const auto& ls : engine_->lastStatus().layers) {
+            if (ls.id != layer->id || ls.mediaId.empty()) continue;
+            if (const MediaItem* m = project_.findMedia(ls.mediaId)) {
+                const MediaInfo info = media_->info(qs(m->path));
+                mw = info.width;
+                mh = info.height;
+            }
+        }
+    }
+    preview_->setSelection(layer->props, mw, mh);
+}
+
+void MainWindow::applyLayerProps(int row, const LayerProps& props, bool persist) {
+    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
+    Layer& l = project_.layers[static_cast<std::size_t>(row)];
+    l.props = props;
+    l.props.clamp();
+    // Ao vivo: vai já para o motor (também em Show Mode).
+    protocol::Command c;
+    c.type = protocol::CommandType::SetLayerProps;
+    c.layer = l.id;
+    c.props = l.props;
+    engine_->send(c);
+    if (persist) {
+        dirty_ = true;
+        updateTitle();
+        if (!showMode_) pushTimer_.start();
+    }
+    updateSelectionViews();
+}
+
+void MainWindow::onPropsChanged(const LayerProps& props) { applyLayerProps(selectedLayer_, props, true); }
+
+void MainWindow::onLayerDragged(double dx, double dy, bool finished) {
+    if (selectedLayer_ < 0 || selectedLayer_ >= static_cast<int>(project_.layers.size())) return;
+    if (!dragStartProps_) dragStartProps_ = project_.layers[static_cast<std::size_t>(selectedLayer_)].props;
+    LayerProps p = *dragStartProps_;
+    p.posX += dx;
+    p.posY += dy;
+    applyLayerProps(selectedLayer_, p, finished);
+    if (finished) dragStartProps_.reset();
 }
 
 // ------------------------------------------------------------------ show
@@ -509,13 +642,12 @@ void MainWindow::go(int column) {
         if (!r.ok) infoLabel_->setText(tr("GO failed: %1").arg(qs(r.error)));
     });
     activeColumn_ = column;
-    refreshGrid();
+    refreshDashboard();
 }
 
 void MainWindow::goNext() {
     if (project_.columns.empty()) return;
-    const int next = (activeColumn_ + 1) % static_cast<int>(project_.columns.size());
-    go(next);
+    go((activeColumn_ + 1) % static_cast<int>(project_.columns.size()));
 }
 
 void MainWindow::stopAll() {
@@ -524,7 +656,7 @@ void MainWindow::stopAll() {
     c.value = 1.0;
     engine_->send(c);
     activeColumn_ = -1;
-    refreshGrid();
+    refreshDashboard();
 }
 
 void MainWindow::setShowMode(bool on) {
@@ -538,30 +670,27 @@ void MainWindow::setShowMode(bool on) {
     updateTitle();
 }
 
-void MainWindow::onLayerSelected() {
-    const int row = grid_->currentRow();
-    const bool valid = row >= 0 && row < static_cast<int>(project_.layers.size());
-    opacitySlider_->setEnabled(valid);
-    if (!valid) return;
-    const QSignalBlocker block(opacitySlider_);
-    opacitySlider_->setValue(static_cast<int>(project_.layers[static_cast<std::size_t>(row)].opacity * 100.0 + 0.5));
-    opacityLabel_->setText(tr("Opacity: %1").arg(qs(project_.layers[static_cast<std::size_t>(row)].name)));
-}
+// ------------------------------------------------------------------ timeline
 
-void MainWindow::onOpacityChanged(int value) {
-    const int row = grid_->currentRow();
-    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
-    auto& l = project_.layers[static_cast<std::size_t>(row)];
-    l.opacity = value / 100.0;
-    // Controlo ao vivo: vai já para o motor (também em Show Mode).
+void MainWindow::sendTimeline(protocol::TimelineAction action, double time) {
+    const QString id = timelineId();
+    if (id.isEmpty()) return;
+    if (pushTimer_.isActive()) {
+        pushTimer_.stop();
+        pushToEngine();
+    }
     protocol::Command c;
-    c.type = protocol::CommandType::SetLayerOpacity;
-    c.layer = l.id;
-    c.value = l.opacity;
-    engine_->send(c);
-    dirty_ = true;
-    updateTitle();
-    if (!showMode_) pushTimer_.start();
+    c.type = protocol::CommandType::Timeline;
+    c.action = action;
+    c.timeline = ss(id);
+    c.value = time;
+    engine_->send(c, [this](const protocol::ParsedResponse& r) {
+        if (!r.ok) infoLabel_->setText(tr("Timeline: %1").arg(qs(r.error)));
+    });
+    if (action == protocol::TimelineAction::Play || action == protocol::TimelineAction::Seek) {
+        activeColumn_ = -1;
+        refreshDashboard();
+    }
 }
 
 // ------------------------------------------------------------------ motor
@@ -585,12 +714,10 @@ void MainWindow::stopEngine() {
 
 void MainWindow::onEngineConnection(bool connected) {
     engineLabel_->setText(connected ? tr("Engine: connected") : tr("Engine: offline"));
-    engineLabel_->setStyleSheet(connected ? QStringLiteral("color: #3a3;") : QStringLiteral("color: #c33;"));
-    if (connected && !adoptedEngineProject_) {
-        // Decide no primeiro status: adoptar o show que já está a correr ou enviar o nosso.
-        return;
-    }
-    if (connected) pushTimer_.start();
+    engineLabel_->setStyleSheet(connected ? QStringLiteral("color: #3c3; padding: 0 8px;")
+                                          : QStringLiteral("color: #e44; padding: 0 8px;"));
+    // Ao ligar, decide no primeiro status: adoptar o show que já está a correr ou enviar o nosso.
+    if (connected && adoptedEngineProject_) pushTimer_.start();
 }
 
 void MainWindow::onEngineStatus() {
@@ -604,12 +731,13 @@ void MainWindow::onEngineStatus() {
             auto r = loadProjectFile(s.projectPath);
             if (r.project) {
                 project_ = std::move(*r.project);
+                ensureTimeline();
                 projectPath_ = QSettings().value(QStringLiteral("lastProject")).toString();
                 activeColumn_ = s.activeColumn;
                 showMode_ = s.showMode;
                 showModeAction_->setChecked(showMode_);
                 refreshAll();
-                updateEditingEnabled();
+                selectLayer(project_.layers.empty() ? -1 : 0);
                 infoLabel_->setText(tr("Connected to a running show."));
                 return;
             }
@@ -625,8 +753,11 @@ void MainWindow::onEngineStatus() {
     }
     if (s.activeColumn != activeColumn_) {
         activeColumn_ = s.activeColumn;
-        refreshGrid();
+        refreshDashboard();
     }
+    timelinePanel_->setState(s.timelineTime, s.timelinePlaying, qs(s.timelineId) == timelineId());
+    preview_->setFps(s.fps);
+    updateSelectionViews();
 
     QStringList problems;
     for (const auto& o : s.outputs)
@@ -644,64 +775,54 @@ void MainWindow::onEngineStatus() {
 // ------------------------------------------------------------------ vista
 
 void MainWindow::refreshAll() {
-    refreshMediaList();
-    refreshGrid();
+    library_->setMedia(project_.media);
+    refreshDashboard();
+    timelinePanel_->timeline()->setProject(&project_, timelineId());
+    preview_->setCanvasSize(project_.canvasWidth, project_.canvasHeight);
+    updateSelectionViews();
     updateTitle();
     updateEditingEnabled();
 }
 
-void MainWindow::refreshMediaList() {
-    const QString selected = mediaList_->currentItem() ? mediaList_->currentItem()->data(Qt::UserRole).toString() : QString();
-    mediaList_->clear();
-    for (const auto& m : project_.media) {
-        const QFileInfo fi(qs(m.path));
-        auto* item = new QListWidgetItem(fi.fileName(), mediaList_);
-        item->setData(Qt::UserRole, qs(m.id));
-        item->setToolTip(QDir::toNativeSeparators(qs(m.path)));
-        if (!fi.exists()) {
-            item->setForeground(Qt::red);
-            item->setToolTip(tr("File not found: %1").arg(QDir::toNativeSeparators(qs(m.path))));
-        }
-        if (qs(m.id) == selected) mediaList_->setCurrentItem(item);
-    }
-}
-
-void MainWindow::refreshGrid() {
-    const QSignalBlocker block(grid_);
-    const int curRow = grid_->currentRow();
-    const int curCol = grid_->currentColumn();
-    grid_->clear();
-    grid_->setRowCount(static_cast<int>(project_.layers.size()));
-    grid_->setColumnCount(static_cast<int>(project_.columns.size()));
+void MainWindow::refreshDashboard() {
+    const QSignalBlocker block(dashboard_);
+    const int curRow = dashboard_->currentRow();
+    const int curCol = dashboard_->currentColumn();
+    dashboard_->clear();
+    dashboard_->setRowCount(static_cast<int>(project_.layers.size()));
+    dashboard_->setColumnCount(static_cast<int>(project_.columns.size()));
 
     for (int c = 0; c < static_cast<int>(project_.columns.size()); ++c) {
         const auto& col = project_.columns[static_cast<std::size_t>(c)];
-        auto* h = new QTableWidgetItem(QStringLiteral("%1\n%2 s").arg(qs(col.name)).arg(col.fadeSeconds, 0, 'f', 1));
+        auto* h = new QTableWidgetItem(QStringLiteral("▶ %1  ·  %2 s").arg(qs(col.name)).arg(col.fadeSeconds, 0, 'f', 1));
         if (c == activeColumn_) {
             h->setBackground(kActiveColumn);
             h->setForeground(Qt::black);
         }
-        grid_->setHorizontalHeaderItem(c, h);
+        dashboard_->setHorizontalHeaderItem(c, h);
     }
     for (int r = 0; r < static_cast<int>(project_.layers.size()); ++r) {
         const auto& layer = project_.layers[static_cast<std::size_t>(r)];
-        grid_->setVerticalHeaderItem(r, new QTableWidgetItem(qs(layer.name)));
+        dashboard_->setVerticalHeaderItem(r, new QTableWidgetItem(qs(layer.name)));
         for (int c = 0; c < static_cast<int>(project_.columns.size()); ++c) {
             const auto& cells = project_.columns[static_cast<std::size_t>(c)].cells;
             auto* item = new QTableWidgetItem;
             auto it = cells.find(layer.id);
             if (it != cells.end()) {
                 if (const MediaItem* m = project_.findMedia(it->second)) {
-                    item->setText(QFileInfo(qs(m->path)).completeBaseName());
-                    item->setToolTip(QDir::toNativeSeparators(qs(m->path)));
+                    const QString path = qs(m->path);
+                    item->setText(QFileInfo(path).completeBaseName());
+                    item->setToolTip(QDir::toNativeSeparators(path));
+                    const MediaInfo info = media_->info(path);
+                    if (info.ok && !info.thumb.isNull()) item->setIcon(QIcon(QPixmap::fromImage(info.thumb)));
                 }
             }
-            if (c == activeColumn_) item->setBackground(kActiveColumn.darker(250));
-            grid_->setItem(r, c, item);
+            if (c == activeColumn_) item->setBackground(kActiveColumn.darker(220));
+            dashboard_->setItem(r, c, item);
         }
     }
-    if (curRow >= 0 && curCol >= 0 && curRow < grid_->rowCount() && curCol < grid_->columnCount())
-        grid_->setCurrentCell(curRow, curCol);
+    if (curRow >= 0 && curCol >= 0 && curRow < dashboard_->rowCount() && curCol < dashboard_->columnCount())
+        dashboard_->setCurrentCell(curRow, curCol);
 }
 
 void MainWindow::updateTitle() {
@@ -715,8 +836,13 @@ void MainWindow::updateTitle() {
 }
 
 void MainWindow::updateEditingEnabled() {
-    for (auto* w : editWidgets_) w->setEnabled(!showMode_);
-    for (auto* a : editActions_) a->setEnabled(!showMode_);
+    const bool edit = !showMode_;
+    for (auto* w : editWidgets_) w->setEnabled(edit);
+    for (auto* a : editActions_) a->setEnabled(edit);
+    library_->setEditable(edit);
+    dashboard_->setEditable(edit);
+    timelinePanel_->setEditable(edit);
+    // Properties e o arrastar no Workspace continuam ativos: são controlos ao vivo.
 }
 
 // ------------------------------------------------------------------ definições e atualizações

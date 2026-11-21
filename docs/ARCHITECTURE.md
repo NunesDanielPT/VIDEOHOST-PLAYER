@@ -32,6 +32,14 @@
 
 **Núcleo** (`src/core`): portátil, sem Windows nem Qt, testado em Linux com ASan/UBSan e em Windows. Projeto (parser tolerante), protocolo, escrita atómica, log, estado do show.
 
+## Preview (Workspace)
+
+O motor reduz o canvas para no máximo 960×540, copia-o para a CPU de forma assíncrona (anel de 3 texturas staging, `D3D11_MAP_FLAG_DO_NOT_WAIT`, nunca espera pela GPU) e escreve-o a ~30 fps no bloco partilhado `Local\VTHOST_Preview` (`src/core/include/vthost/core/preview.h`). A sincronização é um seqlock: o motor nunca espera pelo Studio; o Studio descarta cópias apanhadas a meio. É exatamente a imagem que sai para os outputs.
+
+## Timeline
+
+Cada projeto tem timelines com clips (layer, media, início, duração, ponto de entrada) e segmentos (com ou sem loop). Quando uma timeline está ativa, é ela que decide o que toca em cada layer: em cada frame o motor vê que clip está sob a cabeça de leitura e, se mudou, arranca a media no ponto certo. Pausa congela o relógio das media (frame hold). Um GO no Dashboard sai do modo timeline. O estado da timeline (id, tempo, a tocar) também é gravado para recuperação.
+
 ## Atualizações
 
 1. Ao arrancar (opção nas Definições) ou em *Ajuda → Procurar atualizações*, o Studio lê `api.github.com/repos/NunesDanielPT/VTHOST/releases/latest`.

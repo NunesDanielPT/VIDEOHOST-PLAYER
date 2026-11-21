@@ -19,19 +19,36 @@ LayerPlayer::~LayerPlayer() {
     retire(previous_);
 }
 
-double LayerPlayer::Slot::mediaTime() const {
+double LayerPlayer::Slot::mediaTime(bool paused) const {
     if (!clockStarted) return 0.0;
+    if (paused) return frozenTime;
     return clockBase + std::chrono::duration<double>(Clock::now() - clockStart).count();
 }
 
+void LayerPlayer::setPaused(bool paused) {
+    if (paused == paused_) return;
+    for (Slot* s : {&current_, &previous_}) {
+        if (!s->clockStarted) continue;
+        if (paused) {
+            s->frozenTime = s->mediaTime(false);
+        } else {
+            // Retoma a partir do tempo congelado.
+            s->clockBase = s->frozenTime;
+            s->clockStart = Clock::now();
+        }
+    }
+    paused_ = paused;
+}
+
 void LayerPlayer::play(const std::string& mediaId, const std::string& utf8Path, bool loop,
-                       double fadeSeconds, double startSeconds) {
+                       double fadeSeconds, double startSeconds, const std::string& tag) {
     // A media actual passa a "anterior" e desaparece com o fade.
     // (Se já havia um fade a decorrer, a anterior antiga é descartada.)
     retire(previous_);
     previous_ = std::move(current_);
     current_ = Slot{};
     current_.mediaId = mediaId;
+    current_.tag = tag;
     current_.decoder = std::make_unique<VideoDecoder>(utf8Path, loop, startSeconds);
     fadeSeconds_ = std::clamp(fadeSeconds, 0.0, 60.0);
     fadeStart_ = Clock::now();
@@ -62,6 +79,7 @@ void LayerPlayer::updateSlot(Slot& s, Renderer& renderer) {
         s.clockStarted = true;
         s.clockBase = first->time;
         s.clockStart = Clock::now();
+        s.frozenTime = first->time; // em pausa (ex. seek na timeline) mostra este frame
         if (renderer.upload(s.texture, *first)) {
             s.hasFrame = true;
             s.shownTime = first->time;
@@ -69,7 +87,7 @@ void LayerPlayer::updateSlot(Slot& s, Renderer& renderer) {
         s.decoder->recycle(std::move(first));
         return;
     }
-    auto frame = s.decoder->takeFrameFor(s.mediaTime());
+    auto frame = s.decoder->takeFrameFor(s.mediaTime(paused_));
     if (!frame) return; // frame hold: fica o último frame bom
     if (renderer.upload(s.texture, *frame)) {
         s.hasFrame = true;
@@ -87,10 +105,10 @@ void LayerPlayer::update(Renderer& renderer) {
     }
 }
 
-void LayerPlayer::draw(Renderer& renderer, float layerOpacity, BlendMode blend) {
+void LayerPlayer::draw(Renderer& renderer, const LayerProps& props) {
     const float p = fadeProgress();
-    if (previous_.hasFrame) renderer.drawLayer(previous_.texture, layerOpacity * (1.0f - p), blend);
-    if (current_.hasFrame) renderer.drawLayer(current_.texture, layerOpacity * p, blend);
+    if (previous_.hasFrame) renderer.drawLayer(previous_.texture, props, 1.0f - p);
+    if (current_.hasFrame) renderer.drawLayer(current_.texture, props, p);
 }
 
 double LayerPlayer::position() const {

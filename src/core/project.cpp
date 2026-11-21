@@ -29,6 +29,58 @@ BlendMode blendModeFromString(const std::string& s) {
     return BlendMode::Normal;
 }
 
+void LayerProps::clamp() {
+    auto fin = [](double v, double def) { return std::isfinite(v) ? v : def; };
+    opacity = std::clamp(fin(opacity, 1.0), 0.0, 1.0);
+    posX = std::clamp(fin(posX, 0.0), -100000.0, 100000.0);
+    posY = std::clamp(fin(posY, 0.0), -100000.0, 100000.0);
+    scale = std::clamp(fin(scale, 1.0), 0.01, 10.0);
+    rotation = std::clamp(fin(rotation, 0.0), -3600.0, 3600.0);
+}
+
+LayerQuad computeLayerQuad(const LayerProps& p, int mediaW, int mediaH, int canvasW, int canvasH) {
+    LayerQuad q{canvasW / 2.0, canvasH / 2.0, canvasW / 2.0, canvasH / 2.0, 0.0};
+    if (mediaW > 0 && mediaH > 0 && canvasW > 0 && canvasH > 0) {
+        const double fit = std::min(static_cast<double>(canvasW) / mediaW, static_cast<double>(canvasH) / mediaH);
+        q.halfW = mediaW * fit / 2.0;
+        q.halfH = mediaH * fit / 2.0;
+    }
+    q.halfW *= p.scale;
+    q.halfH *= p.scale;
+    q.cx += p.posX;
+    q.cy += p.posY;
+    q.rotationRad = p.rotation * 3.14159265358979323846 / 180.0;
+    return q;
+}
+
+double Timeline::duration() const {
+    double d = 60.0;
+    for (const auto& c : clips) d = std::max(d, c.end());
+    for (const auto& s : segments) d = std::max(d, s.end);
+    return std::min(d, kMaxTimelineSeconds);
+}
+
+const Clip* Timeline::clipAt(const std::string& layerId, double time) const {
+    // Se houver sobreposição, ganha o clip que começou mais tarde.
+    const Clip* best = nullptr;
+    for (const auto& c : clips)
+        if (c.layerId == layerId && time >= c.start && time < c.end() && (!best || c.start >= best->start))
+            best = &c;
+    return best;
+}
+
+const Clip* Timeline::findClip(const std::string& id) const {
+    for (const auto& c : clips)
+        if (c.id == id) return &c;
+    return nullptr;
+}
+
+const Timeline* Project::findTimeline(const std::string& id) const {
+    for (const auto& t : timelines)
+        if (t.id == id) return &t;
+    return nullptr;
+}
+
 const MediaItem* Project::findMedia(const std::string& id) const {
     for (const auto& m : media)
         if (m.id == id) return &m;
@@ -43,8 +95,8 @@ const Layer* Project::findLayer(const std::string& id) const {
 
 Project Project::makeDefault() {
     Project p;
-    p.layers = {{"L1", "Layer 1", 1.0, BlendMode::Normal, true},
-                {"L2", "Layer 2", 1.0, BlendMode::Normal, true}};
+    p.layers = {{"L1", "Layer 1", {}, true}, {"L2", "Layer 2", {}, true}};
+    p.timelines = {{"T1", "Timeline 1", {}, {}}};
     for (int i = 1; i <= 4; ++i) p.columns.push_back({"Cue " + std::to_string(i), 1.0, {}});
     p.outputs = {{"O1", "Output 1", 0, true}};
     return p;
@@ -125,8 +177,13 @@ ParseResult parseProject(const std::string& text) {
                     continue;
                 }
                 it.name = getString(l, "name", it.id);
-                it.opacity = std::clamp(getNumber(l, "opacity", 1.0), 0.0, 1.0);
-                it.blend = blendModeFromString(getString(l, "blend", "normal"));
+                it.props.opacity = getNumber(l, "opacity", 1.0);
+                it.props.blend = blendModeFromString(getString(l, "blend", "normal"));
+                it.props.posX = getNumber(l, "x", 0.0);
+                it.props.posY = getNumber(l, "y", 0.0);
+                it.props.scale = getNumber(l, "scale", 1.0);
+                it.props.rotation = getNumber(l, "rotation", 0.0);
+                it.props.clamp();
                 it.visible = getBool(l, "visible", true);
                 p.layers.push_back(std::move(it));
             }
@@ -165,6 +222,49 @@ ParseResult parseProject(const std::string& text) {
             }
         }
 
+        std::set<std::string> timelineIds;
+        if (auto a = j.find("timelines"); a != j.end() && a->is_array()) {
+            for (const auto& t : *a) {
+                if (!t.is_object()) continue;
+                Timeline tl;
+                tl.id = getString(t, "id");
+                if (tl.id.empty() || !timelineIds.insert(tl.id).second) continue;
+                tl.name = getString(t, "name", tl.id);
+                std::set<std::string> clipIds;
+                if (auto cs = t.find("clips"); cs != t.end() && cs->is_array()) {
+                    for (const auto& c : *cs) {
+                        if (!c.is_object()) continue;
+                        Clip clip;
+                        clip.id = getString(c, "id");
+                        clip.layerId = getString(c, "layer");
+                        clip.mediaId = getString(c, "media");
+                        clip.start = std::clamp(getNumber(c, "start", 0.0), 0.0, kMaxTimelineSeconds);
+                        clip.duration = std::clamp(getNumber(c, "duration", 5.0), 0.04, kMaxTimelineSeconds);
+                        clip.inPoint = std::clamp(getNumber(c, "in", 0.0), 0.0, kMaxTimelineSeconds);
+                        if (clip.id.empty() || !clipIds.insert(clip.id).second || !layerIds.count(clip.layerId) ||
+                            !mediaIds.count(clip.mediaId)) {
+                            r.warnings.push_back("clip de timeline inválido ignorado");
+                            continue;
+                        }
+                        tl.clips.push_back(std::move(clip));
+                    }
+                }
+                if (auto ss = t.find("segments"); ss != t.end() && ss->is_array()) {
+                    for (const auto& sg : *ss) {
+                        if (!sg.is_object()) continue;
+                        Segment seg;
+                        seg.name = getString(sg, "name");
+                        seg.start = std::clamp(getNumber(sg, "start", 0.0), 0.0, kMaxTimelineSeconds);
+                        seg.end = std::clamp(getNumber(sg, "end", seg.start + 10.0), 0.0, kMaxTimelineSeconds);
+                        seg.loop = getBool(sg, "loop", false);
+                        if (seg.end - seg.start < 0.1) continue; // segmento vazio: um loop de 0 s bloquearia a timeline
+                        tl.segments.push_back(std::move(seg));
+                    }
+                }
+                p.timelines.push_back(std::move(tl));
+            }
+        }
+
         r.project = std::move(p);
     } catch (const std::exception& e) {
         r.project.reset();
@@ -186,8 +286,9 @@ std::string serializeProject(const Project& p) {
     for (const auto& m : p.media) j["media"].push_back({{"id", m.id}, {"path", m.path}, {"loop", m.loop}});
     j["layers"] = json::array();
     for (const auto& l : p.layers)
-        j["layers"].push_back({{"id", l.id}, {"name", l.name}, {"opacity", l.opacity},
-                               {"blend", toString(l.blend)}, {"visible", l.visible}});
+        j["layers"].push_back({{"id", l.id}, {"name", l.name}, {"opacity", l.props.opacity},
+                               {"blend", toString(l.props.blend)}, {"x", l.props.posX}, {"y", l.props.posY},
+                               {"scale", l.props.scale}, {"rotation", l.props.rotation}, {"visible", l.visible}});
     j["columns"] = json::array();
     for (const auto& c : p.columns) {
         json cells = json::object();
@@ -198,6 +299,17 @@ std::string serializeProject(const Project& p) {
     for (const auto& o : p.outputs)
         j["outputs"].push_back({{"id", o.id}, {"name", o.name}, {"monitor", o.monitor},
                                 {"fullscreen", o.fullscreen}});
+    j["timelines"] = json::array();
+    for (const auto& t : p.timelines) {
+        json clips = json::array();
+        for (const auto& c : t.clips)
+            clips.push_back({{"id", c.id}, {"layer", c.layerId}, {"media", c.mediaId}, {"start", c.start},
+                             {"duration", c.duration}, {"in", c.inPoint}});
+        json segs = json::array();
+        for (const auto& sg : t.segments)
+            segs.push_back({{"name", sg.name}, {"start", sg.start}, {"end", sg.end}, {"loop", sg.loop}});
+        j["timelines"].push_back({{"id", t.id}, {"name", t.name}, {"clips", clips}, {"segments", segs}});
+    }
     // error_handler::replace: UTF-8 inválido num nome não pode impedir a gravação.
     return j.dump(2, ' ', false, json::error_handler_t::replace);
 }
