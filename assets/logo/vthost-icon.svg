@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2e2e2e"/>
+      <stop offset="1" stop-color="#121212"/>
+    </linearGradient>
+    <linearGradient id="orange" gradientUnits="userSpaceOnUse" x1="200" y1="200" x2="840" y2="840">
+      <stop offset="0" stop-color="#ffb04a"/>
+      <stop offset="1" stop-color="#ff6a00"/>
+    </linearGradient>
+    <clipPath id="play">
+      <path d="M400 290 L400 734 Q400 764 426 749 L770 527 Q792 512 770 497 L426 275 Q400 260 400 290 Z"/>
+    </clipPath>
+  </defs>
+  <!-- fundo -->
+  <rect x="24" y="24" width="976" height="976" rx="220" fill="url(#bg)"/>
+  <rect x="24.5" y="24.5" width="975" height="975" rx="219.5" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="3"/>
+  <!-- cantos do canvas (o ecrã / a projeção) -->
+  <g fill="none" stroke="url(#orange)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M190 330 V210 H310"/>
+    <path d="M714 210 H834 V330"/>
+    <path d="M834 694 V814 H714"/>
+    <path d="M310 814 H190 V694"/>
+  </g>
+  <!-- play com 3 faixas: as layers de vídeo -->
+  <g clip-path="url(#play)">
+    <rect x="380" y="250" width="420" height="190" fill="url(#orange)"/>
+    <rect x="380" y="464" width="420" height="96" fill="url(#orange)"/>
+    <rect x="380" y="584" width="420" height="192" fill="url(#orange)"/>
+  </g>
+</svg>

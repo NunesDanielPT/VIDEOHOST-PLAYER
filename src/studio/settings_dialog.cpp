@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QLocale>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSettings>
 #include <QTabWidget>
@@ -62,7 +63,9 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab) : QDialog(parent
     // ---- Sobre (última secção)
     auto* about = new QWidget(tabs);
     auto* al = new QVBoxLayout(about);
-    auto* title = new QLabel(QStringLiteral("<span style=\"font-size:28px; font-weight:bold;\">VTHOST</span>"), about);
+    auto* title = new QLabel(about);
+    title->setPixmap(QPixmap(QStringLiteral(":/branding/vthost-logo.png"))
+                         .scaledToWidth(380, Qt::SmoothTransformation));
     auto* version = new QLabel(tr("Version %1").arg(appinfo::kVersion), about);
     auto* desc = new QLabel(tr("Media server and video player for live shows."), about);
     auto* author = new QLabel(tr("Created by %1").arg(QStringLiteral("<b>%1</b>").arg(appinfo::kAuthor)), about);

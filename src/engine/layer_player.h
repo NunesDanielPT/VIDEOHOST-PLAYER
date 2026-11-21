@@ -32,13 +32,14 @@ public:
     bool paused() const { return paused_; }
 
     void update(Renderer& renderer); // puxa frames novos e envia para a GPU
-    void draw(Renderer& renderer, const LayerProps& props);
+    void draw(Renderer& renderer, const LayerProps& props, float extraOpacity = 1.0f);
 
     const std::string& layerId() const { return layerId_; }
     const std::string& mediaId() const { return current_.mediaId; }
     const std::string& tag() const { return current_.tag; }
     void clearTag() { current_.tag = "\x01"; } // força a próxima comparação a falhar
     double position() const; // posição na media actual (segundos)
+    bool ended() const;      // media actual chegou ao fim (sem loop) e não é imagem fixa
     std::string stateName() const;
     std::string error() const;
 

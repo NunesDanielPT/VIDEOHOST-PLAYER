@@ -40,6 +40,7 @@ OutputBaseFilename=VTHOST-Setup-{#AppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\assets\logo\vthost.ico
 UninstallDisplayName=VTHOST
 UninstallDisplayIcon={app}\vthost-studio.exe
 CloseApplications=yes

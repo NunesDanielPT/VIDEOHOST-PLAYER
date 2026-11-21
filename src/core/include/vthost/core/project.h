@@ -27,10 +27,21 @@ enum class BlendMode { Normal, Add, Multiply, Screen };
 const char* toString(BlendMode m);
 BlendMode blendModeFromString(const std::string& s);
 
+// O que acontece quando uma media chega ao fim (como no Millumin).
+enum class LoopMode {
+    Infinite,   // repete sem parar
+    OnceFreeze, // toca uma vez e fica no último frame
+    OnceStop,   // toca uma vez e desaparece
+    AutoFollow, // toca uma vez e dispara a coluna seguinte
+};
+const char* toString(LoopMode m);
+LoopMode loopModeFromString(const std::string& s);
+
 struct MediaItem {
     std::string id;
     std::string path;     // caminho absoluto (UTF-8)
-    bool loop = true;
+    LoopMode loopMode = LoopMode::Infinite;
+    bool loops() const { return loopMode == LoopMode::Infinite; }
 };
 
 // Propriedades de uma layer que podem mudar ao vivo (Properties no Studio).
@@ -58,6 +69,7 @@ struct Layer {
     std::string name;
     LayerProps props;
     bool visible = true;
+    bool locked = false; // bloqueada: não se move, escala nem roda
 };
 
 struct Column {
@@ -74,7 +86,11 @@ struct Clip {
     double start = 0.0;    // segundos na timeline
     double duration = 5.0; // segundos (> 0)
     double inPoint = 0.0;  // início dentro da media
+    double fadeIn = 0.0;   // segundos de fade-in no início do clip
+    double fadeOut = 0.0;  // segundos de fade-out no fim do clip
     double end() const { return start + duration; }
+    // Opacidade do clip no instante t da timeline (fades), 0..1.
+    double opacityAt(double t) const;
 };
 
 // Segmento: zona da timeline; com loop, a cabeça de leitura volta ao início ao chegar ao fim.
@@ -98,11 +114,28 @@ struct Timeline {
 
 inline constexpr double kMaxTimelineSeconds = 24.0 * 3600.0;
 
+// Tipos de saída (como no painel Outputs do Millumin).
+enum class OutputType {
+    Display,  // ecrã/projetor/LED ligado à placa gráfica, em ecrã inteiro
+    Window,   // janela normal (testes, pré-visualização)
+    Ndi,      // envio por rede NDI
+    DeckLink, // placa Blackmagic (SDI/HDMI) - em desenvolvimento
+};
+const char* toString(OutputType t);
+OutputType outputTypeFromString(const std::string& s);
+
 struct Output {
     std::string id;
     std::string name;
-    int monitor = 0;          // índice do monitor no Windows (0 = principal)
-    bool fullscreen = true;
+    OutputType type = OutputType::Display;
+    bool enabled = true;
+    std::string displayId;    // ecrã (ex. "\\.\DISPLAY2"); identifica o ecrã mesmo que a ordem mude
+    int monitor = 0;          // índice de recurso, se displayId não existir (0 = principal)
+    int windowWidth = 1280;   // tipo Window
+    int windowHeight = 720;
+    std::string ndiName;      // tipo Ndi ("" = "VTHOST - <nome>")
+    bool ndiAlpha = false;
+    std::string deviceId;     // tipo DeckLink
 };
 
 struct Project {

@@ -342,6 +342,45 @@ void Renderer::capturePreview(const PreviewSink& sink) {
     previewPending_[read] = false;
 }
 
+void Renderer::captureCanvas(const PreviewSink& sink) {
+    if (!canvas_) return;
+    if (fullW_ != canvasW_ || fullH_ != canvasH_ || !fullStaging_[0]) {
+        D3D11_TEXTURE2D_DESC td{};
+        canvas_->GetDesc(&td);
+        td.Usage = D3D11_USAGE_STAGING;
+        td.BindFlags = 0;
+        td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        td.MiscFlags = 0;
+        for (int i = 0; i < kPreviewRing; ++i) {
+            fullStaging_[i].Reset();
+            fullPending_[i] = false;
+            if (FAILED(device_->CreateTexture2D(&td, nullptr, &fullStaging_[i]))) {
+                fullStaging_[0].Reset();
+                return;
+            }
+        }
+        fullW_ = canvasW_;
+        fullH_ = canvasH_;
+        fullIndex_ = 0;
+    }
+    const int write = fullIndex_;
+    ctx_->CopyResource(fullStaging_[write].Get(), canvas_.Get());
+    fullPending_[write] = true;
+    fullIndex_ = (fullIndex_ + 1) % kPreviewRing;
+
+    const int read = fullIndex_;
+    if (!fullPending_[read]) return;
+    D3D11_MAPPED_SUBRESOURCE m{};
+    const HRESULT hr = ctx_->Map(fullStaging_[read].Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m);
+    if (FAILED(hr)) return; // inclui DXGI_ERROR_WAS_STILL_DRAWING: tenta no próximo frame
+    try {
+        sink(static_cast<const std::uint8_t*>(m.pData), static_cast<int>(m.RowPitch), fullW_, fullH_);
+    } catch (...) {
+    }
+    ctx_->Unmap(fullStaging_[read].Get(), 0);
+    fullPending_[read] = false;
+}
+
 void Renderer::drawQuad(ID3D11ShaderResourceView* srv, const float corners[4][2], float opacity, unsigned mode) {
     Params p{};
     std::memcpy(p.corners, corners, sizeof(p.corners));

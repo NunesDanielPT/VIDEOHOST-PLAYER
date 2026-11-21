@@ -2,6 +2,7 @@
 
 #include "ipc_server.h"
 #include "layer_player.h"
+#include "ndi_output.h"
 #include "output_window.h"
 #include "renderer.h"
 #include "vthost/core/heartbeat.h"
@@ -61,6 +62,7 @@ private:
     void writePreview(const std::uint8_t* data, int rowPitch, int width, int height);
     void syncLayers();
     void syncOutputs();
+    void handleMediaEnds(); // modos de loop: once-stop / auto-follow
     void recover();
     void renderFrame();
     void saveStateIfDue(bool force = false);
@@ -70,7 +72,10 @@ private:
     IpcServer ipc_;
     Project project_;
     std::string projectPath_;
-    std::vector<std::unique_ptr<OutputWindow>> outputs_;
+    std::vector<std::unique_ptr<OutputWindow>> outputs_; // Display / Window
+    std::vector<std::unique_ptr<NdiOutput>> ndi_;
+    std::vector<Output> outputConfig_;                   // configuração aplicada
+    std::map<std::string, float> clipFade_;              // fades dos clips da timeline, por layer
     std::map<std::string, std::unique_ptr<LayerPlayer>> players_;
     std::map<std::string, LayerProps> layerProps_;
     std::vector<std::string> warnings_;

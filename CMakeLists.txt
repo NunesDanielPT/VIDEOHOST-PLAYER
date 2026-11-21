@@ -44,6 +44,14 @@ add_compile_definitions(VTHOST_VERSION="${PROJECT_VERSION}")
 
 add_subdirectory(src/core)
 
+# Ícone (logótipo) e versão nos executáveis Windows.
+if(WIN32)
+    set(VTHOST_ICON_PATH "${CMAKE_SOURCE_DIR}/assets/logo/vthost.ico")
+    file(TO_CMAKE_PATH "${VTHOST_ICON_PATH}" VTHOST_ICON_PATH)
+    configure_file(assets/windows/app.rc.in "${CMAKE_BINARY_DIR}/vthost_app.rc" @ONLY)
+    set(VTHOST_APP_RC "${CMAKE_BINARY_DIR}/vthost_app.rc")
+endif()
+
 if(WIN32)
     add_subdirectory(src/winutil)
     if(VTHOST_BUILD_ENGINE)

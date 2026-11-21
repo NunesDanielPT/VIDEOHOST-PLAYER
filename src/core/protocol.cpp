@@ -76,6 +76,15 @@ ParsedCommand parseCommand(const std::string& line) {
             c.props.scale = num(*pr, "scale").value_or(1.0);
             c.props.rotation = num(*pr, "rotation").value_or(0.0);
             c.props.clamp();
+        } else if (cmd == "set_layer_visible") {
+            c.type = CommandType::SetLayerVisible;
+            c.layer = str(j, "layer");
+            auto it = j.find("on");
+            if (c.layer.empty() || it == j.end() || !it->is_boolean()) {
+                r.error = "set_layer_visible: faltam 'layer'/'on'";
+                return r;
+            }
+            c.on = it->get<bool>();
         } else if (cmd == "timeline") {
             c.type = CommandType::Timeline;
             c.timeline = str(j, "timeline");
@@ -99,6 +108,8 @@ ParsedCommand parseCommand(const std::string& line) {
             c.on = it != j.end() && it->is_boolean() && it->get<bool>();
         } else if (cmd == "get_status") {
             c.type = CommandType::GetStatus;
+        } else if (cmd == "list_displays") {
+            c.type = CommandType::ListDisplays;
         } else if (cmd == "shutdown") {
             c.type = CommandType::Shutdown;
         } else {
@@ -132,6 +143,9 @@ std::string serializeCommand(const Command& c) {
                {"scale", c.props.scale},
                {"rotation", c.props.rotation}}}};
         break;
+    case CommandType::SetLayerVisible:
+        j = {{"cmd", "set_layer_visible"}, {"layer", c.layer}, {"on", c.on}};
+        break;
     case CommandType::Timeline: {
         const char* a = "play";
         if (c.action == TimelineAction::Pause) a = "pause";
@@ -142,6 +156,7 @@ std::string serializeCommand(const Command& c) {
     }
     case CommandType::SetShowMode: j = {{"cmd", "set_show_mode"}, {"on", c.on}}; break;
     case CommandType::GetStatus: j["cmd"] = "get_status"; break;
+    case CommandType::ListDisplays: j["cmd"] = "list_displays"; break;
     case CommandType::Shutdown: j["cmd"] = "shutdown"; break;
     }
     return dump(j);
@@ -160,7 +175,8 @@ std::string statusResponse(const EngineStatus& s) {
                           {"position", l.position}, {"error", l.error}});
     json outputs = json::array();
     for (const auto& o : s.outputs)
-        outputs.push_back({{"id", o.id}, {"monitor", o.monitor}, {"ok", o.ok}, {"error", o.error}});
+        outputs.push_back({{"id", o.id}, {"monitor", o.monitor}, {"ok", o.ok}, {"error", o.error},
+                           {"type", o.type}, {"detail", o.detail}});
     json j = {{"ok", true},
               {"status",
                {{"version", s.version},
@@ -178,6 +194,15 @@ std::string statusResponse(const EngineStatus& s) {
                 {"outputs", outputs},
                 {"warnings", s.warnings}}}};
     return dump(j);
+}
+
+std::string displaysResponse(const std::vector<DisplayInfo>& displays) {
+    json arr = json::array();
+    for (const auto& d : displays)
+        arr.push_back({{"id", d.id}, {"name", d.name}, {"adapter", d.adapter}, {"width", d.width},
+                       {"height", d.height}, {"refresh", d.refreshHz}, {"x", d.x}, {"y", d.y},
+                       {"primary", d.primary}, {"index", d.index}});
+    return dump(json{{"ok", true}, {"displays", arr}});
 }
 
 ParsedResponse parseResponse(const std::string& line) {
@@ -214,13 +239,33 @@ ParsedResponse parseResponse(const std::string& line) {
             if (auto a = s.find("outputs"); a != s.end() && a->is_array())
                 for (const auto& o : *a)
                     if (o.is_object())
-                        es.outputs.push_back({str(o, "id"),
-                                              static_cast<int>(num(o, "monitor").value_or(0)),
-                                              o.value("ok", false), str(o, "error")});
+                        es.outputs.push_back({str(o, "id"), static_cast<int>(num(o, "monitor").value_or(0)),
+                                              o.value("ok", false), str(o, "error"), str(o, "type"),
+                                              str(o, "detail")});
             if (auto a = s.find("warnings"); a != s.end() && a->is_array())
                 for (const auto& w : *a)
                     if (w.is_string()) es.warnings.push_back(w.get<std::string>());
             r.status = std::move(es);
+        }
+        auto ds = j.find("displays");
+        if (ds != j.end() && ds->is_array()) {
+            std::vector<DisplayInfo> list;
+            for (const auto& d : *ds) {
+                if (!d.is_object()) continue;
+                DisplayInfo di;
+                di.id = str(d, "id");
+                di.name = str(d, "name");
+                di.adapter = str(d, "adapter");
+                di.width = static_cast<int>(num(d, "width").value_or(0));
+                di.height = static_cast<int>(num(d, "height").value_or(0));
+                di.refreshHz = num(d, "refresh").value_or(0.0);
+                di.x = static_cast<int>(num(d, "x").value_or(0));
+                di.y = static_cast<int>(num(d, "y").value_or(0));
+                di.primary = d.value("primary", false);
+                di.index = static_cast<int>(num(d, "index").value_or(0));
+                list.push_back(std::move(di));
+            }
+            r.displays = std::move(list);
         }
     } catch (const std::exception& e) {
         r.ok = false;

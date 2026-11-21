@@ -1,5 +1,6 @@
 #include "output_window.h"
 
+#include "displays.h"
 #include "vthost/core/log.h"
 
 #include <algorithm>
@@ -9,36 +10,6 @@ namespace vthost {
 namespace {
 
 constexpr wchar_t kClassName[] = L"VTHOST_Output";
-
-std::vector<RECT> monitorRects() {
-    struct Ctx {
-        std::vector<RECT> rects;
-        RECT primary{};
-        bool hasPrimary = false;
-    } ctx;
-    EnumDisplayMonitors(
-        nullptr, nullptr,
-        [](HMONITOR mon, HDC, LPRECT, LPARAM lp) -> BOOL {
-            auto* c = reinterpret_cast<Ctx*>(lp);
-            MONITORINFO mi{sizeof(mi)};
-            if (GetMonitorInfoW(mon, &mi)) {
-                if (mi.dwFlags & MONITORINFOF_PRIMARY) {
-                    c->primary = mi.rcMonitor;
-                    c->hasPrimary = true;
-                } else {
-                    c->rects.push_back(mi.rcMonitor);
-                }
-            }
-            return TRUE;
-        },
-        reinterpret_cast<LPARAM>(&ctx));
-    // Ordem estável: principal = 0, os outros da esquerda para a direita.
-    std::sort(ctx.rects.begin(), ctx.rects.end(), [](const RECT& a, const RECT& b) {
-        return a.left != b.left ? a.left < b.left : a.top < b.top;
-    });
-    if (ctx.hasPrimary) ctx.rects.insert(ctx.rects.begin(), ctx.primary);
-    return ctx.rects;
-}
 
 std::wstring widen(const std::string& s) {
     if (s.empty()) return {};
@@ -64,8 +35,7 @@ void registerClassOnce() {
 
 } // namespace
 
-OutputWindow::OutputWindow(Renderer& renderer, std::string id, std::string name, int monitor)
-    : renderer_(renderer), id_(std::move(id)), name_(std::move(name)), monitor_(monitor) {}
+OutputWindow::OutputWindow(Renderer& renderer, const Output& config) : renderer_(renderer), config_(config) {}
 
 OutputWindow::~OutputWindow() {
     rtv_.Reset();
@@ -75,7 +45,7 @@ OutputWindow::~OutputWindow() {
 
 bool OutputWindow::create() {
     registerClassOnce();
-    hwnd_ = CreateWindowExW(WS_EX_APPWINDOW, kClassName, widen("VTHOST - " + name_).c_str(), WS_POPUP,
+    hwnd_ = CreateWindowExW(WS_EX_APPWINDOW, kClassName, widen("VTHOST - " + config_.name).c_str(), WS_POPUP,
                             0, 0, 640, 360, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!hwnd_) {
         error_ = "não foi possível criar a janela";
@@ -91,27 +61,51 @@ bool OutputWindow::create() {
 
 void OutputWindow::placeOnMonitor() {
     if (!hwnd_) return;
-    const auto rects = monitorRects();
+    const auto displays = enumerateDisplays();
+    RECT primary{0, 0, 1920, 1080};
+    for (const auto& d : displays)
+        if (d.primary) primary = {d.x, d.y, d.x + d.width, d.y + d.height};
+
+    if (config_.type == OutputType::Window) {
+        // Janela normal: redimensionável, no ecrã principal.
+        if (!onRightMonitor_) {
+            RECT r{primary.left + 80, primary.top + 80, primary.left + 80 + config_.windowWidth,
+                   primary.top + 80 + config_.windowHeight};
+            SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+            AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
+            SetWindowPos(hwnd_, HWND_NOTOPMOST, r.left, r.top, r.right - r.left, r.bottom - r.top,
+                         SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            onRightMonitor_ = true;
+        }
+        error_.clear();
+        detail_ = "Window · " + std::to_string(config_.windowWidth) + "×" + std::to_string(config_.windowHeight);
+        return;
+    }
+
+    protocol::DisplayInfo d;
+    // Com um ecrã escolhido pelo nome, nunca salta para outro ecrã por engano.
+    const bool found = findDisplay(displays, config_.displayId, config_.monitor, config_.displayId.empty(), d);
     RECT r{};
-    const bool exists = monitor_ >= 0 && monitor_ < static_cast<int>(rects.size());
-    if (exists) {
-        r = rects[static_cast<std::size_t>(monitor_)];
+    if (found) {
+        r = {d.x, d.y, d.x + d.width, d.y + d.height};
         SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_POPUP | WS_VISIBLE);
-        if (!onRightMonitor_) log::info("output " + id_ + " no monitor " + std::to_string(monitor_));
+        if (!onRightMonitor_) log::info("output " + config_.id + " em " + d.id + " (" + describeDisplay(d) + ")");
         onRightMonitor_ = true;
         error_.clear();
+        detail_ = describeDisplay(d) + " · " + d.adapter;
+        if (d.primary) detail_ += " · principal";
     } else {
-        // Monitor em falta: janela de pré-visualização para o operador ver que algo está errado.
-        RECT p = rects.empty() ? RECT{0, 0, 1920, 1080} : rects[0];
-        r = {p.left + 40, p.top + 40, p.left + 40 + 640, p.top + 40 + 360};
+        // Ecrã em falta: janela de pré-visualização para o operador ver que algo está errado.
+        r = {primary.left + 40, primary.top + 40, primary.left + 40 + 640, primary.top + 40 + 360};
         SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_OVERLAPPED | WS_CAPTION | WS_VISIBLE);
-        if (onRightMonitor_ || error_.empty())
-            log::warn("output " + id_ + ": monitor " + std::to_string(monitor_) + " não encontrado");
+        const std::string which = config_.displayId.empty() ? "monitor " + std::to_string(config_.monitor) : config_.displayId;
+        if (onRightMonitor_ || error_.empty()) log::warn("output " + config_.id + ": ecrã " + which + " não encontrado");
         onRightMonitor_ = false;
-        error_ = "monitor " + std::to_string(monitor_) + " não encontrado";
+        error_ = "ecrã " + which + " não encontrado";
+        detail_.clear();
     }
-    SetWindowPos(hwnd_, exists ? HWND_TOPMOST : HWND_NOTOPMOST, r.left, r.top, r.right - r.left,
-                 r.bottom - r.top, SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    SetWindowPos(hwnd_, found ? HWND_TOPMOST : HWND_NOTOPMOST, r.left, r.top, r.right - r.left, r.bottom - r.top,
+                 SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 }
 
 bool OutputWindow::createSwapChain() {
@@ -191,7 +185,7 @@ LRESULT CALLBACK OutputWindow::wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     case WM_CLOSE:
         return 0; // ignora Alt+F4 / fechar: o motor só pára por comando
     case WM_SETCURSOR:
-        if (LOWORD(lp) == HTCLIENT) {
+        if (LOWORD(lp) == HTCLIENT && self && self->config_.type == OutputType::Display) {
             SetCursor(nullptr);
             return TRUE;
         }

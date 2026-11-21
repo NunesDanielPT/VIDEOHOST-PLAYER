@@ -32,14 +32,23 @@ using namespace vthost;
 static void testProjectRoundTrip() {
     Project p = Project::makeDefault();
     p.name = "Ação — Teste";
-    p.media.push_back({"m1", "C:/media/vídeo 1.mp4", true});
+    p.media.push_back({"m1", "C:/media/vídeo 1.mp4", LoopMode::AutoFollow});
     p.columns[0].cells["L1"] = "m1";
     p.layers[1].props.opacity = 0.25;
     p.layers[1].props.blend = BlendMode::Add;
     p.layers[1].props.posX = -120.5;
     p.layers[1].props.scale = 0.5;
     p.layers[1].props.rotation = 45.0;
-    p.timelines[0].clips.push_back({"c1", "L1", "m1", 2.0, 8.0, 1.0});
+    p.timelines[0].clips.push_back({"c1", "L1", "m1", 2.0, 8.0, 1.0, 1.5, 2.0});
+    p.layers[0].locked = true;
+    Output ndi;
+    ndi.id = "O2";
+    ndi.name = "Rede";
+    ndi.type = OutputType::Ndi;
+    ndi.ndiName = "Palco";
+    ndi.ndiAlpha = true;
+    p.outputs.push_back(ndi);
+    p.outputs[0].displayId = "\\\\.\\DISPLAY2";
     p.timelines[0].segments.push_back({"intro", 0.0, 10.0, true});
 
     const auto text = serializeProject(p);
@@ -50,15 +59,45 @@ static void testProjectRoundTrip() {
     CHECK(r.project->name == p.name);
     CHECK(r.project->media.size() == 1);
     CHECK(r.project->media[0].path == "C:/media/vídeo 1.mp4");
+    CHECK(r.project->media[0].loopMode == LoopMode::AutoFollow);
     CHECK(r.project->columns.size() == 4);
     CHECK(r.project->columns[0].cells.at("L1") == "m1");
     CHECK(r.project->layers[1].props == p.layers[1].props);
+    CHECK(r.project->layers[0].locked && !r.project->layers[1].locked);
+    CHECK(r.project->outputs.size() == 2);
+    if (r.project->outputs.size() == 2) {
+        CHECK(r.project->outputs[0].type == OutputType::Display && r.project->outputs[0].displayId == p.outputs[0].displayId);
+        CHECK(r.project->outputs[1].type == OutputType::Ndi && r.project->outputs[1].ndiName == "Palco" &&
+              r.project->outputs[1].ndiAlpha);
+    }
     CHECK(r.project->timelines.size() == 1);
     if (!r.project->timelines.empty()) {
         const auto& t = r.project->timelines[0];
         CHECK(t.clips.size() == 1 && t.clips[0].start == 2.0 && t.clips[0].inPoint == 1.0);
+        CHECK(t.clips.size() == 1 && t.clips[0].fadeIn == 1.5 && t.clips[0].fadeOut == 2.0);
         CHECK(t.segments.size() == 1 && t.segments[0].loop);
     }
+}
+
+static void testCompatAndFades() {
+    // Projeto da 0.1/0.2: "loop" booleano e outputs só com monitor.
+    const auto r = parseProject(R"({"format":"vthost-project","media":[{"id":"a","path":"a.mp4","loop":false},
+        {"id":"b","path":"b.mp4"}],"outputs":[{"id":"O1","monitor":2,"fullscreen":true}]})");
+    CHECK(r.project.has_value());
+    if (r.project) {
+        CHECK(r.project->media[0].loopMode == LoopMode::OnceFreeze);
+        CHECK(r.project->media[1].loopMode == LoopMode::Infinite);
+        CHECK(r.project->outputs[0].type == OutputType::Display && r.project->outputs[0].monitor == 2 &&
+              r.project->outputs[0].enabled);
+    }
+    Clip c{"c", "L", "m", 10.0, 10.0, 0.0, 2.0, 4.0};
+    CHECK(c.opacityAt(10.0) == 0.0);
+    CHECK(c.opacityAt(11.0) == 0.5);
+    CHECK(c.opacityAt(15.0) == 1.0);
+    CHECK(c.opacityAt(18.0) == 0.5);
+    CHECK(c.opacityAt(20.0) == 0.0);
+    CHECK(loopModeFromString(toString(LoopMode::OnceStop)) == LoopMode::OnceStop);
+    CHECK(outputTypeFromString("lixo") == OutputType::Display);
 }
 
 static void testProjectTolerance() {
@@ -151,15 +190,38 @@ static void testProtocol() {
     s.timelineId = "T1";
     s.timelineTime = 3.25;
     s.timelinePlaying = true;
-    s.outputs.push_back({"O1", 1, true, ""});
+    s.outputs.push_back({"O1", 1, true, "", "display", "OMEN 27"});
     auto r = parseResponse(statusResponse(s));
     CHECK(r.ok && r.status);
     if (r.status) {
         CHECK(r.status->activeColumn == 2);
         CHECK(r.status->layers.size() == 1 && r.status->layers[0].position == 12.5);
-        CHECK(r.status->outputs.size() == 1 && r.status->outputs[0].monitor == 1);
+        CHECK(r.status->outputs.size() == 1 && r.status->outputs[0].monitor == 1 && r.status->outputs[0].detail == "OMEN 27");
         CHECK(r.status->timelineId == "T1" && r.status->timelineTime == 3.25 && r.status->timelinePlaying);
     }
+    DisplayInfo d;
+    d.id = "\\\\.\\DISPLAY2";
+    d.name = "OMEN 27";
+    d.adapter = "NVIDIA GeForce RTX 5060 Ti";
+    d.width = 2560;
+    d.height = 1440;
+    d.refreshHz = 143.97;
+    d.index = 1;
+    auto dr = parseResponse(displaysResponse({d}));
+    CHECK(dr.ok && dr.displays && dr.displays->size() == 1);
+    if (dr.displays && !dr.displays->empty()) {
+        const auto& x = dr.displays->front();
+        CHECK(x.id == d.id && x.name == "OMEN 27" && x.adapter == d.adapter && x.width == 2560 && x.index == 1);
+    }
+    CHECK(parseCommand(R"({"cmd":"list_displays"})").command->type == CommandType::ListDisplays);
+    Command vis;
+    vis.type = CommandType::SetLayerVisible;
+    vis.layer = "L2";
+    vis.on = false;
+    auto vb = parseCommand(serializeCommand(vis));
+    CHECK(vb.command && vb.command->type == CommandType::SetLayerVisible && vb.command->layer == "L2" && !vb.command->on);
+    CHECK(!parseCommand(R"({"cmd":"set_layer_visible","layer":"L1"})").command);
+
     auto e = parseResponse(errorResponse("falhou"));
     CHECK(!e.ok && e.error == "falhou");
 }
@@ -266,6 +328,7 @@ int main() {
     testVersion();
     testTimelineAndQuad();
     testProjectRoundTrip();
+    testCompatAndFades();
     testProjectTolerance();
     testFuzzNeverThrows();
     testProtocol();

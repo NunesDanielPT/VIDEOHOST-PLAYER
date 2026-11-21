@@ -6,6 +6,7 @@
 // monitor for ligado.
 
 #include "renderer.h"
+#include "vthost/core/project.h"
 
 #include <windows.h>
 
@@ -15,7 +16,8 @@ namespace vthost {
 
 class OutputWindow {
 public:
-    OutputWindow(Renderer& renderer, std::string id, std::string name, int monitor);
+    // Tipos Display (ecrã inteiro num ecrã) e Window (janela normal).
+    OutputWindow(Renderer& renderer, const Output& config);
     ~OutputWindow();
     OutputWindow(const OutputWindow&) = delete;
     OutputWindow& operator=(const OutputWindow&) = delete;
@@ -24,8 +26,10 @@ public:
     void present(bool vsync); // desenha o canvas e apresenta
     void placeOnMonitor();    // reposiciona (ex.: após mudança de monitores)
 
-    const std::string& id() const { return id_; }
-    int monitor() const { return monitor_; }
+    const std::string& id() const { return config_.id; }
+    int monitor() const { return config_.monitor; }
+    const Output& config() const { return config_; }
+    const std::string& detail() const { return detail_; }
     bool ok() const { return ok_; }
     const std::string& error() const { return error_; }
     bool swapChainLost() const { return lost_; }
@@ -36,9 +40,8 @@ private:
     void resize(int w, int h);
 
     Renderer& renderer_;
-    std::string id_;
-    std::string name_;
-    int monitor_ = 0;
+    Output config_;
+    std::string detail_;
     HWND hwnd_ = nullptr;
     ComPtr<IDXGISwapChain1> swapChain_;
     ComPtr<ID3D11RenderTargetView> rtv_;

@@ -398,7 +398,7 @@ void MainWindow::addMedia() {
         MediaItem m;
         m.id = ss(nextId(QStringLiteral("m")));
         m.path = ss(QDir::fromNativeSeparators(QFileInfo(f).absoluteFilePath()));
-        m.loop = true;
+        m.loopMode = LoopMode::Infinite;
         project_.media.push_back(std::move(m));
     }
     library_->setMedia(project_.media);

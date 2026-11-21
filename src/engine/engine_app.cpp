@@ -1,5 +1,6 @@
 #include "engine_app.h"
 
+#include "displays.h"
 #include "vthost/core/log.h"
 #include "vthost/core/paths.h"
 #include "vthost/core/preview.h"
@@ -100,19 +101,51 @@ void EngineApp::syncLayers() {
     }
 }
 
+namespace {
+bool sameOutput(const Output& a, const Output& b) {
+    return a.id == b.id && a.name == b.name && a.type == b.type && a.enabled == b.enabled &&
+           a.displayId == b.displayId && a.monitor == b.monitor && a.windowWidth == b.windowWidth &&
+           a.windowHeight == b.windowHeight && a.ndiName == b.ndiName && a.ndiAlpha == b.ndiAlpha &&
+           a.deviceId == b.deviceId;
+}
+} // namespace
+
 void EngineApp::syncOutputs() {
-    bool same = outputs_.size() == project_.outputs.size();
-    for (std::size_t i = 0; same && i < outputs_.size(); ++i)
-        same = outputs_[i]->id() == project_.outputs[i].id &&
-               outputs_[i]->monitor() == project_.outputs[i].monitor;
+    bool same = outputConfig_.size() == project_.outputs.size();
+    for (std::size_t i = 0; same && i < outputConfig_.size(); ++i) same = sameOutput(outputConfig_[i], project_.outputs[i]);
     if (same) return;
 
+    // Só recria as saídas que mudaram: as outras continuam sem piscar.
+    std::vector<std::unique_ptr<OutputWindow>> oldWindows = std::move(outputs_);
+    std::vector<std::unique_ptr<NdiOutput>> oldNdi = std::move(ndi_);
     outputs_.clear();
+    ndi_.clear();
     for (const auto& o : project_.outputs) {
-        auto w = std::make_unique<OutputWindow>(renderer_, o.id, o.name, o.monitor);
-        if (!w->create()) log::error("output " + o.id + ": " + w->error());
-        outputs_.push_back(std::move(w));
+        if (!o.enabled) continue;
+        if (o.type == OutputType::Display || o.type == OutputType::Window) {
+            auto it = std::find_if(oldWindows.begin(), oldWindows.end(),
+                                   [&](const auto& w) { return w && sameOutput(w->config(), o); });
+            if (it != oldWindows.end()) {
+                outputs_.push_back(std::move(*it));
+                continue;
+            }
+            auto w = std::make_unique<OutputWindow>(renderer_, o);
+            if (!w->create()) log::error("output " + o.id + ": " + w->error());
+            outputs_.push_back(std::move(w));
+        } else if (o.type == OutputType::Ndi) {
+            const std::string name = o.ndiName.empty() ? "VTHOST - " + o.name : o.ndiName;
+            auto it = std::find_if(oldNdi.begin(), oldNdi.end(), [&](const auto& n) {
+                return n && n->id() == o.id && n->detail() == "NDI: " + name + (o.ndiAlpha ? " (alpha)" : "");
+            });
+            if (it != oldNdi.end()) {
+                ndi_.push_back(std::move(*it));
+                continue;
+            }
+            ndi_.push_back(std::make_unique<NdiOutput>(o.id, name, o.ndiAlpha));
+        }
+        // DeckLink: reportado no estado (em desenvolvimento), sem objeto.
     }
+    outputConfig_ = project_.outputs;
 }
 
 bool EngineApp::go(int column, std::string* error) {
@@ -133,8 +166,9 @@ bool EngineApp::go(int column, std::string* error) {
         }
         const MediaItem* media = project_.findMedia(cell->second);
         if (!media) continue;
-        if (player->mediaId() == media->id && player->tag().empty()) continue; // já está a tocar: não reinicia
-        player->play(media->id, media->path, media->loop, col.fadeSeconds);
+        // Já está a tocar: não reinicia (exceto se já acabou, ex. "once").
+        if (player->mediaId() == media->id && player->tag().empty() && !player->ended()) continue;
+        player->play(media->id, media->path, media->loops(), col.fadeSeconds);
     }
     activeColumn_ = column;
     log::info("GO coluna " + std::to_string(column) + " (" + col.name + ")");
@@ -168,7 +202,7 @@ void EngineApp::recover() {
         layerProps_[lp.layerId] = lp.props;
         if (!st.timelineId.empty()) continue; // a timeline repõe as media sozinha
         if (const MediaItem* m = project_.findMedia(lp.mediaId))
-            it->second->play(m->id, m->path, m->loop, 0.0, lp.positionSeconds);
+            it->second->play(m->id, m->path, m->loops(), 0.0, lp.positionSeconds);
     }
     if (!st.timelineId.empty() && project_.findTimeline(st.timelineId)) {
         activeTimeline_ = st.timelineId;
@@ -234,6 +268,15 @@ std::string EngineApp::handle(const std::string& line) {
         if (!project_.findLayer(c.layer)) return errorResponse("layer inexistente");
         layerProps_[c.layer] = c.props; // ao vivo, também em Show Mode
         return okResponse();
+    case CommandType::SetLayerVisible: {
+        // Ao vivo (também em Show Mode): altera a cópia do projeto do motor.
+        for (auto& l : project_.layers)
+            if (l.id == c.layer) {
+                l.visible = c.on;
+                return okResponse();
+            }
+        return errorResponse("layer inexistente");
+    }
     case CommandType::Timeline:
         switch (c.action) {
         case TimelineAction::Play:
@@ -255,6 +298,8 @@ std::string EngineApp::handle(const std::string& line) {
         return okResponse();
     case CommandType::GetStatus:
         return statusResponse(buildStatus());
+    case CommandType::ListDisplays:
+        return displaysResponse(enumerateDisplays());
     case CommandType::Shutdown:
         if (showMode_) return errorResponse("Show Mode activo: desligue-o para parar o motor");
         setRunState(EngineRunState::StoppingOnPurpose);
@@ -286,7 +331,34 @@ protocol::EngineStatus EngineApp::buildStatus() const {
         s.layers.push_back({l.id, it->second->mediaId(), it->second->stateName(), it->second->position(),
                             it->second->error()});
     }
-    for (const auto& o : outputs_) s.outputs.push_back({o->id(), o->monitor(), o->ok(), o->error()});
+    for (const auto& cfg : project_.outputs) {
+        protocol::OutputStatus os;
+        os.id = cfg.id;
+        os.monitor = cfg.monitor;
+        os.type = toString(cfg.type);
+        if (!cfg.enabled) {
+            os.ok = true;
+            os.detail = "desativada";
+        } else if (cfg.type == OutputType::Display || cfg.type == OutputType::Window) {
+            for (const auto& w : outputs_)
+                if (w->id() == cfg.id) {
+                    os.ok = w->ok() && w->error().empty();
+                    os.error = w->error();
+                    os.detail = w->detail();
+                }
+        } else if (cfg.type == OutputType::Ndi) {
+            for (const auto& n : ndi_)
+                if (n->id() == cfg.id) {
+                    os.ok = n->ok();
+                    os.error = n->error();
+                    os.detail = n->detail();
+                }
+        } else {
+            os.ok = false;
+            os.error = "Blackmagic DeckLink: em desenvolvimento";
+        }
+        s.outputs.push_back(std::move(os));
+    }
     s.warnings = warnings_;
     if (renderer_.usingSoftwareFallback()) s.warnings.push_back("GPU indisponível: a usar renderização por software");
     return s;
@@ -330,6 +402,7 @@ void EngineApp::timelinePause() {
 }
 
 void EngineApp::timelineStop() {
+    clipFade_.clear();
     if (activeTimeline_.empty()) return;
     activeTimeline_.clear();
     tlPlaying_ = false;
@@ -364,6 +437,7 @@ bool EngineApp::timelineSeek(const std::string& id, double time, std::string* er
 }
 
 void EngineApp::leaveTimeline() {
+    clipFade_.clear();
     if (activeTimeline_.empty()) return;
     activeTimeline_.clear();
     tlPlaying_ = false;
@@ -407,11 +481,12 @@ void EngineApp::updateTimeline() {
         auto& player = players_[layer.id];
         if (!player) player = std::make_unique<LayerPlayer>(layer.id);
         const Clip* clip = tl->clipAt(layer.id, t);
+        clipFade_[layer.id] = clip ? static_cast<float>(clip->opacityAt(t)) : 1.0f;
         if (clip) {
             if (player->tag() == clip->id) continue;
             const MediaItem* media = project_.findMedia(clip->mediaId);
             if (!media) continue;
-            player->play(media->id, media->path, media->loop, 0.0, clip->inPoint + (t - clip->start), clip->id);
+            player->play(media->id, media->path, true, 0.0, clip->inPoint + (t - clip->start), clip->id);
             player->setPaused(!tlPlaying_);
         } else if (!player->mediaId().empty()) {
             player->stop(0.0);
@@ -452,8 +527,27 @@ void EngineApp::writePreview(const std::uint8_t* data, int rowPitch, int width, 
 
 // ---------------------------------------------------------------- render loop
 
+void EngineApp::handleMediaEnds() {
+    if (!activeTimeline_.empty()) return; // na timeline mandam os clips
+    bool follow = false;
+    for (const auto& layer : project_.layers) {
+        auto it = players_.find(layer.id);
+        if (it == players_.end() || !it->second->ended() || !it->second->tag().empty()) continue;
+        const MediaItem* m = project_.findMedia(it->second->mediaId());
+        if (!m) continue;
+        if (m->loopMode == LoopMode::OnceStop) it->second->stop(0.0);
+        else if (m->loopMode == LoopMode::AutoFollow) follow = true;
+    }
+    if (follow && activeColumn_ >= 0 && activeColumn_ + 1 < static_cast<int>(project_.columns.size())) {
+        std::string err;
+        log::info("auto-follow: coluna seguinte");
+        go(activeColumn_ + 1, &err);
+    }
+}
+
 void EngineApp::renderFrame() {
     updateTimeline();
+    handleMediaEnds();
     for (auto& [id, p] : players_) p->update(renderer_);
 
     renderer_.beginCanvas();
@@ -463,8 +557,18 @@ void EngineApp::renderFrame() {
         auto p = players_.find(it->id);
         if (p == players_.end()) continue;
         const auto pr = layerProps_.find(it->id);
-        p->second->draw(renderer_, pr != layerProps_.end() ? pr->second : it->props);
+        const auto cf = clipFade_.find(it->id);
+        p->second->draw(renderer_, pr != layerProps_.end() ? pr->second : it->props,
+                        cf != clipFade_.end() ? cf->second : 1.0f);
     }
+
+    // Saídas NDI: canvas em resolução total, copiado sem esperar pela GPU.
+    bool anyNdi = false;
+    for (const auto& n : ndi_) anyNdi = anyNdi || n->ok();
+    if (anyNdi)
+        renderer_.captureCanvas([this](const std::uint8_t* d, int pitch, int w, int h) {
+            for (auto& n : ndi_) n->submit(d, pitch, w, h, fps_);
+        });
 
     // Preview para o Studio a ~30 fps (um frame sim, outro não).
     if (previewBlock_ && (++previewFrames_ & 1) == 0)

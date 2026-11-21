@@ -81,6 +81,49 @@ const Timeline* Project::findTimeline(const std::string& id) const {
     return nullptr;
 }
 
+const char* toString(LoopMode m) {
+    switch (m) {
+    case LoopMode::Infinite: return "infinite";
+    case LoopMode::OnceFreeze: return "once-freeze";
+    case LoopMode::OnceStop: return "once-stop";
+    case LoopMode::AutoFollow: return "auto-follow";
+    }
+    return "infinite";
+}
+
+LoopMode loopModeFromString(const std::string& s) {
+    if (s == "once-freeze") return LoopMode::OnceFreeze;
+    if (s == "once-stop") return LoopMode::OnceStop;
+    if (s == "auto-follow") return LoopMode::AutoFollow;
+    return LoopMode::Infinite;
+}
+
+const char* toString(OutputType t) {
+    switch (t) {
+    case OutputType::Display: return "display";
+    case OutputType::Window: return "window";
+    case OutputType::Ndi: return "ndi";
+    case OutputType::DeckLink: return "decklink";
+    }
+    return "display";
+}
+
+OutputType outputTypeFromString(const std::string& s) {
+    if (s == "window") return OutputType::Window;
+    if (s == "ndi") return OutputType::Ndi;
+    if (s == "decklink") return OutputType::DeckLink;
+    return OutputType::Display;
+}
+
+double Clip::opacityAt(double t) const {
+    double o = 1.0;
+    const double local = t - start;
+    if (fadeIn > 0.0 && local < fadeIn) o = std::min(o, std::max(0.0, local / fadeIn));
+    const double toEnd = end() - t;
+    if (fadeOut > 0.0 && toEnd < fadeOut) o = std::min(o, std::max(0.0, toEnd / fadeOut));
+    return std::clamp(o, 0.0, 1.0);
+}
+
 const MediaItem* Project::findMedia(const std::string& id) const {
     for (const auto& m : media)
         if (m.id == id) return &m;
@@ -98,7 +141,11 @@ Project Project::makeDefault() {
     p.layers = {{"L1", "Layer 1", {}, true}, {"L2", "Layer 2", {}, true}};
     p.timelines = {{"T1", "Timeline 1", {}, {}}};
     for (int i = 1; i <= 4; ++i) p.columns.push_back({"Cue " + std::to_string(i), 1.0, {}});
-    p.outputs = {{"O1", "Output 1", 0, true}};
+    Output o;
+    o.id = "O1";
+    o.name = "Output 1";
+    o.monitor = 1; // por omissão o segundo ecrã (o principal é o do operador)
+    p.outputs = {o};
     return p;
 }
 
@@ -157,7 +204,10 @@ ParseResult parseProject(const std::string& text) {
         if (auto a = j.find("media"); a != j.end() && a->is_array()) {
             for (const auto& m : *a) {
                 if (!m.is_object()) continue;
-                MediaItem it{getString(m, "id"), getString(m, "path"), getBool(m, "loop", true)};
+                MediaItem it{getString(m, "id"), getString(m, "path"), LoopMode::Infinite};
+                // Compatível com projetos antigos ("loop": true/false).
+                if (m.contains("loopMode")) it.loopMode = loopModeFromString(getString(m, "loopMode"));
+                else it.loopMode = getBool(m, "loop", true) ? LoopMode::Infinite : LoopMode::OnceFreeze;
                 if (it.id.empty() || it.path.empty() || !mediaIds.insert(it.id).second) {
                     r.warnings.push_back("media ignorada (id vazio/duplicado ou sem caminho)");
                     continue;
@@ -185,6 +235,7 @@ ParseResult parseProject(const std::string& text) {
                 it.props.rotation = getNumber(l, "rotation", 0.0);
                 it.props.clamp();
                 it.visible = getBool(l, "visible", true);
+                it.locked = getBool(l, "locked", false);
                 p.layers.push_back(std::move(it));
             }
         }
@@ -214,8 +265,18 @@ ParseResult parseProject(const std::string& text) {
         if (auto a = j.find("outputs"); a != j.end() && a->is_array()) {
             for (const auto& o : *a) {
                 if (!o.is_object()) continue;
-                Output it{getString(o, "id"), getString(o, "name"),
-                          std::clamp(getInt(o, "monitor", 0), 0, 63), getBool(o, "fullscreen", true)};
+                Output it;
+                it.id = getString(o, "id");
+                it.name = getString(o, "name");
+                it.type = outputTypeFromString(getString(o, "type", "display"));
+                it.enabled = getBool(o, "enabled", true);
+                it.displayId = getString(o, "display");
+                it.monitor = std::clamp(getInt(o, "monitor", 0), 0, 63);
+                it.windowWidth = std::clamp(getInt(o, "windowWidth", 1280), 160, kMaxCanvasSize);
+                it.windowHeight = std::clamp(getInt(o, "windowHeight", 720), 90, kMaxCanvasSize);
+                it.ndiName = getString(o, "ndiName");
+                it.ndiAlpha = getBool(o, "ndiAlpha", false);
+                it.deviceId = getString(o, "device");
                 if (it.id.empty() || !outputIds.insert(it.id).second) continue;
                 if (it.name.empty()) it.name = it.id;
                 p.outputs.push_back(std::move(it));
@@ -241,6 +302,8 @@ ParseResult parseProject(const std::string& text) {
                         clip.start = std::clamp(getNumber(c, "start", 0.0), 0.0, kMaxTimelineSeconds);
                         clip.duration = std::clamp(getNumber(c, "duration", 5.0), 0.04, kMaxTimelineSeconds);
                         clip.inPoint = std::clamp(getNumber(c, "in", 0.0), 0.0, kMaxTimelineSeconds);
+                        clip.fadeIn = std::clamp(getNumber(c, "fadeIn", 0.0), 0.0, clip.duration);
+                        clip.fadeOut = std::clamp(getNumber(c, "fadeOut", 0.0), 0.0, clip.duration);
                         if (clip.id.empty() || !clipIds.insert(clip.id).second || !layerIds.count(clip.layerId) ||
                             !mediaIds.count(clip.mediaId)) {
                             r.warnings.push_back("clip de timeline inválido ignorado");
@@ -283,12 +346,14 @@ std::string serializeProject(const Project& p) {
     j["name"] = p.name;
     j["canvas"] = {{"width", p.canvasWidth}, {"height", p.canvasHeight}};
     j["media"] = json::array();
-    for (const auto& m : p.media) j["media"].push_back({{"id", m.id}, {"path", m.path}, {"loop", m.loop}});
+    for (const auto& m : p.media)
+        j["media"].push_back({{"id", m.id}, {"path", m.path}, {"loopMode", toString(m.loopMode)}});
     j["layers"] = json::array();
     for (const auto& l : p.layers)
         j["layers"].push_back({{"id", l.id}, {"name", l.name}, {"opacity", l.props.opacity},
                                {"blend", toString(l.props.blend)}, {"x", l.props.posX}, {"y", l.props.posY},
-                               {"scale", l.props.scale}, {"rotation", l.props.rotation}, {"visible", l.visible}});
+                               {"scale", l.props.scale}, {"rotation", l.props.rotation}, {"visible", l.visible},
+                               {"locked", l.locked}});
     j["columns"] = json::array();
     for (const auto& c : p.columns) {
         json cells = json::object();
@@ -297,14 +362,23 @@ std::string serializeProject(const Project& p) {
     }
     j["outputs"] = json::array();
     for (const auto& o : p.outputs)
-        j["outputs"].push_back({{"id", o.id}, {"name", o.name}, {"monitor", o.monitor},
-                                {"fullscreen", o.fullscreen}});
+        j["outputs"].push_back({{"id", o.id},
+                                {"name", o.name},
+                                {"type", toString(o.type)},
+                                {"enabled", o.enabled},
+                                {"display", o.displayId},
+                                {"monitor", o.monitor},
+                                {"windowWidth", o.windowWidth},
+                                {"windowHeight", o.windowHeight},
+                                {"ndiName", o.ndiName},
+                                {"ndiAlpha", o.ndiAlpha},
+                                {"device", o.deviceId}});
     j["timelines"] = json::array();
     for (const auto& t : p.timelines) {
         json clips = json::array();
         for (const auto& c : t.clips)
             clips.push_back({{"id", c.id}, {"layer", c.layerId}, {"media", c.mediaId}, {"start", c.start},
-                             {"duration", c.duration}, {"in", c.inPoint}});
+                             {"duration", c.duration}, {"in", c.inPoint}, {"fadeIn", c.fadeIn}, {"fadeOut", c.fadeOut}});
         json segs = json::array();
         for (const auto& sg : t.segments)
             segs.push_back({{"name", sg.name}, {"start", sg.start}, {"end", sg.end}, {"loop", sg.loop}});

@@ -105,10 +105,15 @@ void LayerPlayer::update(Renderer& renderer) {
     }
 }
 
-void LayerPlayer::draw(Renderer& renderer, const LayerProps& props) {
+void LayerPlayer::draw(Renderer& renderer, const LayerProps& props, float extraOpacity) {
     const float p = fadeProgress();
-    if (previous_.hasFrame) renderer.drawLayer(previous_.texture, props, 1.0f - p);
-    if (current_.hasFrame) renderer.drawLayer(current_.texture, props, p);
+    if (previous_.hasFrame) renderer.drawLayer(previous_.texture, props, (1.0f - p) * extraOpacity);
+    if (current_.hasFrame) renderer.drawLayer(current_.texture, props, p * extraOpacity);
+}
+
+bool LayerPlayer::ended() const {
+    return current_.decoder && current_.decoder->state() == VideoDecoder::State::Ended &&
+           !current_.decoder->isStill();
 }
 
 double LayerPlayer::position() const {

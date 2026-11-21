@@ -1,6 +1,7 @@
 #include "main_window.h"
 
 #include <QApplication>
+#include <QIcon>
 #include <QLocale>
 #include <QPalette>
 #include <QSettings>
@@ -12,6 +13,7 @@ int main(int argc, char* argv[]) {
     QApplication::setOrganizationName(QStringLiteral("Daniel Nunes"));
     QApplication::setApplicationName(QStringLiteral("VTHOST Studio"));
     QApplication::setApplicationVersion(QStringLiteral(VTHOST_VERSION));
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/branding/vthost-icon-256.png")));
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
     // Tema escuro (salas de espetáculo são escuras; laranja como cor de destaque).

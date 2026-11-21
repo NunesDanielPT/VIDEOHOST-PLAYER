@@ -53,6 +53,8 @@ public:
     // `sink` só é chamado quando há dados prontos.
     using PreviewSink = std::function<void(const std::uint8_t* data, int rowPitch, int width, int height)>;
     void capturePreview(const PreviewSink& sink);
+    // Canvas em resolução total (para NDI), também assíncrono.
+    void captureCanvas(const PreviewSink& sink);
 
     int canvasWidth() const { return canvasW_; }
     int canvasHeight() const { return canvasH_; }
@@ -91,6 +93,12 @@ private:
     int previewIndex_ = 0;
     int previewW_ = 0;
     int previewH_ = 0;
+
+    ComPtr<ID3D11Texture2D> fullStaging_[kPreviewRing];
+    bool fullPending_[kPreviewRing] = {};
+    int fullIndex_ = 0;
+    int fullW_ = 0;
+    int fullH_ = 0;
 };
 
 } // namespace vthost

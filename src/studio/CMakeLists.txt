@@ -34,6 +34,15 @@ qt_add_executable(vthost-studio WIN32
     timeline_widget.h
 )
 target_link_libraries(vthost-studio PRIVATE vthost_core Qt6::Widgets Qt6::Network)
+if(WIN32)
+    target_sources(vthost-studio PRIVATE ${VTHOST_APP_RC})
+endif()
+
+# Logótipo (ícone da janela e Definições → Sobre).
+qt_add_resources(vthost-studio "branding"
+    PREFIX "/branding"
+    BASE "${CMAKE_SOURCE_DIR}/assets/logo"
+    FILES "${CMAKE_SOURCE_DIR}/assets/logo/vthost-icon-256.png" "${CMAKE_SOURCE_DIR}/assets/logo/vthost-logo.png")
 
 # Miniaturas e duração das media: o Studio usa as mesmas DLLs do FFmpeg que o motor.
 find_package(FFmpeg QUIET)

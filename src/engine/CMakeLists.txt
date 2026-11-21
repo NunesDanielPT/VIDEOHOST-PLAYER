@@ -8,6 +8,8 @@ add_executable(vthost-engine WIN32
     video_decoder.cpp
     layer_player.cpp
     ipc_server.cpp
+    displays.cpp
+    ndi_output.cpp
 )
 target_link_libraries(vthost-engine PRIVATE
     vthost_core
@@ -21,3 +23,5 @@ foreach(dll IN LISTS FFMPEG_DLLS)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${dll}" "$<TARGET_FILE_DIR:vthost-engine>")
 endforeach()
 # d3dcompiler_47.dll faz parte do Windows 10/11; não é preciso distribuir.
+
+target_sources(vthost-engine PRIVATE ${VTHOST_APP_RC})
