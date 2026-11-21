@@ -20,7 +20,7 @@ inline void set(const char* key, const T& v) {
 
 // Geral
 inline bool openLastProject() { return get("general/openLastProject", true); }
-inline bool autoStartEngine() { return get("general/autoStartEngine", false); }
+inline bool autoStartEngine() { return get("general/autoStartEngine", true); }
 inline bool confirmQuit() { return get("general/confirmQuit", true); }
 
 // Playlist
@@ -44,6 +44,7 @@ inline double countdownWarnSeconds() { return get("countdown/warnSeconds", 30.0)
 inline double countdownDangerSeconds() { return get("countdown/dangerSeconds", 10.0); } // vermelho
 inline bool countdownWebEnabled() { return get("countdown/webEnabled", true); }
 inline int countdownWebPort() { return get("countdown/webPort", 8088); }
+inline QString countdownBindAddress() { return get("countdown/bindAddress", QString()); } // "" = todas as placas
 
 // Show Mode
 inline bool confirmLeaveShowMode() { return get("show/confirmLeave", true); }

@@ -2,6 +2,13 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="pt_PT" sourcelanguage="en">
 <context>
+    <name>CountdownServer</name>
+    <message>
+        <source>Invalid network address: %1</source>
+        <translation>Endereço de rede inválido: %1</translation>
+    </message>
+</context>
+<context>
     <name>CountdownView</name>
     <message>
         <source>Countdown of what is on air. Double-click to open the countdown window.</source>
@@ -384,6 +391,10 @@
         <translation>Countdown na rede...</translation>
     </message>
     <message>
+        <source>Countdown web: network card %1 not available</source>
+        <translation>Countdown web: placa de rede %1 indisponível</translation>
+    </message>
+    <message>
         <source>Countdown web: port %1 unavailable</source>
         <translation>Countdown web: porta %1 indisponível</translation>
     </message>
@@ -398,6 +409,10 @@
     <message>
         <source>Cue (ready, paused on the first frame)</source>
         <translation>Preparar (pronta, em pausa no 1.º frame)</translation>
+    </message>
+    <message>
+        <source>Cue player: in development</source>
+        <translation>Cue player: em desenvolvimento</translation>
     </message>
     <message>
         <source>Delete</source>
@@ -418,10 +433,6 @@
     <message>
         <source>Duplicate cue</source>
         <translation>Duplicar cue</translation>
-    </message>
-    <message>
-        <source>E&amp;ngine</source>
-        <translation>&amp;Motor</translation>
     </message>
     <message>
         <source>End of the playlist.</source>
@@ -464,6 +475,10 @@
         <translation>Se o Windows perguntar, permita o VTHOST Studio em redes privadas. Duplo clique na página para ecrã inteiro.</translation>
     </message>
     <message>
+        <source>In development: a different workspace will arrive here in a next version.</source>
+        <translation>Em desenvolvimento: um workspace diferente vai chegar aqui numa próxima versão.</translation>
+    </message>
+    <message>
         <source>Jump to the last %1 seconds of the cue</source>
         <translation>Saltar para os últimos %1 segundos da cue</translation>
     </message>
@@ -486,6 +501,10 @@
     <message>
         <source>Media (*.mp4 *.mov *.mkv *.avi *.webm *.m4v *.mxf *.wmv *.mpg *.mpeg *.ts *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.mp3 *.wav *.aif *.aiff *.flac *.m4a *.ogg);;All files (*)</source>
         <translation>Media (*.mp4 *.mov *.mkv *.avi *.webm *.m4v *.mxf *.wmv *.mpg *.mpeg *.ts *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.mp3 *.wav *.aif *.aiff *.flac *.m4a *.ogg);;Todos os ficheiros (*)</translation>
+    </message>
+    <message>
+        <source>Media player: playlist of videos with preview, waveform and inspector</source>
+        <translation>Media player: playlist de vídeos com preview, forma de onda e inspector</translation>
     </message>
     <message>
         <source>Next cue</source>
@@ -898,6 +917,10 @@
         <translation> s</translation>
     </message>
     <message>
+        <source>%1 (not connected now)</source>
+        <translation>%1 (não ligada agora)</translation>
+    </message>
+    <message>
         <source>%1 + Enter / double-click</source>
         <translation>%1 + Enter / duplo clique</translation>
     </message>
@@ -932,6 +955,10 @@
     <message>
         <source>Add media</source>
         <translation>Adicionar media</translation>
+    </message>
+    <message>
+        <source>All network cards</source>
+        <translation>Todas as placas de rede</translation>
     </message>
     <message>
         <source>Ask before quitting</source>
@@ -1064,6 +1091,10 @@
     <message>
         <source>Media server and video player for live shows.</source>
         <translation>Media server e player de vídeo para espetáculos ao vivo.</translation>
+    </message>
+    <message>
+        <source>Network card:</source>
+        <translation>Placa de rede:</translation>
     </message>
     <message>
         <source>New cues pause at the end (hold the last frame)</source>

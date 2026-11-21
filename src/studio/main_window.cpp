@@ -35,6 +35,7 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QStyle>
 #include <QToolButton>
@@ -424,12 +425,64 @@ void MainWindow::buildUi() {
     mainSplit_->setStretchFactor(2, 0);
     mainSplit_->setSizes({440, 760, 340});
 
-    auto* central = new QWidget(this);
-    auto* v = new QVBoxLayout(central);
+    // Workspace MEDIAPLAYER (este player) e CUEPLAYER (em desenvolvimento).
+    auto* mediaPage = new QWidget(this);
+    auto* v = new QVBoxLayout(mediaPage);
     v->setContentsMargins(0, 0, 0, 0);
     v->setSpacing(0);
     v->addWidget(buildTransportBar());
     v->addWidget(mainSplit_, 1);
+
+    auto* cuePage = new QWidget(this);
+    auto* cl = new QVBoxLayout(cuePage);
+    auto* cueTitle = new QLabel(QStringLiteral("CUEPLAYER"), cuePage);
+    cueTitle->setAlignment(Qt::AlignCenter);
+    cueTitle->setStyleSheet(QStringLiteral("font-size: 34px; font-weight: bold; color: #e0a030; letter-spacing: 4px;"));
+    auto* cueText = new QLabel(tr("In development: a different workspace will arrive here in a next version."), cuePage);
+    cueText->setAlignment(Qt::AlignCenter);
+    cueText->setStyleSheet(QStringLiteral("color: #999; font-size: 14px;"));
+    cl->addStretch();
+    cl->addWidget(cueTitle);
+    cl->addWidget(cueText);
+    cl->addStretch();
+
+    workspaces_ = new QStackedWidget(this);
+    workspaces_->addWidget(mediaPage);
+    workspaces_->addWidget(cuePage);
+
+    auto* wsBar = new QWidget(this);
+    wsBar->setObjectName(QStringLiteral("workspaces"));
+    wsBar->setStyleSheet(QStringLiteral(
+        "#workspaces { background: #151515; border-bottom: 1px solid #0c0c0c; }"
+        "QToolButton { color: #888; font-weight: bold; letter-spacing: 1px; padding: 4px 16px; border: none; "
+        "border-bottom: 2px solid transparent; }"
+        "QToolButton:hover { color: #ccc; }"
+        "QToolButton:checked#ws0 { color: #2aa0ff; border-bottom: 2px solid #2aa0ff; }"
+        "QToolButton:checked#ws1 { color: #e0a030; border-bottom: 2px solid #e0a030; }"));
+    auto* wl = new QHBoxLayout(wsBar);
+    wl->setContentsMargins(6, 0, 6, 0);
+    wl->setSpacing(2);
+    const QString names[] = {QStringLiteral("MEDIAPLAYER"), QStringLiteral("CUEPLAYER")};
+    for (int i = 0; i < 2; ++i) {
+        auto* b = new QToolButton(wsBar);
+        b->setObjectName(QStringLiteral("ws%1").arg(i));
+        b->setText(names[i]);
+        b->setCheckable(true);
+        b->setAutoExclusive(true);
+        b->setChecked(i == 0);
+        b->setToolTip(i == 0 ? tr("Media player: playlist of videos with preview, waveform and inspector")
+                             : tr("Cue player: in development"));
+        connect(b, &QToolButton::clicked, this, [this, i] { workspaces_->setCurrentIndex(i); });
+        wl->addWidget(b);
+    }
+    wl->addStretch();
+
+    auto* central = new QWidget(this);
+    auto* cv = new QVBoxLayout(central);
+    cv->setContentsMargins(0, 0, 0, 0);
+    cv->setSpacing(0);
+    cv->addWidget(wsBar);
+    cv->addWidget(workspaces_, 1);
     setCentralWidget(central);
 
     engineLabel_ = new QLabel(this);
@@ -501,18 +554,18 @@ void MainWindow::buildMenus() {
     play->addAction(tr("Countdown window"), QKeySequence(Qt::CTRL | Qt::Key_T), this, &MainWindow::openCountdownWindow);
     play->addAction(tr("Countdown on the network..."), this, &MainWindow::showCountdownWebInfo);
 
+    // Saídas e motor num só menu (o motor arranca sozinho com o Studio).
     auto* outputs = menuBar()->addMenu(tr("&Outputs"));
     auto* aOutputs = outputs->addAction(tr("Outputs..."), this, &MainWindow::openOutputs);
     aOutputs->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Semicolon));
     editActions_ << aOutputs;
     outputs->addAction(tr("Test card"), this, [this] { testBtn_->toggle(); });
-
-    auto* eng = menuBar()->addMenu(tr("E&ngine"));
-    eng->addAction(tr("Start engine"), this, &MainWindow::startEngine);
-    auto* aStopEngine = eng->addAction(tr("Stop engine"), this, &MainWindow::stopEngine);
+    outputs->addSeparator();
+    outputs->addAction(tr("Start engine"), this, &MainWindow::startEngine);
+    auto* aStopEngine = outputs->addAction(tr("Stop engine"), this, &MainWindow::stopEngine);
     editActions_ << aStopEngine;
-    eng->addSeparator();
-    eng->addAction(tr("Open logs folder"), this, [] {
+    outputs->addSeparator();
+    outputs->addAction(tr("Open logs folder"), this, [] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdWString(paths::logsDir().wstring())));
     });
 
@@ -1427,10 +1480,12 @@ void MainWindow::applyCountdownServer() {
         webLabel_->clear();
         return;
     }
-    if (!countdownServer_->isRunning() || countdownServer_->port() != port) {
+    const QString bind = prefs::countdownBindAddress();
+    if (!countdownServer_->isRunning() || countdownServer_->port() != port || countdownServer_->bindAddress() != bind) {
         QString err;
-        if (!countdownServer_->start(port, &err)) {
-            webLabel_->setText(tr("Countdown web: port %1 unavailable").arg(port));
+        if (!countdownServer_->start(port, bind, &err)) {
+            webLabel_->setText(bind.isEmpty() ? tr("Countdown web: port %1 unavailable").arg(port)
+                                              : tr("Countdown web: network card %1 not available").arg(bind));
             webLabel_->setToolTip(err);
             return;
         }

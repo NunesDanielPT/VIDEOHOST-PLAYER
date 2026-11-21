@@ -35,6 +35,7 @@ class QAction;
 class QLabel;
 class QSlider;
 class QSplitter;
+class QStackedWidget;
 class QToolButton;
 class WaveformView;
 
@@ -161,6 +162,7 @@ private:
     QTimer countdownTimer_;
     double statusMediaTime_ = 0.0; // posição no ficheiro no último estado
 
+    QStackedWidget* workspaces_ = nullptr; // 0 = MEDIAPLAYER, 1 = CUEPLAYER
     QSplitter* mainSplit_ = nullptr;
     QSplitter* centerSplit_ = nullptr;
     PlaylistView* playlist_ = nullptr;

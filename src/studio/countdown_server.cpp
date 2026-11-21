@@ -20,12 +20,19 @@ CountdownServer::~CountdownServer() { stop(); }
 
 bool CountdownServer::isRunning() const { return server_ && server_->isListening(); }
 
-bool CountdownServer::start(quint16 port, QString* error) {
+bool CountdownServer::start(quint16 port, const QString& bindAddress, QString* error) {
     stop();
+    bind_ = bindAddress;
+    QHostAddress addr(QHostAddress::AnyIPv4);
+    if (!bindAddress.isEmpty() && !addr.setAddress(bindAddress)) {
+        if (error) *error = tr("Invalid network address: %1").arg(bindAddress);
+        return false;
+    }
     server_ = new QTcpServer(this);
     server_->setMaxPendingConnections(kMaxClients);
     connect(server_, &QTcpServer::newConnection, this, &CountdownServer::onNewConnection);
-    if (!server_->listen(QHostAddress::AnyIPv4, port)) {
+    // Só esta placa: quem está noutra rede do PC não chega à página.
+    if (!server_->listen(addr, port)) {
         if (error) *error = server_->errorString();
         server_->deleteLater();
         server_ = nullptr;
@@ -54,6 +61,7 @@ void CountdownServer::stop() {
 QStringList CountdownServer::urls() const {
     QStringList out;
     if (!isRunning()) return out;
+    if (!bind_.isEmpty()) return {QStringLiteral("http://%1:%2").arg(bind_).arg(port_)};
     for (const QHostAddress& a : QNetworkInterface::allAddresses()) {
         if (a.protocol() != QAbstractSocket::IPv4Protocol || a.isLoopback() || a.isLinkLocal()) continue;
         out << QStringLiteral("http://%1:%2").arg(a.toString()).arg(port_);

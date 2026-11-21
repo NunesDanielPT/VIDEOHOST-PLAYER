@@ -14,6 +14,7 @@
 #include <QLabel>
 #include <QLocale>
 #include <QMessageBox>
+#include <QNetworkInterface>
 #include <QPixmap>
 #include <QPointer>
 #include <QPushButton>
@@ -96,7 +97,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         language_->setCurrentIndex(std::max(0, language_->findData(initialLanguage_)));
         f->addRow(tr("Language:"), language_);
         f->addRow(QString(), check(page, tr("Open the last project at startup"), "general/openLastProject", true));
-        f->addRow(QString(), check(page, tr("Start the engine when VTHOST Studio opens"), "general/autoStartEngine", false));
+        f->addRow(QString(), check(page, tr("Start the engine when VTHOST Studio opens"), "general/autoStartEngine", true));
         f->addRow(QString(), check(page, tr("Ask before quitting"), "general/confirmQuit", true));
         f->addRow(QString(), note(tr("Closing VTHOST Studio never stops the engine: the show keeps running."), page));
         tabs->addTab(page, tr("General"));
@@ -207,6 +208,25 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         port->setValue(prefs::countdownWebPort());
         savers_.push_back([port] { prefs::set("countdown/webPort", port->value()); });
         f->addRow(tr("Port:"), port);
+        // Placa de rede: a página só fica acessível na rede dessa placa (ex. a rede do
+        // público/técnicos), nunca nas outras redes do PC (sistemas de controlo, etc.).
+        auto* nic = new QComboBox(page);
+        nic->addItem(tr("All network cards"), QString());
+        const QString savedNic = prefs::countdownBindAddress();
+        bool found = savedNic.isEmpty();
+        for (const QNetworkInterface& ni : QNetworkInterface::allInterfaces()) {
+            if (!(ni.flags() & QNetworkInterface::IsUp) || (ni.flags() & QNetworkInterface::IsLoopBack)) continue;
+            for (const QNetworkAddressEntry& e : ni.addressEntries()) {
+                const QHostAddress a = e.ip();
+                if (a.protocol() != QAbstractSocket::IPv4Protocol || a.isLinkLocal()) continue;
+                nic->addItem(QStringLiteral("%1 — %2").arg(ni.humanReadableName(), a.toString()), a.toString());
+                found = found || a.toString() == savedNic;
+            }
+        }
+        if (!found) nic->addItem(tr("%1 (not connected now)").arg(savedNic), savedNic);
+        nic->setCurrentIndex(std::max(0, nic->findData(savedNic)));
+        savers_.push_back([nic] { prefs::set("countdown/bindAddress", nic->currentData().toString()); });
+        f->addRow(tr("Network card:"), nic);
         f->addRow(QString(), note(tr("Open Show → Countdown on the network to see the address (e.g. "
                                      "http://192.168.1.20:8088). The page is read-only: it cannot control the show. "
                                      "The countdown shows the time left of the longest video in the cue on air, "
