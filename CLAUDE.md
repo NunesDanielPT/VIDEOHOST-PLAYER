@@ -12,5 +12,5 @@
 5. Qualquer alteração ao protocolo ou ao formato de projeto atualiza os testes.
 6. A CI (`.github/workflows/build.yml`) tem de ficar verde.
 7. Atualizar `docs/ROADMAP.md` quando uma funcionalidade fica pronta.
-8. Publicar uma versão: subir `VERSION` em `CMakeLists.txt`, fazer commit e criar a tag `vX.Y.Z` igual. A CI gera o instalador e a release; o Studio instalado oferece a atualização.
+8. Publicar uma versão: subir `VERSION` em `CMakeLists.txt` e fazer push para `main`. A CI cria a release `vX.Y.Z` com o instalador se ainda não existir; o Studio instalado oferece a atualização. Commits sem subir a versão não são publicados.
 9. Créditos da app: criador Daniel Nunes, github.com/NunesDanielPT (Definições → Sobre). Manter sempre.

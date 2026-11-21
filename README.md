@@ -38,9 +38,11 @@ Fechar ou crashar o Studio **não pára** o show. / Closing or crashing the Stud
 
 ## Publicar uma versão / Release
 
-1. Subir `VERSION` em `CMakeLists.txt` (ex. `0.2.0`) e fazer commit. / Bump `VERSION` in `CMakeLists.txt` and commit.
-2. `git tag v0.2.0 && git push origin v0.2.0`
-3. A CI cria a release com o instalador; os Studios instalados oferecem a atualização. / CI publishes the release with the installer; installed Studios offer the update.
+1. Subir `VERSION` em `CMakeLists.txt` (ex. `0.2.0`) e fazer push para `main`. / Bump `VERSION` in `CMakeLists.txt` and push to `main`.
+2. A CI vê que a release `v0.2.0` ainda não existe e publica-a com o instalador. / CI sees release `v0.2.0` doesn't exist yet and publishes it with the installer.
+3. Os Studios instalados oferecem a atualização. / Installed Studios offer the update.
+
+Commits sem mudança de versão não chegam aos PCs de espetáculo. / Commits without a version bump never reach show machines.
 
 ## Compilar / Build
 
