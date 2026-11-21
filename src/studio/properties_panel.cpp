@@ -40,6 +40,7 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     auto* layerBox = new QWidget(body_);
     auto* form = new QFormLayout(layerBox);
     form->setLabelAlignment(Qt::AlignRight);
+    canvas_ = new QComboBox(layerBox);
     blend_ = new QComboBox(layerBox);
     blend_->addItem(tr("normal"), static_cast<int>(BlendMode::Normal));
     blend_->addItem(tr("add"), static_cast<int>(BlendMode::Add));
@@ -53,6 +54,7 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     auto* pos = new QHBoxLayout;
     pos->addWidget(posX_);
     pos->addWidget(posY_);
+    form->addRow(tr("canvas"), canvas_);
     form->addRow(tr("blend mode"), blend_);
     form->addRow(tr("opacity"), opacity_);
     form->addRow(tr("position"), pos);
@@ -75,6 +77,9 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
         if (hasLayer_ && editable_) emit propsChanged(current());
     };
     connect(blend_, &QComboBox::currentIndexChanged, this, emitChange);
+    connect(canvas_, &QComboBox::activated, this, [this](int) {
+        if (hasLayer_ && editable_) emit canvasChanged(canvas_->currentData().toString());
+    });
     for (QDoubleSpinBox* s : {opacity_, posX_, posY_, scale_, rotation_})
         connect(s, &QDoubleSpinBox::valueChanged, this, emitChange);
     connect(reset_, &QPushButton::clicked, this, [this] {
@@ -131,6 +136,11 @@ void PropertiesPanel::setLayer(const Layer* layer) {
     title_->setText(title);
     body_->setEnabled(hasLayer_ && editable_ && !locked_);
     if (!layer) return;
+    {
+        const QSignalBlocker bc(canvas_);
+        const int ci = canvas_->findData(QString::fromStdString(layer->canvasId));
+        canvas_->setCurrentIndex(ci >= 0 ? ci : 0);
+    }
     const LayerProps& p = layer->props;
     const QSignalBlocker b1(blend_), b2(opacity_), b3(posX_), b4(posY_), b5(scale_), b6(rotation_);
     blend_->setCurrentIndex(qMax(0, blend_->findData(static_cast<int>(p.blend))));
@@ -139,6 +149,15 @@ void PropertiesPanel::setLayer(const Layer* layer) {
     posY_->setValue(p.posY + originY_);
     scale_->setValue(p.scale * 100.0);
     rotation_->setValue(p.rotation);
+}
+
+void PropertiesPanel::setCanvases(const std::vector<std::pair<QString, QString>>& canvases) {
+    const QSignalBlocker b(canvas_);
+    const QString cur = canvas_->currentData().toString();
+    canvas_->clear();
+    for (const auto& [id, name] : canvases) canvas_->addItem(name, id);
+    const int i = canvas_->findData(cur);
+    canvas_->setCurrentIndex(i >= 0 ? i : 0);
 }
 
 void PropertiesPanel::setOrigin(double offsetX, double offsetY) {

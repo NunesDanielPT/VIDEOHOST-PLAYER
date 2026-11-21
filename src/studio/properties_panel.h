@@ -5,6 +5,9 @@
 
 #include <QWidget>
 
+#include <utility>
+#include <vector>
+
 class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
@@ -21,9 +24,12 @@ public:
     // Origem do Workspace: (0,0) no centro (omissão) ou no canto superior esquerdo.
     // Só muda os números mostrados; o projeto guarda sempre relativo ao centro.
     void setOrigin(double offsetX, double offsetY);
+    // Canvas disponíveis (id, nome) para escolher o canvas da layer.
+    void setCanvases(const std::vector<std::pair<QString, QString>>& canvases);
 
 signals:
     void propsChanged(const vthost::LayerProps& props);
+    void canvasChanged(const QString& canvasId);
 
 private:
     vthost::LayerProps current() const;
@@ -31,6 +37,7 @@ private:
 
     QLabel* title_;
     QComboBox* blend_;
+    QComboBox* canvas_;
     QDoubleSpinBox* opacity_;
     QDoubleSpinBox* posX_;
     QDoubleSpinBox* posY_;

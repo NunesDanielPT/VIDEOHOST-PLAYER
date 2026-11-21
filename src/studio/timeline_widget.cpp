@@ -24,7 +24,7 @@
 using namespace vthost;
 
 namespace {
-constexpr double kHeaderW = 130.0;
+constexpr double kHeaderW = 170.0;
 constexpr double kRulerH = 26.0;
 constexpr double kSegH = 24.0;
 constexpr double kTrackH = 54.0;
@@ -414,12 +414,14 @@ void TimelineWidget::paintEvent(QPaintEvent*) {
         p.drawLine(hr.bottomLeft(), hr.bottomRight());
         const QColor fg = layer.visible ? QColor(220, 220, 220) : QColor(120, 120, 120);
         p.setPen(fg);
-        p.drawText(hr.adjusted(10, 0, -30, 0), Qt::AlignVCenter | Qt::AlignLeft, QString::fromStdString(layer.name));
-        paintEye(&p, QRect(static_cast<int>(kHeaderW) - 26, static_cast<int>(hr.center().y()) - 8, 18, 16),
-                 layer.visible, fg);
-        if (layer.locked)
-            paintLock(&p, QRect(static_cast<int>(kHeaderW) - 46, static_cast<int>(hr.center().y()) - 8, 16, 16), true,
-                      QColor(255, 176, 74));
+        p.drawText(hr.adjusted(10, 0, -70, 0), Qt::AlignVCenter | Qt::AlignLeft,
+                   p.fontMetrics().elidedText(QString::fromStdString(layer.name), Qt::ElideRight, static_cast<int>(kHeaderW) - 80));
+        // Como no Premiere: [S] [cadeado] [olho] em cada faixa.
+        const int cy = static_cast<int>(hr.center().y()) - 8;
+        paintSolo(&p, QRect(static_cast<int>(kHeaderW) - 66, cy, 16, 16), soloLayer_ == layer.id, fg);
+        paintLock(&p, QRect(static_cast<int>(kHeaderW) - 46, cy, 16, 16), layer.locked,
+                  layer.locked ? QColor(255, 176, 74) : fg);
+        paintEye(&p, QRect(static_cast<int>(kHeaderW) - 26, cy, 18, 16), layer.visible, fg);
     }
     if (drag_ == Drag::MoveLayer && dragLayerTo_ >= 0) {
         const double y = rowTop(dragLayerTo_);
@@ -453,6 +455,14 @@ void TimelineWidget::mousePressEvent(QMouseEvent* e) {
         if (row < 0) return;
         if (pos.x() >= kHeaderW - 28) {
             emit layerVisibilityToggled(row); // olho
+            return;
+        }
+        if (pos.x() >= kHeaderW - 48) {
+            emit layerLockToggled(row); // cadeado
+            return;
+        }
+        if (pos.x() >= kHeaderW - 68) {
+            emit layerSoloToggled(row); // solo
             return;
         }
         emit layerClicked(row);

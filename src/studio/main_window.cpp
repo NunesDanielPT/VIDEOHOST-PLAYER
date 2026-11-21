@@ -15,6 +15,8 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
+#include <QToolButton>
 #include <QCloseEvent>
 #include <QDesktopServices>
 #include <QDir>
@@ -123,13 +125,50 @@ void MainWindow::buildUi() {
 
     preview_ = new PreviewWidget(this);
     connect(preview_, &PreviewWidget::layerDragged, this, &MainWindow::onLayerDragged);
+    // Workspace: escolha do canvas mostrado + atalhos para saídas e test card.
+    auto* workspace = new QWidget(this);
+    auto* wl = new QVBoxLayout(workspace);
+    wl->setContentsMargins(0, 0, 0, 0);
+    wl->setSpacing(2);
+    auto* wbar = new QHBoxLayout;
+    wbar->setContentsMargins(6, 4, 6, 0);
+    canvasSelect_ = new QComboBox(workspace);
+    canvasSelect_->setMinimumWidth(200);
+    connect(canvasSelect_, &QComboBox::activated, this,
+            [this](int) { setWorkspaceCanvas(canvasSelect_->currentData().toString()); });
+    auto* outputsBtn = new QToolButton(workspace);
+    outputsBtn->setText(tr("Outputs..."));
+    connect(outputsBtn, &QToolButton::clicked, this, &MainWindow::openOutputs);
+    auto* testBtn = new QToolButton(workspace);
+    testBtn->setText(tr("Test card"));
+    testBtn->setCheckable(true);
+    connect(testBtn, &QToolButton::toggled, this, [this](bool on) {
+        protocol::Command c;
+        c.type = protocol::CommandType::SetTestCard;
+        c.on = on;
+        engine_->send(c);
+    });
+    wbar->addWidget(new QLabel(tr("Canvas:"), workspace));
+    wbar->addWidget(canvasSelect_);
+    wbar->addStretch();
+    wbar->addWidget(testBtn);
+    wbar->addWidget(outputsBtn);
+    wl->addLayout(wbar);
+    wl->addWidget(preview_, 1);
 
     properties_ = new PropertiesPanel(this);
     connect(properties_, &PropertiesPanel::propsChanged, this, &MainWindow::onPropsChanged);
+    connect(properties_, &PropertiesPanel::canvasChanged, this, [this](const QString& canvasId) {
+        if (selectedLayer_ < 0 || selectedLayer_ >= static_cast<int>(project_.layers.size()) || showMode_) return;
+        project_.layers[static_cast<std::size_t>(selectedLayer_)].canvasId = ss(canvasId);
+        setWorkspaceCanvas(canvasId);
+        refreshDashboard();
+        markChanged();
+    });
 
     topSplit_ = new QSplitter(Qt::Horizontal, this);
     topSplit_->addWidget(library_);
-    topSplit_->addWidget(preview_);
+    topSplit_->addWidget(workspace);
     topSplit_->addWidget(properties_);
     topSplit_->setStretchFactor(0, 0);
     topSplit_->setStretchFactor(1, 1);
@@ -147,24 +186,41 @@ void MainWindow::buildUi() {
     goBtn->setStyleSheet(QStringLiteral("font-weight: bold; padding: 0 18px;"));
     auto* stopBtn = new QPushButton(tr("Stop all"), dashPage);
     stopBtn->setMinimumHeight(34);
-    auto* addLayerBtn = new QPushButton(tr("+ Layer"), dashPage);
-    auto* addColBtn = new QPushButton(tr("+ Column"), dashPage);
     connect(goBtn, &QPushButton::clicked, this, &MainWindow::goNext);
     connect(stopBtn, &QPushButton::clicked, this, &MainWindow::stopAll);
-    connect(addLayerBtn, &QPushButton::clicked, this, &MainWindow::addLayer);
-    connect(addColBtn, &QPushButton::clicked, this, &MainWindow::addColumn);
+    // Barra de ícones das layers (como no Premiere): adicionar, duplicar, subir, descer, apagar.
+    auto tool = [&](ToolIcon icon, const QString& tip, auto slot) {
+        auto* b = new QToolButton(dashPage);
+        b->setIcon(makeToolIcon(icon));
+        b->setIconSize(QSize(20, 20));
+        b->setToolTip(tip);
+        b->setAutoRaise(true);
+        connect(b, &QToolButton::clicked, this, slot);
+        dashBar->addWidget(b);
+        editWidgets_ << b;
+        return b;
+    };
     dashBar->addWidget(goBtn);
     dashBar->addWidget(stopBtn);
+    dashBar->addSpacing(16);
+    dashBar->addWidget(new QLabel(tr("Layers:"), dashPage));
+    tool(ToolIcon::Add, tr("Add layer"), [this] { insertLayerAt(std::max(0, selectedLayer_)); });
+    tool(ToolIcon::Duplicate, tr("Duplicate layer"), [this] { duplicateLayer(selectedLayer_); });
+    tool(ToolIcon::Up, tr("Move up"), [this] { moveLayer(selectedLayer_, selectedLayer_ - 1); });
+    tool(ToolIcon::Down, tr("Move down"), [this] { moveLayer(selectedLayer_, selectedLayer_ + 1); });
+    tool(ToolIcon::Delete, tr("Delete layer"), [this] { removeLayer(); });
     dashBar->addStretch();
-    dashBar->addWidget(addLayerBtn);
+    auto* addColBtn = new QPushButton(tr("+ Column"), dashPage);
+    connect(addColBtn, &QPushButton::clicked, this, &MainWindow::addColumn);
     dashBar->addWidget(addColBtn);
-    editWidgets_ << addLayerBtn << addColBtn;
+    editWidgets_ << addColBtn;
 
     dashboard_ = new DashboardTable(dashPage);
     layerHeader_ = new LayerHeader(dashboard_);
     dashboard_->setVerticalHeader(layerHeader_);
     connect(layerHeader_, &LayerHeader::visibilityToggled, this, &MainWindow::toggleLayerVisible);
     connect(layerHeader_, &LayerHeader::lockToggled, this, &MainWindow::toggleLayerLock);
+    connect(layerHeader_, &LayerHeader::soloToggled, this, &MainWindow::toggleSolo);
     connect(layerHeader_, &LayerHeader::contextMenuRequested, this, &MainWindow::showLayerMenu);
     connect(layerHeader_, &QHeaderView::sectionDoubleClicked, this, [this](int row) {
         selectLayer(row); // duplo clique no nome = mudar o nome (como no Millumin)
@@ -224,6 +280,8 @@ void MainWindow::buildUi() {
     connect(tw, &TimelineWidget::layerClicked, this, &MainWindow::selectLayer);
     connect(tw, &TimelineWidget::layerContextMenu, this, &MainWindow::showLayerMenu);
     connect(tw, &TimelineWidget::layerVisibilityToggled, this, &MainWindow::toggleLayerVisible);
+    connect(tw, &TimelineWidget::layerLockToggled, this, &MainWindow::toggleLayerLock);
+    connect(tw, &TimelineWidget::layerSoloToggled, this, &MainWindow::toggleSolo);
     connect(tw, &TimelineWidget::layerMoved, this, [this](int from, int to) {
         if (!showMode_) moveLayer(from, to);
     });
@@ -273,7 +331,7 @@ void MainWindow::buildMenus() {
     editActions_ << edit->addAction(tr("Canvas size..."), this, &MainWindow::setCanvasSize);
 
     auto* outputs = menuBar()->addMenu(tr("&Outputs"));
-    auto* aOutputs = outputs->addAction(tr("Outputs..."), this, &MainWindow::openOutputs);
+    auto* aOutputs = outputs->addAction(tr("Outputs and canvases..."), this, &MainWindow::openOutputs);
     aOutputs->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Semicolon));
     editActions_ << aOutputs;
 
@@ -337,7 +395,10 @@ void MainWindow::markChanged() {
 
 void MainWindow::pushToEngine() {
     std::string err;
-    if (!saveProjectFile(project_, ss(livePath()), &err)) {
+    // A cópia ao vivo leva a visibilidade efetiva (olho + solo).
+    Project live = project_;
+    for (auto& l : live.layers) l.visible = effectiveVisible(l);
+    if (!saveProjectFile(live, ss(livePath()), &err)) {
         infoLabel_->setText(tr("Could not write live project: %1").arg(qs(err)));
         return;
     }
@@ -598,25 +659,103 @@ void MainWindow::showCellMenu(const QPoint& pos) {
 
 void MainWindow::openOutputs() {
     if (showMode_) return;
-    OutputsDialog dlg(project_.outputs, engine_, this);
-    if (dlg.exec() != QDialog::Accepted) return;
-    project_.outputs = dlg.outputs();
+    const auto origCanvases = project_.canvases;
+    const auto origOutputs = project_.outputs;
+    OutputsDialog dlg(project_.canvases, project_.outputs, engine_, this);
+    // Tudo é aplicado ao vivo para se ver nos ecrãs/projetores enquanto se configura.
+    connect(&dlg, &OutputsDialog::liveChanged, this, [this, &dlg] {
+        project_.canvases = dlg.canvases();
+        project_.outputs = dlg.outputs();
+        refreshCanvasChoices();
+        markChanged();
+    });
+    if (dlg.exec() == QDialog::Accepted) {
+        project_.canvases = dlg.canvases();
+        project_.outputs = dlg.outputs();
+    } else {
+        project_.canvases = origCanvases; // Cancelar repõe tudo
+        project_.outputs = origOutputs;
+    }
+    refreshCanvasChoices();
     markChanged();
 }
 
 void MainWindow::setCanvasSize() {
+    Canvas* cv = nullptr;
+    for (auto& c : project_.canvases)
+        if (qs(c.id) == workspaceCanvas_) cv = &c;
+    if (!cv && !project_.canvases.empty()) cv = &project_.canvases.front();
+    if (!cv) return;
     bool ok = false;
-    const int w = QInputDialog::getInt(this, tr("Canvas size"), tr("Width (px):"), project_.canvasWidth, 16,
-                                       kMaxCanvasSize, 1, &ok);
+    const int w = QInputDialog::getInt(this, tr("Canvas size"), tr("Width (px):"), cv->width, 16, kMaxCanvasSize, 1, &ok);
     if (!ok) return;
-    const int h = QInputDialog::getInt(this, tr("Canvas size"), tr("Height (px):"), project_.canvasHeight, 16,
-                                       kMaxCanvasSize, 1, &ok);
+    const int h = QInputDialog::getInt(this, tr("Canvas size"), tr("Height (px):"), cv->height, 16, kMaxCanvasSize, 1, &ok);
     if (!ok) return;
-    project_.canvasWidth = w;
-    project_.canvasHeight = h;
+    cv->width = w;
+    cv->height = h;
     preview_->setCanvasSize(w, h);
+    refreshCanvasChoices();
     updateTitle();
     markChanged();
+}
+
+void MainWindow::refreshCanvasChoices() {
+    std::vector<std::pair<QString, QString>> list;
+    {
+        const QSignalBlocker b(canvasSelect_);
+        canvasSelect_->clear();
+        for (const auto& c : project_.canvases) {
+            const QString label = QStringLiteral("%1  (%2 × %3)").arg(qs(c.name)).arg(c.width).arg(c.height);
+            canvasSelect_->addItem(label, qs(c.id));
+            list.emplace_back(qs(c.id), label);
+        }
+        int i = canvasSelect_->findData(workspaceCanvas_);
+        if (i < 0) i = 0;
+        canvasSelect_->setCurrentIndex(i);
+        workspaceCanvas_ = canvasSelect_->currentData().toString();
+    }
+    properties_->setCanvases(list);
+    const Canvas& cv = project_.canvasOf(ss(workspaceCanvas_));
+    preview_->setCanvasSize(cv.width, cv.height);
+    updateSelectionViews();
+}
+
+void MainWindow::setWorkspaceCanvas(const QString& canvasId) {
+    const QString id = qs(project_.resolveCanvasId(ss(canvasId)));
+    if (id != workspaceCanvas_) {
+        workspaceCanvas_ = id;
+        protocol::Command c;
+        c.type = protocol::CommandType::SetPreviewCanvas;
+        c.canvas = ss(id);
+        engine_->send(c);
+    }
+    refreshCanvasChoices();
+}
+
+bool MainWindow::effectiveVisible(const Layer& l) const {
+    if (!soloLayer_.empty()) return l.id == soloLayer_;
+    return l.visible;
+}
+
+void MainWindow::sendVisibility() {
+    for (const auto& l : project_.layers) {
+        protocol::Command c;
+        c.type = protocol::CommandType::SetLayerVisible;
+        c.layer = l.id;
+        c.on = effectiveVisible(l);
+        engine_->send(c);
+    }
+}
+
+void MainWindow::toggleSolo(int row) {
+    if (row < 0 || row >= static_cast<int>(project_.layers.size())) return;
+    const std::string id = project_.layers[static_cast<std::size_t>(row)].id;
+    soloLayer_ = soloLayer_ == id ? std::string() : id;
+    // Ao vivo, também em Show Mode; o solo não fica guardado no projeto.
+    sendVisibility();
+    if (!showMode_) pushTimer_.start();
+    refreshDashboard();
+    timelinePanel_->timeline()->setSoloLayer(soloLayer_);
 }
 
 void MainWindow::addLoopModeMenu(QMenu* menu, const QString& mediaId) {
@@ -770,7 +909,7 @@ void MainWindow::toggleLayerVisible(int row) {
     protocol::Command c;
     c.type = protocol::CommandType::SetLayerVisible;
     c.layer = l.id;
-    c.on = l.visible;
+    c.on = effectiveVisible(l);
     engine_->send(c);
     dirty_ = true;
     updateTitle();
@@ -838,6 +977,11 @@ void MainWindow::deleteColumn(int column) {
 void MainWindow::selectLayer(int row) {
     if (row >= static_cast<int>(project_.layers.size())) row = static_cast<int>(project_.layers.size()) - 1;
     selectedLayer_ = row;
+    // Ao selecionar uma layer, o Workspace mostra o canvas dela.
+    if (row >= 0) {
+        const QString cid = qs(project_.resolveCanvasId(project_.layers[static_cast<std::size_t>(row)].canvasId));
+        if (cid != workspaceCanvas_ && canvasSelect_) setWorkspaceCanvas(cid);
+    }
     if (row >= 0 && dashboard_->currentRow() != row) {
         const QSignalBlocker b(dashboard_);
         dashboard_->setCurrentCell(row, std::max(0, dashboard_->currentColumn()));
@@ -848,10 +992,12 @@ void MainWindow::selectLayer(int row) {
 void MainWindow::updateSelectionViews() {
     const bool valid = selectedLayer_ >= 0 && selectedLayer_ < static_cast<int>(project_.layers.size());
     const Layer* layer = valid ? &project_.layers[static_cast<std::size_t>(selectedLayer_)] : nullptr;
-    if (prefs::originTopLeft()) properties_->setOrigin(project_.canvasWidth / 2.0, project_.canvasHeight / 2.0);
+    const Canvas& layerCanvas = project_.canvasOf(layer ? layer->canvasId : std::string());
+    if (prefs::originTopLeft()) properties_->setOrigin(layerCanvas.width / 2.0, layerCanvas.height / 2.0);
     else properties_->setOrigin(0.0, 0.0);
     properties_->setLayer(layer);
-    if (!layer || !prefs::showLayerOutline()) {
+    // O contorno só aparece se a layer estiver no canvas mostrado no Workspace.
+    if (!layer || !prefs::showLayerOutline() || layerCanvas.id != ss(workspaceCanvas_)) {
         preview_->setSelection(std::nullopt, 0, 0);
         return;
     }
@@ -1044,7 +1190,13 @@ void MainWindow::onEngineConnection(bool connected) {
     engineLabel_->setText(connected ? tr("Engine: connected") : tr("Engine: offline"));
     engineLabel_->setStyleSheet(connected ? QStringLiteral("color: #3c3; padding: 0 8px;")
                                           : QStringLiteral("color: #e44; padding: 0 8px;"));
-    if (connected) sendEngineSettings();
+    if (connected) {
+        sendEngineSettings();
+        protocol::Command pc;
+        pc.type = protocol::CommandType::SetPreviewCanvas;
+        pc.canvas = ss(workspaceCanvas_);
+        engine_->send(pc);
+    }
     // Ao ligar, decide no primeiro status: adoptar o show que já está a correr ou enviar o nosso.
     if (connected && adoptedEngineProject_) pushTimer_.start();
 }
@@ -1107,7 +1259,7 @@ void MainWindow::refreshAll() {
     library_->setMedia(project_.media);
     refreshDashboard();
     timelinePanel_->timeline()->setProject(&project_, timelineId());
-    preview_->setCanvasSize(project_.canvasWidth, project_.canvasHeight);
+    refreshCanvasChoices();
     updateSelectionViews();
     updateTitle();
     updateEditingEnabled();
@@ -1133,7 +1285,9 @@ void MainWindow::refreshDashboard() {
     }
     for (int r = 0; r < static_cast<int>(project_.layers.size()); ++r) {
         const auto& layer = project_.layers[static_cast<std::size_t>(r)];
-        dashboard_->setVerticalHeaderItem(r, new QTableWidgetItem(qs(layer.name)));
+        QString label = qs(layer.name);
+        if (project_.canvases.size() > 1) label += QStringLiteral("  ·  ") + qs(project_.canvasOf(layer.canvasId).name);
+        dashboard_->setVerticalHeaderItem(r, new QTableWidgetItem(label));
         for (int c = 0; c < static_cast<int>(project_.columns.size()); ++c) {
             const auto& cells = project_.columns[static_cast<std::size_t>(c)].cells;
             auto* item = new QTableWidgetItem;
@@ -1152,17 +1306,14 @@ void MainWindow::refreshDashboard() {
         }
     }
     std::vector<LayerHeader::RowState> states;
-    for (const auto& l : project_.layers) states.push_back({l.visible, l.locked});
+    for (const auto& l : project_.layers) states.push_back({l.visible, l.locked, l.id == soloLayer_});
     layerHeader_->setStates(std::move(states));
     if (curRow >= 0 && curCol >= 0 && curRow < dashboard_->rowCount() && curCol < dashboard_->columnCount())
         dashboard_->setCurrentCell(curRow, curCol);
 }
 
 void MainWindow::updateTitle() {
-    QString t = QStringLiteral("VTHOST Studio - %1 (%2x%3)")
-                    .arg(qs(project_.name))
-                    .arg(project_.canvasWidth)
-                    .arg(project_.canvasHeight);
+    QString t = QStringLiteral("VTHOST Studio - %1").arg(qs(project_.name));
     if (dirty_) t += QStringLiteral(" *");
     if (showMode_) t += QStringLiteral("  [") + tr("SHOW MODE") + QStringLiteral("]");
     setWindowTitle(t);

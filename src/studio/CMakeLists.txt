@@ -24,6 +24,8 @@ qt_add_executable(vthost-studio WIN32
     layer_header.cpp
     layer_header.h
     outputs_dialog.cpp
+    mapping_editor.cpp
+    mapping_editor.h
     outputs_dialog.h
     library_panel.cpp
     library_panel.h

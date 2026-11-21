@@ -75,10 +75,6 @@
         <translation>+ Coluna</translation>
     </message>
     <message>
-        <source>+ Layer</source>
-        <translation>+ Layer</translation>
-    </message>
-    <message>
         <source>About VTHOST</source>
         <translation>Sobre o VTHOST</translation>
     </message>
@@ -121,6 +117,10 @@
     <message>
         <source>Canvas size...</source>
         <translation>Tamanho do canvas...</translation>
+    </message>
+    <message>
+        <source>Canvas:</source>
+        <translation>Canvas:</translation>
     </message>
     <message>
         <source>Check for updates...</source>
@@ -275,6 +275,10 @@
         <translation>Layer %1: %2</translation>
     </message>
     <message>
+        <source>Layers:</source>
+        <translation>Layers:</translation>
+    </message>
+    <message>
         <source>Leave Show Mode and unlock editing?</source>
         <translation>Sair do Modo Espetáculo e desbloquear a edição?</translation>
     </message>
@@ -313,6 +317,10 @@
     <message>
         <source>Output %1: %2</source>
         <translation>Saída %1: %2</translation>
+    </message>
+    <message>
+        <source>Outputs and canvases...</source>
+        <translation>Saídas e canvas...</translation>
     </message>
     <message>
         <source>Outputs...</source>
@@ -439,6 +447,10 @@
         <translation>Parar o motor? Todas as saídas vão ficar a negro.</translation>
     </message>
     <message>
+        <source>Test card</source>
+        <translation>Test card</translation>
+    </message>
+    <message>
         <source>The project has unsaved changes. Save them?</source>
         <translation>O projeto tem alterações por guardar. Guardar?</translation>
     </message>
@@ -518,7 +530,54 @@
     </message>
 </context>
 <context>
+    <name>MappingEditor</name>
+    <message>
+        <source>Display test card</source>
+        <translation>Mostrar test card</translation>
+    </message>
+    <message>
+        <source>Drag the corners and points. Arrows move the selected point by 1 pixel (Shift: 10), Tab selects the next point. Changes are shown live on the output.</source>
+        <translation>Arraste os cantos e os pontos. As setas movem o ponto selecionado 1 píxel (Shift: 10), Tab seleciona o ponto seguinte. As alterações aparecem logo na saída.</translation>
+    </message>
+    <message>
+        <source>Grid:</source>
+        <translation>Grelha:</translation>
+    </message>
+    <message>
+        <source>Mapping — %1</source>
+        <translation>Mapping — %1</translation>
+    </message>
+    <message>
+        <source>No warp</source>
+        <translation>Sem warp</translation>
+    </message>
+    <message>
+        <source>Perspective (4 corners)</source>
+        <translation>Perspetiva (4 cantos)</translation>
+    </message>
+    <message>
+        <source>Remove all warping from this output?</source>
+        <translation>Remover todo o warp desta saída?</translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation>Repor</translation>
+    </message>
+    <message>
+        <source>Warp:</source>
+        <translation>Warp:</translation>
+    </message>
+    <message>
+        <source>Warping grid (corners + points)</source>
+        <translation>Grelha de warping (cantos + pontos)</translation>
+    </message>
+</context>
+<context>
     <name>OutputsDialog</name>
+    <message>
+        <source>%1 %2</source>
+        <translation>%1 %2</translation>
+    </message>
     <message>
         <source>%1 (disconnected)</source>
         <translation>%1 (desligado)</translation>
@@ -532,12 +591,52 @@
         <translation>+ Adicionar saída</translation>
     </message>
     <message>
+        <source>+ Canvas</source>
+        <translation>+ Canvas</translation>
+    </message>
+    <message>
+        <source>A project needs at least one canvas.</source>
+        <translation>Um projeto precisa de pelo menos um canvas.</translation>
+    </message>
+    <message>
+        <source>Applying...</source>
+        <translation>A aplicar...</translation>
+    </message>
+    <message>
         <source>Blackmagic (SDI / HDMI)</source>
         <translation>Blackmagic (SDI / HDMI)</translation>
     </message>
     <message>
         <source>Blackmagic DeckLink / UltraStudio / Intensity output is in development. It will need Blackmagic Desktop Video installed. The output is saved in the project and will start working when support arrives in an update.</source>
         <translation>A saída Blackmagic DeckLink / UltraStudio / Intensity está em desenvolvimento. Vai precisar do Blackmagic Desktop Video instalado. A saída fica guardada no projeto e começa a funcionar quando o suporte chegar numa atualização.</translation>
+    </message>
+    <message>
+        <source>Brightness:</source>
+        <translation>Brilho:</translation>
+    </message>
+    <message>
+        <source>Canvas %1</source>
+        <translation>Canvas %1</translation>
+    </message>
+    <message>
+        <source>Canvas:</source>
+        <translation>Canvas:</translation>
+    </message>
+    <message>
+        <source>Canvas: %1 × %2 px, %3 outputs</source>
+        <translation>Canvas: %1 × %2 px, %3 saídas</translation>
+    </message>
+    <message>
+        <source>Canvases</source>
+        <translation>Canvas</translation>
+    </message>
+    <message>
+        <source>Create the outputs and assign them to the screens (left to right)</source>
+        <translation>Criar as saídas e atribuí-las aos ecrãs (da esquerda para a direita)</translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation>Personalizada</translation>
     </message>
     <message>
         <source>Destination:</source>
@@ -550,6 +649,18 @@
     <message>
         <source>Display (fullscreen)</source>
         <translation>Ecrã (ecrã inteiro)</translation>
+    </message>
+    <message>
+        <source>Display test card on all outputs</source>
+        <translation>Mostrar test card em todas as saídas</translation>
+    </message>
+    <message>
+        <source>Each layer belongs to one canvas (Properties). Each output shows a region of a canvas: use Layout... to split a large canvas across several projectors or screens.</source>
+        <translation>Cada layer pertence a um canvas (Properties). Cada saída mostra uma região de um canvas: use Layout... para repartir um canvas grande por vários projetores ou ecrãs.</translation>
+    </message>
+    <message>
+        <source>Edit mapping (warp)...</source>
+        <translation>Editar mapping (warp)...</translation>
     </message>
     <message>
         <source>Enabled</source>
@@ -568,6 +679,18 @@
         <translation>Identificar</translation>
     </message>
     <message>
+        <source>Layout — %1</source>
+        <translation>Layout — %1</translation>
+    </message>
+    <message>
+        <source>Layout...</source>
+        <translation>Layout...</translation>
+    </message>
+    <message>
+        <source>Mapping:</source>
+        <translation>Mapping:</translation>
+    </message>
+    <message>
         <source>NDI</source>
         <translation>NDI</translation>
     </message>
@@ -578,10 +701,6 @@
     <message>
         <source>Needs the free NDI Tools (NDI runtime) installed on this computer.</source>
         <translation>Requer as NDI Tools gratuitas (runtime NDI) instaladas neste computador.</translation>
-    </message>
-    <message>
-        <source>Not applied yet (press OK).</source>
-        <translation>Ainda não aplicada (carregue em OK).</translation>
     </message>
     <message>
         <source>OK</source>
@@ -596,12 +715,36 @@
         <translation>Saídas</translation>
     </message>
     <message>
+        <source>Outputs (horizontal × vertical):</source>
+        <translation>Saídas (horizontal × vertical):</translation>
+    </message>
+    <message>
+        <source>Outputs and canvases</source>
+        <translation>Saídas e canvas</translation>
+    </message>
+    <message>
+        <source>Overlap for soft-edge (horizontal, vertical):</source>
+        <translation>Sobreposição para soft-edge (horizontal, vertical):</translation>
+    </message>
+    <message>
         <source>Refresh</source>
         <translation>Atualizar</translation>
     </message>
     <message>
+        <source>Region (x, y, w, h):</source>
+        <translation>Região (x, y, l, a):</translation>
+    </message>
+    <message>
         <source>Remove</source>
         <translation>Remover</translation>
+    </message>
+    <message>
+        <source>Resolution of each output:</source>
+        <translation>Resolução de cada saída:</translation>
+    </message>
+    <message>
+        <source>Resolution:</source>
+        <translation>Resolução:</translation>
     </message>
     <message>
         <source>Screen number %1 (automatic)</source>
@@ -620,8 +763,16 @@
         <translation>Enviar com alfa (transparência)</translation>
     </message>
     <message>
+        <source>Soft-edge:</source>
+        <translation>Soft-edge:</translation>
+    </message>
+    <message>
         <source>Source name:</source>
         <translation>Nome da fonte:</translation>
+    </message>
+    <message>
+        <source>Split this canvas across several outputs (with soft-edge overlap)</source>
+        <translation>Repartir este canvas por várias saídas (com sobreposição para soft-edge)</translation>
     </message>
     <message>
         <source>Status:</source>
@@ -640,12 +791,56 @@
         <translation>Atenção: este é o ecrã principal, onde está aberto o VTHOST Studio. A saída vai tapar a interface.</translation>
     </message>
     <message>
+        <source>Whole canvas</source>
+        <translation>Canvas inteiro</translation>
+    </message>
+    <message>
         <source>Width (px):</source>
         <translation>Largura (px):</translation>
     </message>
     <message>
         <source>Window</source>
         <translation>Janela</translation>
+    </message>
+    <message>
+        <source>bottom</source>
+        <translation>baixo</translation>
+    </message>
+    <message>
+        <source>gamma</source>
+        <translation>gama</translation>
+    </message>
+    <message>
+        <source>left</source>
+        <translation>esquerda</translation>
+    </message>
+    <message>
+        <source>no warp</source>
+        <translation>sem warp</translation>
+    </message>
+    <message>
+        <source>perspective</source>
+        <translation>perspetiva</translation>
+    </message>
+    <message>
+        <source>right</source>
+        <translation>direita</translation>
+    </message>
+    <message>
+        <source>smoothness</source>
+        <translation>suavidade</translation>
+    </message>
+    <message>
+        <source>top</source>
+        <translation>cima</translation>
+    </message>
+    <message>
+        <source>warping grid %1 × %2</source>
+        <translation>grelha de warping %1 × %2</translation>
+    </message>
+    <message>
+        <source>whole</source>
+        <translation>inteiro</translation>
     </message>
 </context>
 <context>
@@ -708,6 +903,10 @@
     <message>
         <source>blend mode</source>
         <translation>modo de mistura</translation>
+    </message>
+    <message>
+        <source>canvas</source>
+        <translation>canvas</translation>
     </message>
     <message>
         <source>multiply</source>

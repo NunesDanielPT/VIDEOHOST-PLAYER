@@ -80,6 +80,11 @@ private:
     void moveLayer(int from, int to);
     void toggleLayerVisible(int row);
     void toggleLayerLock(int row);
+    void toggleSolo(int row);
+    void sendVisibility();          // visibilidade efetiva (olho + solo) para o motor
+    bool effectiveVisible(const vthost::Layer& l) const;
+    void refreshCanvasChoices();
+    void setWorkspaceCanvas(const QString& canvasId);
     void insertColumnAt(int index);
     void duplicateColumn(int column);
     void moveColumn(int from, int to);
@@ -137,6 +142,8 @@ private:
     bool adoptedEngineProject_ = false;
     int activeColumn_ = -1;
     int selectedLayer_ = -1;
+    std::string soloLayer_;      // layer em solo ("" = nenhuma)
+    QString workspaceCanvas_;    // canvas mostrado no Workspace
     std::optional<vthost::LayerProps> dragStartProps_;
     QTimer pushTimer_;
 
@@ -144,6 +151,7 @@ private:
     QSplitter* topSplit_ = nullptr;
     LibraryPanel* library_ = nullptr;
     PreviewWidget* preview_ = nullptr;
+    class QComboBox* canvasSelect_ = nullptr;
     PropertiesPanel* properties_ = nullptr;
     QTabWidget* bottomTabs_ = nullptr;
     DashboardTable* dashboard_ = nullptr;

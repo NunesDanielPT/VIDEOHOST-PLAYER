@@ -26,6 +26,10 @@ public:
     void setEditable(bool editable) { editable_ = editable; }
     void setSnapEnabled(bool on) { snapEnabled_ = on; }
     void setFollowPlayhead(bool on) { follow_ = on; }
+    void setSoloLayer(const std::string& layerId) {
+        soloLayer_ = layerId;
+        update();
+    }
 
     double zoom() const { return pxPerSec_; }
     void setZoom(double pxPerSec);
@@ -44,6 +48,8 @@ signals:
     void viewChanged();
     void layerContextMenu(int row, const QPoint& globalPos);
     void layerVisibilityToggled(int row);
+    void layerLockToggled(int row);
+    void layerSoloToggled(int row);
     void layerMoved(int from, int to);
 
 protected:
@@ -83,6 +89,7 @@ private:
     bool editable_ = true;
     bool snapEnabled_ = true;
     bool follow_ = true;
+    std::string soloLayer_;
 
     double pxPerSec_ = 40.0;
     double scroll_ = 0.0;
