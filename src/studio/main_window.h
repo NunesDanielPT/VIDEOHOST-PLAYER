@@ -27,6 +27,8 @@
 #include <string>
 
 class CountdownServer;
+class OscServer;
+namespace vthost::osc { struct Message; }
 class UpdateDialog;
 class CountdownView;
 class CountdownWindow;
@@ -80,7 +82,7 @@ private:
     void updateSelection();      // inspector + forma de onda da cue selecionada
 
     // Reprodução
-    void playCue(int index);     // com SHIFT = corte
+    void playCue(int index, bool forceCut = false); // com SHIFT = corte
     void playPause();            // ESPAÇO
     void stopPlayback();
     void nextCue();
@@ -187,6 +189,17 @@ private:
     QTimer perfTimer_;
     SystemStats sysStats_;
     void updatePerf();
+
+    // OSC (Bitfocus Companion, protocolo do Mitti)
+    void applyOsc();
+    void onOscMessage(const vthost::osc::Message& m);
+    void sendOscState(bool force);
+    QString cueOscId(int index) const;      // ID que o Companion vê: o ID escrito ou o número
+    int cueByOscId(const QString& id) const;
+    void showOscHelp();
+    OscServer* osc_ = nullptr;
+    QTimer oscTimer_;
+    QString oscPlaylistSignature_;
     QAction* showModeAction_ = nullptr;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;

@@ -93,6 +93,10 @@ Ver `src/core/include/vthost/core/protocol.h`. Uma mensagem JSON por linha, um p
 3. Ficheiros sempre gravados de forma atómica.
 4. Interface em PT e EN: qualquer texto novo no Studio usa `tr()` e é traduzido em `translations/vthost_studio_pt_PT.ts`.
 
+## OSC (Companion)
+
+O Studio (não o motor) escuta OSC em UDP (porta 51000, só na placa escolhida, desligado por omissão) e fala o protocolo do Mitti (`/mitti/...`), para o módulo "Imimot Mitti" do Companion funcionar com os seus presets. O estado (cue no ar, tempo que falta, play/pausa, nomes das cues) vai para o IP do Companion (porta 51001) 10×/s, só quando muda. Descodificação OSC no núcleo (`osc.h`, testada com dados aleatórios).
+
 ## Countdown
 
 `computeCountdown()` (núcleo, testado) conta o que falta à cue no ar (todas as repetições;

@@ -37,6 +37,8 @@ qt_add_executable(vthost-studio WIN32
     countdown_server.h
     countdown_view.cpp
     countdown_view.h
+    osc_server.cpp
+    osc_server.h
     system_stats.cpp
     system_stats.h
 )

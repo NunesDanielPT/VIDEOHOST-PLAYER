@@ -168,6 +168,32 @@ void CuePlayer::updateCue(const Cue& cue, int index) {
         c.posX = cue.posX;
         c.posY = cue.posY;
         cur_.index = index;
+
+        // In/Out, repetições e velocidade mudados com a cue no ar: aplica já, a partir
+        // do ponto onde está (antes só contava na próxima vez que a cue tocasse).
+        if (c.inPoint != cue.inPoint || c.outPoint != cue.outPoint || c.playCount != cue.playCount || c.speed != cue.speed) {
+            const double fileDur = cur_.video ? std::max(0.0, cur_.video->duration()) : 0.0;
+            int pass = 0;
+            double local = 0.0;
+            cur_.range.split(cur_.clock.now(), fileDur, pass, local);
+            c.inPoint = cue.inPoint;
+            c.outPoint = cue.outPoint;
+            c.playCount = cue.playCount;
+            c.speed = cue.speed;
+            cur_.range.in = c.inPoint;
+            cur_.range.out = c.outPoint;
+            cur_.range.passes = c.playCount;
+            const double len = passLength(cur_);
+            if (cur_.range.passes > 0) pass = std::min(pass, cur_.range.passes - 1);
+            if (len > 0.0) {
+                // Mesma passagem; posição no ficheiro dentro do novo In..Out (se ficou depois
+                // do novo Out, salta para o fim dessa passagem: segue para a próxima / acaba).
+                const double off = std::clamp(local - cur_.range.in, 0.0, std::max(0.0, len - 0.04));
+                seekCueTime(cur_.range.in + pass * len + off);
+            } else {
+                seekCueTime(cur_.range.in);
+            }
+        }
     }
     if (prev_.active && prev_.cue.id == cue.id) prev_.index = index;
 }

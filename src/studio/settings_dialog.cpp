@@ -14,6 +14,7 @@
 #include <QHeaderView>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLineEdit>
 #include <QLocale>
 #include <QMessageBox>
 #include <QNetworkInterface>
@@ -216,21 +217,24 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         auto* f = new QFormLayout(page);
         // Placa de rede: os serviços só ficam acessíveis na rede dessa placa (ex. a rede do
         // público/técnicos), nunca nas outras redes do PC (sistemas de controlo, etc.).
-        auto* nic = new QComboBox(page);
-        nic->addItem(tr("All network cards"), QString());
-        const QString savedNic = prefs::countdownBindAddress();
-        bool found = savedNic.isEmpty();
-        for (const QNetworkInterface& ni : QNetworkInterface::allInterfaces()) {
-            if (!(ni.flags() & QNetworkInterface::IsUp) || (ni.flags() & QNetworkInterface::IsLoopBack)) continue;
-            for (const QNetworkAddressEntry& e : ni.addressEntries()) {
-                const QHostAddress a = e.ip();
-                if (a.protocol() != QAbstractSocket::IPv4Protocol || a.isLinkLocal()) continue;
-                nic->addItem(QStringLiteral("%1 — %2").arg(ni.humanReadableName(), a.toString()), a.toString());
-                found = found || a.toString() == savedNic;
+        auto nicCombo = [this, page](const QString& savedNic) {
+            auto* nic = new QComboBox(page);
+            nic->addItem(tr("All network cards"), QString());
+            bool found = savedNic.isEmpty();
+            for (const QNetworkInterface& ni : QNetworkInterface::allInterfaces()) {
+                if (!(ni.flags() & QNetworkInterface::IsUp) || (ni.flags() & QNetworkInterface::IsLoopBack)) continue;
+                for (const QNetworkAddressEntry& e : ni.addressEntries()) {
+                    const QHostAddress a = e.ip();
+                    if (a.protocol() != QAbstractSocket::IPv4Protocol || a.isLinkLocal()) continue;
+                    nic->addItem(QStringLiteral("%1 — %2").arg(ni.humanReadableName(), a.toString()), a.toString());
+                    found = found || a.toString() == savedNic;
+                }
             }
-        }
-        if (!found) nic->addItem(tr("%1 (not connected now)").arg(savedNic), savedNic);
-        nic->setCurrentIndex(std::max(0, nic->findData(savedNic)));
+            if (!found) nic->addItem(tr("%1 (not connected now)").arg(savedNic), savedNic);
+            nic->setCurrentIndex(std::max(0, nic->findData(savedNic)));
+            return nic;
+        };
+        auto* nic = nicCombo(prefs::countdownBindAddress());
         savers_.push_back([nic] { prefs::set("countdown/bindAddress", nic->currentData().toString()); });
         f->addRow(tr("Network card:"), nic);
         f->addRow(QString(), note(tr("Only this network card is used: people on the other networks of this PC "
@@ -247,6 +251,33 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         f->addRow(tr("Port:"), port);
         f->addRow(QString(), note(tr("Open Window → Countdown on the network to see the address (e.g. "
                                      "http://192.168.1.20:8088). The page is read-only: it cannot control the show."),
+                                  page));
+
+        // OSC para o Bitfocus Companion (protocolo do Mitti: o módulo "Imimot Mitti" funciona).
+        f->addRow(new QLabel(QStringLiteral("<b>%1</b>").arg(tr("Bitfocus Companion (OSC)")), page));
+        f->addRow(QString(), check(page, tr("Allow control by OSC (Companion, Stream Deck...)"), "osc/enabled", false));
+        auto* oscNic = nicCombo(prefs::oscBindAddress());
+        savers_.push_back([oscNic] { prefs::set("osc/bindAddress", oscNic->currentData().toString()); });
+        f->addRow(tr("Network card (OSC):"), oscNic);
+        auto* oscPort = new QSpinBox(page);
+        oscPort->setRange(1024, 65535);
+        oscPort->setValue(prefs::oscPort());
+        savers_.push_back([oscPort] { prefs::set("osc/port", oscPort->value()); });
+        f->addRow(tr("Receive on port:"), oscPort);
+        auto* fbHost = new QLineEdit(prefs::oscFeedbackHost(), page);
+        fbHost->setPlaceholderText(tr("e.g. 192.168.1.50 (127.0.0.1 if Companion runs on this PC)"));
+        savers_.push_back([fbHost] { prefs::set("osc/feedbackHost", fbHost->text().trimmed()); });
+        f->addRow(tr("Companion IP:"), fbHost);
+        auto* fbPort = new QSpinBox(page);
+        fbPort->setRange(1024, 65535);
+        fbPort->setValue(prefs::oscFeedbackPort());
+        savers_.push_back([fbPort] { prefs::set("osc/feedbackPort", fbPort->value()); });
+        f->addRow(tr("Send state to port:"), fbPort);
+        f->addRow(QString(), check(page, tr("Accept commands only from the Companion IP"), "osc/onlyFromFeedbackHost", true));
+        f->addRow(QString(), note(tr("In Companion add the connection \"Imimot Mitti\" with the IP of this PC (Manual) "
+                                     "and feedback port 51001. Keep the receive port at 51000: the Mitti module always sends there. "
+                                     "Its presets work: play, pause, play cue by ID, GOTO, time remaining... "
+                                     "Help → OSC commands lists everything."),
                                   page));
         tabs->addTab(page, tr("Network"));
     }
