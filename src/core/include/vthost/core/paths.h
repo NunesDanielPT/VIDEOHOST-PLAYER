@@ -9,6 +9,7 @@ std::filesystem::path logsDir();
 std::filesystem::path crashDir();
 // Estado do show para recuperação após crash do motor.
 std::filesystem::path showStateFile();
+std::filesystem::path engineConfigFile(); // placa gráfica escolhida (lido pelo motor ao arrancar)
 
 // Nomes partilhados entre processos.
 inline constexpr const char* kPipeName = "vthost-engine";              // \\.\pipe\vthost-engine

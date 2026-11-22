@@ -118,6 +118,7 @@ private:
     // Motor
     void startEngine();
     void stopEngine();
+    void restartEngine(); // reinicia e retoma o show (ex. outra placa gráfica)
     void onEngineConnection(bool connected);
     void onEngineStatus();
 

@@ -50,6 +50,8 @@ public:
     IDXGIFactory2* factory() const { return factory_.Get(); }
     // Memória de vídeo usada pelo motor e a que o Windows lhe reserva (MB). false = sem dados.
     bool videoMemory(double& usedMb, double& budgetMb) const;
+    const std::string& gpuName() const { return gpuName_; }
+    const std::string& gpuWarning() const { return gpuWarning_; }
 
     // Canvas
     bool ensureCanvas(const std::string& id, int width, int height);
@@ -106,6 +108,8 @@ private:
     ComPtr<ID3D11DeviceContext> ctx_;
     ComPtr<IDXGIFactory2> factory_;
     ComPtr<IDXGIAdapter3> adapter3_; // para a VRAM (Windows 10+)
+    std::string gpuName_;
+    std::string gpuWarning_;
     ComPtr<ID3D11VertexShader> vs_;
     ComPtr<ID3D11PixelShader> ps_;
     ComPtr<ID3D11VertexShader> layerVs_;   // layers: malha (corner pin) + efeitos + máscara

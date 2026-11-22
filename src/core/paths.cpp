@@ -49,5 +49,6 @@ fs::path dataDir() {
 fs::path logsDir() { return ensure(dataDir() / "logs"); }
 fs::path crashDir() { return ensure(dataDir() / "crashes"); }
 fs::path showStateFile() { return dataDir() / "show_state.json"; }
+fs::path engineConfigFile() { return dataDir() / "engine_config.json"; }
 
 } // namespace vthost::paths

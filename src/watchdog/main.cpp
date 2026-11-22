@@ -35,6 +35,7 @@ constexpr auto kStartupGrace = 20s; // abrir projecto/media pode demorar
 constexpr auto kHangTimeout = 4s;   // sem heartbeat durante isto = bloqueado
 constexpr int kExitRequested = 0;
 constexpr int kExitAlreadyRunning = 10;
+constexpr int kExitRestart = 6; // reinício pedido pelo Studio (ex. outra placa gráfica)
 
 std::wstring exeDir() {
     wchar_t buf[MAX_PATH * 2];
@@ -188,6 +189,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         if (!hung && code == kExitRequested && hb.state() == EngineRunState::StoppingOnPurpose) {
             log::info("motor parado a pedido: watchdog termina");
             break;
+        }
+        if (!hung && code == kExitRestart) {
+            log::info("reinício do motor pedido: a relançar e retomar o show");
+            recover = true;
+            recentStarts.clear(); // não conta para o backoff
+            continue;
         }
         if (!hung && code == kExitAlreadyRunning) {
             log::warn("outro motor já está a correr: nova tentativa em 3 s");

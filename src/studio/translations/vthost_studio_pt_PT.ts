@@ -499,6 +499,10 @@
         <translation>Ir para os últimos 30 segundos</translation>
     </message>
     <message>
+        <source>Graphics card: %1</source>
+        <translation>Placa gráfica: %1</translation>
+    </message>
+    <message>
         <source>Green</source>
         <translation>Verde</translation>
     </message>
@@ -673,6 +677,14 @@
     <message>
         <source>Replace file...</source>
         <translation>Substituir ficheiro...</translation>
+    </message>
+    <message>
+        <source>Restart engine (the show resumes)</source>
+        <translation>Reiniciar o motor (o show continua)</translation>
+    </message>
+    <message>
+        <source>Restarting the engine...</source>
+        <translation>A reiniciar o motor...</translation>
     </message>
     <message>
         <source>SHOW MODE</source>
@@ -1057,8 +1069,16 @@
         <translation>%1 (não ligada agora)</translation>
     </message>
     <message>
+        <source>%1 (not found)</source>
+        <translation>%1 (não encontrada)</translation>
+    </message>
+    <message>
         <source>%1 + Enter / double-click</source>
         <translation>%1 + Enter / duplo clique</translation>
+    </message>
+    <message>
+        <source>(high performance)</source>
+        <translation>(alto desempenho)</translation>
     </message>
     <message>
         <source>15 fps (lighter)</source>
@@ -1117,8 +1137,16 @@
         <translation>Áudio</translation>
     </message>
     <message>
+        <source>Automatic: high performance (dedicated card)</source>
+        <translation>Automático: alto desempenho (placa dedicada)</translation>
+    </message>
+    <message>
         <source>Bitfocus Companion (OSC)</source>
         <translation>Bitfocus Companion (OSC)</translation>
+    </message>
+    <message>
+        <source>Changing the card restarts the engine (the outputs go black for a few seconds). Use the dedicated card whenever there is one.</source>
+        <translation>Mudar de placa reinicia o motor (as saídas ficam pretas uns segundos). Use a placa dedicada sempre que exista.</translation>
     </message>
     <message>
         <source>Check for updates automatically (at startup and every 30 minutes)</source>
@@ -1135,6 +1163,10 @@
     <message>
         <source>Companion IP:</source>
         <translation>IP do Companion:</translation>
+    </message>
+    <message>
+        <source>Could not save the choice: %1</source>
+        <translation>Não foi possível gravar a escolha: %1</translation>
     </message>
     <message>
         <source>Countdown</source>
@@ -1197,6 +1229,10 @@
         <translation>Motor &amp;&amp; saídas</translation>
     </message>
     <message>
+        <source>Engine not running.</source>
+        <translation>Motor parado.</translation>
+    </message>
+    <message>
         <source>Engine priority:</source>
         <translation>Prioridade do motor:</translation>
     </message>
@@ -1221,6 +1257,14 @@
         <translation>Ir para os últimos 30 / 20 / 10 segundos</translation>
     </message>
     <message>
+        <source>Graphics card</source>
+        <translation>Placa gráfica</translation>
+    </message>
+    <message>
+        <source>Graphics card:</source>
+        <translation>Placa gráfica:</translation>
+    </message>
+    <message>
         <source>High</source>
         <translation>Alta</translation>
     </message>
@@ -1235,6 +1279,10 @@
     <message>
         <source>In Show Mode editing is locked, the engine cannot be stopped and updates are not installed. Playback controls (play, pause, next, GOTO) keep working.</source>
         <translation>Em Show Mode a edição fica bloqueada, o motor não pode ser parado e não se instalam atualizações. Os controlos de reprodução (play, pausa, seguinte, GOTO) continuam a funcionar.</translation>
+    </message>
+    <message>
+        <source>In use now: %1</source>
+        <translation>Em uso agora: %1</translation>
     </message>
     <message>
         <source>Language</source>
@@ -1435,6 +1483,10 @@
     <message>
         <source>The countdown shows the time left of the cue on air (all repetitions). It appears on the preview, in the countdown window (Window menu) and on the web page (Preferences → Network).</source>
         <translation>O countdown mostra o tempo que falta da cue no ar (todas as repetições). Aparece no preview, na janela do countdown (menu Janela) e na página web (Preferências → Rede).</translation>
+    </message>
+    <message>
+        <source>The engine uses the new graphics card after a restart. Restart the engine now? The outputs go black for a few seconds and the show resumes where it was.</source>
+        <translation>O motor usa a placa gráfica nova depois de reiniciar. Reiniciar o motor agora? As saídas ficam pretas uns segundos e o show continua onde estava.</translation>
     </message>
     <message>
         <source>The language changes when VIDEOHOST PLAYER opens again. Restart it now? The engine and the show keep running.</source>

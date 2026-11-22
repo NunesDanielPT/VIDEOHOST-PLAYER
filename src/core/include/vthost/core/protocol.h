@@ -16,6 +16,7 @@
 //   {"cmd":"list_displays"}             // ecrãs ligados: placa gráfica, nome, resolução
 //   {"cmd":"list_audio_devices"}        // placas de som (saídas)
 //   {"cmd":"shutdown"}                  // pára o motor de propósito (sem recuperação)
+//   {"cmd":"restart"}                   // reinicia o motor e retoma o show (ex. mudou a placa gráfica)
 //
 // Respostas: {"ok":true, ...} ou {"ok":false,"error":"..."}
 
@@ -42,7 +43,8 @@ enum class CommandType {
     GetStatus,
     ListDisplays,
     ListAudioDevices,
-    Shutdown
+    Shutdown,
+    Restart
 };
 enum class TransportAction { Pause, Resume, Toggle, Stop };
 
@@ -139,6 +141,7 @@ struct EngineStatus {
     double renderMs = 0.0;     // tempo médio para preparar um frame (sem esperar pelo ecrã)
     double vramUsedMb = 0.0;   // memória de vídeo usada pelo motor
     double vramBudgetMb = 0.0; // memória de vídeo que o Windows dá ao motor (0 = desconhecido)
+    std::string gpuName;       // placa gráfica em uso
 
     std::vector<OutputStatus> outputs;
     std::vector<std::string> warnings;

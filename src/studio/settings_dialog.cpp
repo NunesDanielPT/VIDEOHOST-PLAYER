@@ -5,6 +5,12 @@
 #include "app_info.h"
 #include "engine_client.h"
 #include "prefs.h"
+#include "vthost/core/engine_config.h"
+#include "vthost/core/paths.h"
+
+#ifdef Q_OS_WIN
+#include "gpus.h"
+#endif
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -160,6 +166,29 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
     {
         auto* page = new QWidget(tabs);
         auto* f = new QFormLayout(page);
+        // Placa gráfica do motor (lida quando o motor arranca).
+        gpu_ = new QComboBox(page);
+        gpu_->addItem(tr("Automatic: high performance (dedicated card)"), QString());
+        initialGpu_ = QString::fromStdString(vthost::loadEngineConfig(vthost::paths::engineConfigFile()).gpu);
+#ifdef Q_OS_WIN
+        for (const auto& g : vthost::enumerateGpus()) {
+            QString label = QString::fromStdString(g.name);
+            if (g.dedicatedMb >= 256) label += QStringLiteral(" — %1 GB").arg(g.dedicatedMb / 1024.0, 0, 'f', 1);
+            if (g.highPerformance) label += QStringLiteral("  ") + tr("(high performance)");
+            gpu_->addItem(label, QString::fromStdString(g.name));
+        }
+#endif
+        if (!initialGpu_.isEmpty() && gpu_->findData(initialGpu_) < 0)
+            gpu_->addItem(tr("%1 (not found)").arg(initialGpu_), initialGpu_);
+        gpu_->setCurrentIndex(std::max(0, gpu_->findData(initialGpu_)));
+        f->addRow(tr("Graphics card:"), gpu_);
+        QString inUse = tr("Engine not running.");
+        if (engine && engine->isConnected() && engine->hasStatus() && !engine->lastStatus().gpuName.empty())
+            inUse = tr("In use now: %1").arg(QString::fromStdString(engine->lastStatus().gpuName));
+        f->addRow(QString(), note(inUse + QStringLiteral(" ") +
+                                      tr("Changing the card restarts the engine (the outputs go black for a few "
+                                         "seconds). Use the dedicated card whenever there is one."),
+                                  page));
         f->addRow(QString(), check(page, tr("Synchronize with the screen refresh (V-Sync)"), "engine/vsync", true));
         f->addRow(tr("Workspace preview frame rate:"),
                   combo(page, "engine/previewFps", 30,
@@ -409,6 +438,23 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
 
 void SettingsDialog::apply() {
     for (const auto& save : savers_) save();
+    const QString gpu = gpu_->currentData().toString();
+    if (gpu != initialGpu_) {
+        vthost::EngineConfig cfg = vthost::loadEngineConfig(vthost::paths::engineConfigFile());
+        cfg.gpu = gpu.toStdString();
+        std::string err;
+        if (!vthost::saveEngineConfig(vthost::paths::engineConfigFile(), cfg, &err)) {
+            QMessageBox::warning(this, tr("Graphics card"), tr("Could not save the choice: %1").arg(QString::fromStdString(err)));
+        } else {
+            initialGpu_ = gpu;
+            // O motor só escolhe a placa ao arrancar: oferece reiniciá-lo já.
+            if (QMessageBox::question(this, tr("Graphics card"),
+                                      tr("The engine uses the new graphics card after a restart. Restart the engine now? "
+                                         "The outputs go black for a few seconds and the show resumes where it was."),
+                                      QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
+                qApp->setProperty("vthostRestartEngine", true);
+        }
+    }
     const QString lang = language_->currentData().toString();
     if (lang != initialLanguage_) {
         QSettings().setValue(kLanguageKey, lang);

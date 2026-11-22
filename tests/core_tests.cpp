@@ -3,6 +3,7 @@
 
 #include "vthost/core/atomic_file.h"
 #include "vthost/core/countdown.h"
+#include "vthost/core/engine_config.h"
 #include "vthost/core/loudness.h"
 #include "vthost/core/mapping.h"
 #include "vthost/core/osc.h"
@@ -360,7 +361,7 @@ static void testProtocol() {
 
     // Ida e volta de todos os comandos.
     std::vector<Command> all;
-    for (int t = 0; t <= static_cast<int>(CommandType::Shutdown); ++t) {
+    for (int t = 0; t <= static_cast<int>(CommandType::Restart); ++t) {
         Command c;
         c.type = static_cast<CommandType>(t);
         c.path = "C:/shows/ação.vthost";
@@ -407,6 +408,7 @@ static void testProtocol() {
     s.renderMs = 2.5;
     s.vramUsedMb = 512.0;
     s.vramBudgetMb = 7000.0;
+    s.gpuName = "NVIDIA GeForce RTX 5060 Ti";
     s.outputs.push_back({"O1", 1, true, "", "display", "OMEN 27"});
     auto r = parseResponse(statusResponse(s));
     CHECK(r.ok && r.status);
@@ -417,6 +419,7 @@ static void testProtocol() {
         CHECK(x.audioOk && x.audioDevice == "Altifalantes" && x.levelL == 0.5);
         CHECK(x.outputs.size() == 1 && x.outputs[0].detail == "OMEN 27");
         CHECK(x.renderMs == 2.5 && x.vramUsedMb == 512.0 && x.vramBudgetMb == 7000.0);
+        CHECK(x.gpuName == "NVIDIA GeForce RTX 5060 Ti");
     }
     DisplayInfo d;
     d.id = "\\\\.\\DISPLAY2";
@@ -582,6 +585,23 @@ void testOsc() {
     CHECK(decodePacket(open, sizeof open).empty());
 }
 
+void testEngineConfig() {
+    EngineConfig c;
+    c.gpu = "NVIDIA GeForce RTX 4060 Laptop GPU";
+    CHECK(engineConfigFromJson(engineConfigToJson(c)) == c);
+    CHECK(engineConfigFromJson("lixo").gpu.empty());
+    CHECK(engineConfigFromJson(R"({"gpu":5})").gpu.empty());
+    CHECK(engineConfigFromJson("{}").gpu.empty());
+    const auto dir = std::filesystem::temp_directory_path() / "vthost_test_engcfg";
+    std::filesystem::create_directories(dir);
+    const auto f = dir / "engine_config.json";
+    CHECK(saveEngineConfig(f, c));
+    CHECK(loadEngineConfig(f) == c);
+    CHECK(loadEngineConfig(dir / "nao_existe.json").gpu.empty());
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+}
+
 int main() {
     testLoudness();
     testProject();
@@ -596,6 +616,7 @@ int main() {
     testFuzzNeverThrows();
     testAtomicWrite();
     testOsc();
+    testEngineConfig();
     std::printf("%d verificações, %d falhas\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

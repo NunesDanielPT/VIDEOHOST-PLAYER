@@ -601,8 +601,9 @@ void MainWindow::buildMenus() {
     outputs->addAction(tr("Test card"), this, [this] { testBtn_->toggle(); });
     outputs->addSeparator();
     outputs->addAction(tr("Start engine"), this, &MainWindow::startEngine);
+    auto* aRestartEngine = outputs->addAction(tr("Restart engine (the show resumes)"), this, &MainWindow::restartEngine);
     auto* aStopEngine = outputs->addAction(tr("Stop engine"), this, &MainWindow::stopEngine);
-    editActions_ << aStopEngine;
+    editActions_ << aStopEngine << aRestartEngine;
     outputs->addSeparator();
     outputs->addAction(tr("Open logs folder"), this, [] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdWString(paths::logsDir().wstring())));
@@ -646,6 +647,7 @@ void MainWindow::updatePerf() {
     }
     if (engine_->isConnected() && engine_->hasStatus()) {
         const auto& s = engine_->lastStatus();
+        if (!s.gpuName.empty()) tip << tr("Graphics card: %1").arg(qs(s.gpuName));
         if (s.vramBudgetMb > 0.0) {
             const double pct = 100.0 * s.vramUsedMb / s.vramBudgetMb;
             parts << tr("VRAM %1%").arg(qRound(pct));
@@ -1549,6 +1551,11 @@ void MainWindow::openSettings(int tab) {
     // Mudança de língua com "reabrir já": fecha (pode ser cancelado, ex. projecto por gravar)
     // e o main() volta a abrir o Studio depois de esta janela desaparecer.
     if (qApp->property("vthostRestart").toBool() && !close()) qApp->setProperty("vthostRestart", false);
+    // Outra placa gráfica: o motor reinicia e retoma o show (o watchdog relança-o com recuperação).
+    if (qApp->property("vthostRestartEngine").toBool()) {
+        qApp->setProperty("vthostRestartEngine", false);
+        restartEngine();
+    }
 }
 
 
@@ -1633,6 +1640,19 @@ void MainWindow::startEngine() {
     pushToEngine(); // garante que a cópia ao vivo existe
     if (!engine_->startEngine(livePath()))
         QMessageBox::warning(this, tr("Engine"), tr("vthost-watchdog was not found next to the Studio."));
+}
+
+void MainWindow::restartEngine() {
+    if (!engine_->isConnected()) {
+        startEngine(); // parado: arranca já com a placa nova
+        return;
+    }
+    protocol::Command c;
+    c.type = protocol::CommandType::Restart;
+    engine_->send(c, [this](const protocol::ParsedResponse& r) {
+        if (!r.ok) QMessageBox::warning(this, tr("Engine"), qs(r.error));
+        else infoLabel_->setText(tr("Restarting the engine..."));
+    });
 }
 
 void MainWindow::stopEngine() {

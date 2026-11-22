@@ -79,6 +79,7 @@ O instalador é por utilizador (`%LOCALAPPDATA%\Programs\VTHOST`), por isso as a
 | 3 | demasiados erros seguidos no render loop | relança com recuperação |
 | 4 | GPU/driver perdido | relança com recuperação |
 | 5 | falha a iniciar | relança (com backoff) |
+| 6 | reinício pedido (`restart`, ex. outra placa gráfica) | relança já com recuperação |
 | 10 | já existe outro motor | tenta outra vez em 3 s |
 | outro | crash (minidump escrito) | relança com recuperação |
 
@@ -92,6 +93,10 @@ Ver `src/core/include/vthost/core/protocol.h`. Uma mensagem JSON por linha, um p
 2. Memória limitada: filas de frames com tamanho fixo.
 3. Ficheiros sempre gravados de forma atómica.
 4. Interface em PT e EN: qualquer texto novo no Studio usa `tr()` e é traduzido em `translations/vthost_studio_pt_PT.ts`.
+
+## Placa gráfica
+
+O Studio grava a escolha em `%LOCALAPPDATA%\VTHOST\engine_config.json` (`engine_config.h`); o motor lê-a ao arrancar e cria o dispositivo D3D11 nessa placa (`gpus.h`: vazio = a de alto desempenho via `IDXGIFactory6`). Se não existir, usa a de alto desempenho e avisa. Mudar de placa = comando `restart` (o motor grava o estado e sai com o código 6; o watchdog relança com `--recover`).
 
 ## OSC (Companion)
 

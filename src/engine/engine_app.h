@@ -24,6 +24,7 @@ enum EngineExit : int {
     kExitTooManyErrors = 3, // falhas seguidas no render loop
     kExitDeviceLost = 4,    // GPU/driver perdido: relançar recria o dispositivo
     kExitInitFailed = 5,
+    kExitRestart = 6,       // reinício pedido (ex. outra placa gráfica): relançar já e retomar o show
     kExitAlreadyRunning = 10,
 };
 

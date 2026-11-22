@@ -1,5 +1,9 @@
 #include "renderer.h"
 
+#include "gpus.h"
+#include "vthost/core/engine_config.h"
+#include "vthost/core/paths.h"
+
 #include "video_decoder.h"
 #include "vthost/core/log.h"
 #include "vthost/core/preview.h"
@@ -274,8 +278,23 @@ bool Renderer::init(std::string* error) {
     const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1,
                                         D3D_FEATURE_LEVEL_10_0};
     const UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-    HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, levels,
+    // Placa gráfica escolhida nas Definições (ou a de alto desempenho = normalmente a dedicada).
+    HRESULT hr = E_FAIL;
+    {
+        const EngineConfig cfg = loadEngineConfig(paths::engineConfigFile());
+        bool fellBack = false;
+        std::string chosen;
+        ComPtr<IDXGIAdapter1> adapter = pickGpu(cfg.gpu, chosen, fellBack);
+        if (fellBack) gpuWarning_ = "placa gráfica \"" + cfg.gpu + "\" não encontrada: a usar " + chosen;
+        if (adapter) {
+            hr = D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, levels,
                                    static_cast<UINT>(std::size(levels)), D3D11_SDK_VERSION, &device_, nullptr, &ctx_);
+            if (FAILED(hr)) log::warn("não foi possível usar " + chosen + " (hr=" + std::to_string(hr) + ")");
+        }
+    }
+    if (FAILED(hr))
+        hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, levels,
+                               static_cast<UINT>(std::size(levels)), D3D11_SDK_VERSION, &device_, nullptr, &ctx_);
     if (FAILED(hr)) {
         log::warn("GPU indisponível (hr=" + std::to_string(hr) + "), a usar WARP (software)");
         hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags, levels,
@@ -299,7 +318,9 @@ bool Renderer::init(std::string* error) {
     if (SUCCEEDED(adapter->GetDesc(&ad))) {
         char name[256] = {};
         WideCharToMultiByte(CP_UTF8, 0, ad.Description, -1, name, sizeof(name) - 1, nullptr, nullptr);
+        gpuName_ = warp_ ? std::string("WARP (software)") : std::string(name);
         log::info(std::string("GPU: ") + name);
+        if (!gpuWarning_.empty()) log::warn(gpuWarning_);
     }
 
     ComPtr<ID3DBlob> vsb, psb, ovsb, opsb, lvsb, lpsb;

@@ -302,6 +302,13 @@ std::string EngineApp::handle(const std::string& line) {
         exitCode_ = kExitRequested;
         log::info("shutdown pedido");
         return okResponse();
+    case CommandType::Restart:
+        if (showMode_) return errorResponse("Show Mode activo: desligue-o para reiniciar o motor");
+        saveStateIfDue(true); // o watchdog relança com --recover e o show continua daqui
+        running_ = false;
+        exitCode_ = kExitRestart;
+        log::info("reinício pedido");
+        return okResponse();
     }
     return errorResponse("comando não tratado");
 }
@@ -327,6 +334,7 @@ protocol::EngineStatus EngineApp::buildStatus() const {
     s.levelR = audio_.levelR();
     s.renderMs = renderMs_;
     renderer_.videoMemory(s.vramUsedMb, s.vramBudgetMb);
+    s.gpuName = renderer_.gpuName();
     for (const auto& cfg : project_.outputs) {
         protocol::OutputStatus os;
         os.id = cfg.id;
@@ -357,6 +365,7 @@ protocol::EngineStatus EngineApp::buildStatus() const {
     }
     s.warnings = warnings_;
     if (renderer_.usingSoftwareFallback()) s.warnings.push_back("GPU indisponível: a usar renderização por software");
+    if (!renderer_.gpuWarning().empty()) s.warnings.push_back(renderer_.gpuWarning());
     return s;
 }
 

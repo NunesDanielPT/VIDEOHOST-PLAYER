@@ -35,6 +35,8 @@ private:
     void apply();
 
     QComboBox* language_ = nullptr;
+    QComboBox* gpu_ = nullptr;
+    QString initialGpu_;
     QString initialLanguage_;
     std::vector<std::function<void()>> savers_; // cada controlo sabe gravar-se
 };

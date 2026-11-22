@@ -112,6 +112,8 @@ ParsedCommand parseCommand(const std::string& line) {
             c.type = CommandType::ListAudioDevices;
         } else if (cmd == "shutdown") {
             c.type = CommandType::Shutdown;
+        } else if (cmd == "restart") {
+            c.type = CommandType::Restart;
         } else {
             r.error = "comando desconhecido: " + cmd;
             return r;
@@ -154,6 +156,7 @@ std::string serializeCommand(const Command& c) {
     case CommandType::ListDisplays: j["cmd"] = "list_displays"; break;
     case CommandType::ListAudioDevices: j["cmd"] = "list_audio_devices"; break;
     case CommandType::Shutdown: j["cmd"] = "shutdown"; break;
+    case CommandType::Restart: j["cmd"] = "restart"; break;
     }
     return dump(j);
 }
@@ -197,6 +200,7 @@ std::string statusResponse(const EngineStatus& s) {
                 {"renderMs", s.renderMs},
                 {"vramUsedMb", s.vramUsedMb},
                 {"vramBudgetMb", s.vramBudgetMb},
+                {"gpu", s.gpuName},
                 {"outputs", outputs},
                 {"warnings", s.warnings}}}};
     return dump(j);
@@ -260,6 +264,7 @@ ParsedResponse parseResponse(const std::string& line) {
             es.renderMs = std::max(0.0, num(s, "renderMs").value_or(0.0));
             es.vramUsedMb = std::max(0.0, num(s, "vramUsedMb").value_or(0.0));
             es.vramBudgetMb = std::max(0.0, num(s, "vramBudgetMb").value_or(0.0));
+            es.gpuName = str(s, "gpu");
             if (auto a = s.find("outputs"); a != s.end() && a->is_array())
                 for (const auto& o : *a)
                     if (o.is_object())
