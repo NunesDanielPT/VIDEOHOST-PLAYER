@@ -198,10 +198,21 @@ void OutputWindow::updateLetterbox() {
     if (renderer_.buildWarpMesh(mapping_, mesh)) mesh_ = mesh;
 }
 
+bool OutputWindow::dsmPanelSize(int& w, int& h) {
+    if (!config_.dsm || width_ <= 0 || height_ <= 0 || !dsm_.update(renderer_, width_, height_, canvasW_, canvasH_)) return false;
+    w = dsm_.panelW;
+    h = dsm_.panelH;
+    return true;
+}
+
 void OutputWindow::present(bool vsync, bool testCard) {
     if (!swapChain_ || !rtv_) return;
-    if (!mesh_.vb) updateLetterbox();
-    renderer_.drawOutput(rtv_.Get(), width_, height_, canvasId_, mapping_, mesh_, testCard);
+    if (config_.dsm && dsm_.update(renderer_, width_, height_, canvasW_, canvasH_)) {
+        drawDsm(renderer_, rtv_.Get(), dsm_, canvasId_, dsmPanelCanvasId(config_.id), testCard);
+    } else {
+        if (!mesh_.vb) updateLetterbox();
+        renderer_.drawOutput(rtv_.Get(), width_, height_, canvasId_, mapping_, mesh_, testCard);
+    }
     const HRESULT hr = swapChain_->Present(vsync ? 1 : 0, 0);
     if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
         lost_ = true;

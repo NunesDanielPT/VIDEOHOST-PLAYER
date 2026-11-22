@@ -94,6 +94,10 @@ Ver `src/core/include/vthost/core/protocol.h`. Uma mensagem JSON por linha, um p
 3. Ficheiros sempre gravados de forma atómica.
 4. Interface em PT e EN: qualquer texto novo no Studio usa `tr()` e é traduzido em `translations/vthost_studio_pt_PT.ts`.
 
+## Output para DSM
+
+Uma saída com `dsm` desenha o canvas mais pequeno (`computeDsmLayout`, núcleo) e por baixo uma faixa com a duração e o tempo que falta (`computeCountdown`). O texto é desenhado com GDI numa thread (`DsmPanelRenderer`, só quando muda) e o render loop copia a imagem para o canvas `dsm:<saída>` (`uploadCanvas`). Saídas NDI em DSM compõem num canvas `ndidsm:<saída>` 1920x1080.
+
 ## Placa gráfica
 
 O Studio grava a escolha em `%LOCALAPPDATA%\VTHOST\engine_config.json` (`engine_config.h`); o motor lê-a ao arrancar e cria o dispositivo D3D11 nessa placa (`gpus.h`: vazio = a de alto desempenho via `IDXGIFactory6`). Se não existir, usa a de alto desempenho e avisa. Mudar de placa = comando `restart` (o motor grava o estado e sai com o código 6; o watchdog relança com `--recover`).

@@ -100,7 +100,21 @@ struct Output {
     std::string ndiName;      // tipo Ndi ("" = "VTHOST - <nome>")
     bool ndiAlpha = false;
     std::string deviceId;     // tipo DeckLink
+
+    // Modo DSM (monitor para a régie / colegas): o vídeo mais pequeno em cima e por
+    // baixo a duração do vídeo e o tempo que falta, com legendas. Vale para qualquer
+    // tipo de saída (ecrã, janela, NDI).
+    bool dsm = false;
+    std::string dsmLabelLength;    // legenda da duração ("" = "VIDEO LENGTH")
+    std::string dsmLabelRemaining; // legenda do tempo que falta ("" = "TIME LEFT")
 };
+
+// Geometria do modo DSM, em fracções da saída (0..1).
+struct DsmLayout {
+    double videoX = 0, videoY = 0, videoW = 1, videoH = 1; // vídeo, com a proporção do canvas
+    double panelX = 0, panelY = 0, panelW = 1, panelH = 0; // faixa dos tempos, por baixo
+};
+DsmLayout computeDsmLayout(int outW, int outH, int canvasW, int canvasH);
 
 struct Project {
     int version = kProjectFormatVersion;

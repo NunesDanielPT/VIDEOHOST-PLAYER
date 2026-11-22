@@ -12,6 +12,7 @@ add_executable(vthost-engine WIN32
     reaper.cpp
     ipc_server.cpp
     ndi_output.cpp
+    dsm.cpp
 )
 target_link_libraries(vthost-engine PRIVATE
     vthost_core

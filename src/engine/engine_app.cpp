@@ -1,5 +1,7 @@
 #include "engine_app.h"
 
+#include "vthost/core/countdown.h"
+
 #include "displays.h"
 #include "vthost/core/log.h"
 #include "vthost/core/paths.h"
@@ -88,7 +90,15 @@ bool EngineApp::loadProject(const std::string& path, std::string* error) {
 
 void EngineApp::syncCanvas() {
     renderer_.ensureCanvas(kCanvasId, project_.width, project_.height);
-    renderer_.keepOnlyCanvases({kCanvasId});
+    // Mantém os canvases das saídas DSM (faixa de texto e composição NDI).
+    std::set<std::string> keep = {kCanvasId};
+    for (const auto& o : project_.outputs)
+        if (o.dsm) {
+            keep.insert(dsmPanelCanvasId(o.id));
+            keep.insert("ndidsm:" + o.id);
+        }
+    renderer_.keepOnlyCanvases(keep);
+    dsmPanels_.forget(); // redesenha o texto (canvases podem ter sido recriados)
     for (auto& w : outputs_) w->setCanvas(kCanvasId, project_.width, project_.height);
 }
 
@@ -97,7 +107,7 @@ bool sameOutput(const Output& a, const Output& b) {
     return a.id == b.id && a.name == b.name && a.type == b.type && a.enabled == b.enabled &&
            a.displayId == b.displayId && a.monitor == b.monitor && a.windowWidth == b.windowWidth &&
            a.windowHeight == b.windowHeight && a.ndiName == b.ndiName && a.ndiAlpha == b.ndiAlpha &&
-           a.deviceId == b.deviceId;
+           a.deviceId == b.deviceId && a.dsm == b.dsm;
 }
 } // namespace
 
@@ -416,6 +426,53 @@ void EngineApp::writePreview(const std::uint8_t* data, int rowPitch, int width, 
     InterlockedIncrement64(seq); // par = pronto
 }
 
+const Output* EngineApp::outputConfig(const std::string& id) const {
+    for (const auto& o : project_.outputs)
+        if (o.id == id) return &o;
+    return nullptr;
+}
+
+void EngineApp::updateDsm() {
+    // Imagens de texto prontas -> GPU (só quando o texto muda, ~1×/s).
+    bool any = false;
+    for (const auto& o : project_.outputs) {
+        if (!o.enabled || !o.dsm) continue;
+        any = true;
+        DsmPanelImage img;
+        if (dsmPanels_.take(o.id, img) && renderer_.ensureCanvas(dsmPanelCanvasId(o.id), img.width, img.height))
+            renderer_.uploadCanvas(dsmPanelCanvasId(o.id), img.bgra.data(), img.width, img.height);
+    }
+    if (!any) return;
+    const auto now = Clock::now();
+    if (now - lastDsm_ < std::chrono::milliseconds(100)) return;
+    lastDsm_ = now;
+
+    const Countdown cd = computeCountdown(project_, buildStatus());
+    DsmPanelRequest base;
+    base.length = cd.active && cd.duration > 0 ? formatCountdown(cd.duration) : "--:--";
+    base.remaining = cd.active ? "-" + formatCountdown(cd.remaining) : "--:--";
+    base.remainingColor = !cd.active ? 0xFFFFFF : cd.remaining <= 10.0 ? 0xFF4A3D : cd.remaining <= 30.0 ? 0xFFA530 : 0xFFFFFF;
+    for (const auto& o : project_.outputs) {
+        if (!o.enabled || !o.dsm) continue;
+        DsmPanelRequest r = base;
+        r.labelLength = o.dsmLabelLength.empty() ? "VIDEO LENGTH" : o.dsmLabelLength;
+        r.labelRemaining = o.dsmLabelRemaining.empty() ? "TIME LEFT" : o.dsmLabelRemaining;
+        bool sized = false;
+        if (o.type == OutputType::Ndi) {
+            DsmGeometry& g = ndiDsm_[o.id];
+            if (g.update(renderer_, 1920, 1080, project_.width, project_.height)) {
+                r.width = g.panelW;
+                r.height = g.panelH;
+                sized = true;
+            }
+        } else {
+            for (auto& w : outputs_)
+                if (w->id() == o.id) sized = w->dsmPanelSize(r.width, r.height);
+        }
+        if (sized) dsmPanels_.request(o.id, r);
+    }
+}
+
 // ---------------------------------------------------------------- render loop
 
 void EngineApp::renderFrame() {
@@ -426,12 +483,32 @@ void EngineApp::renderFrame() {
     renderer_.beginCanvas(kCanvasId);
     player_->draw();
 
-    // Saídas NDI: canvas em resolução total, copiado sem esperar pela GPU.
-    bool anyNdi = false;
-    for (const auto& n : ndi_) anyNdi = anyNdi || n->ok();
-    if (anyNdi)
+    updateDsm();
+
+    // Saídas NDI: canvas em resolução total, copiado sem esperar pela GPU. As que estão
+    // em modo DSM têm a sua composição (vídeo + tempos) num canvas próprio.
+    bool anyPlainNdi = false;
+    for (auto& n : ndi_) {
+        if (!n->ok()) continue;
+        const Output* cfg = outputConfig(n->id());
+        if (!cfg || !cfg->dsm) {
+            anyPlainNdi = true;
+            continue;
+        }
+        const std::string cid = "ndidsm:" + n->id();
+        DsmGeometry& g = ndiDsm_[n->id()];
+        if (!renderer_.ensureCanvas(cid, 1920, 1080) || !g.update(renderer_, 1920, 1080, project_.width, project_.height))
+            continue;
+        drawDsm(renderer_, renderer_.canvasRtv(cid), g, kCanvasId, dsmPanelCanvasId(n->id()), testCard_);
+        NdiOutput* np = n.get();
+        renderer_.captureCanvas(cid, [this, np](const std::uint8_t* d, int pitch, int w, int h) { np->submit(d, pitch, w, h, fps_); });
+    }
+    if (anyPlainNdi)
         renderer_.captureCanvas(kCanvasId, [this](const std::uint8_t* d, int pitch, int w, int h) {
-            for (auto& n : ndi_) n->submit(d, pitch, w, h, fps_);
+            for (auto& n : ndi_) {
+                const Output* cfg = outputConfig(n->id());
+                if (!cfg || !cfg->dsm) n->submit(d, pitch, w, h, fps_);
+            }
         });
 
     // Preview para o Studio ao ritmo escolhido nas preferências.

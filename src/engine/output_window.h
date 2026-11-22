@@ -5,6 +5,7 @@
 // monitor principal e reporta o problema - e volta ao sítio certo quando o
 // monitor for ligado.
 
+#include "dsm.h"
 #include "renderer.h"
 #include "vthost/core/project.h"
 
@@ -35,6 +36,8 @@ public:
     bool ok() const { return ok_; }
     const std::string& error() const { return error_; }
     bool swapChainLost() const { return lost_; }
+    // Modo DSM: tamanho (px) da faixa dos tempos, para a imagem do texto. false = sem DSM.
+    bool dsmPanelSize(int& w, int& h);
 
 private:
     static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
@@ -50,6 +53,7 @@ private:
     int canvasH_ = 1080;
     OutputMapping mapping_; // canvas inteiro, centrado e com a proporção certa
     WarpMesh mesh_;
+    DsmGeometry dsm_;
     std::string detail_;
     HWND hwnd_ = nullptr;
     ComPtr<IDXGISwapChain1> swapChain_;

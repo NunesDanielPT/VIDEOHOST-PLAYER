@@ -66,8 +66,13 @@ public:
 
     // Saídas
     bool buildWarpMesh(const OutputMapping& mapping, WarpMesh& out);
+    // clear = false: desenha por cima do que já lá está (ex. a faixa de tempos do modo DSM).
     void drawOutput(ID3D11RenderTargetView* rtv, int width, int height, const std::string& canvasId,
-                    const OutputMapping& mapping, const WarpMesh& mesh, bool testCard);
+                    const OutputMapping& mapping, const WarpMesh& mesh, bool testCard, bool clear = true);
+    ID3D11RenderTargetView* canvasRtv(const std::string& id) const;
+    void clearCanvas(const std::string& id);
+    // Copia uma imagem BGRA (w×h, sem padding) para um canvas do mesmo tamanho.
+    bool uploadCanvas(const std::string& id, const std::uint8_t* bgra, int w, int h);
 
     // Cópias para a CPU. `sink` só é chamado quando há dados prontos.
     using PixelSink = std::function<void(const std::uint8_t* data, int rowPitch, int width, int height)>;

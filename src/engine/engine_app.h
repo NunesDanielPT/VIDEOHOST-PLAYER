@@ -2,6 +2,7 @@
 
 #include "audio_output.h"
 #include "cue_player.h"
+#include "dsm.h"
 #include "ipc_server.h"
 #include "ndi_output.h"
 #include "output_window.h"
@@ -60,6 +61,8 @@ private:
     void renderFrame();
     void saveStateIfDue(bool force = false);
     protocol::EngineStatus buildStatus() const;
+    void updateDsm();                 // texto dos tempos das saídas em modo DSM
+    const Output* outputConfig(const std::string& id) const;
 
     Renderer renderer_;
     IpcServer ipc_;
@@ -92,7 +95,10 @@ private:
     Clock::time_point fpsWindowStart_ = Clock::now();
     int fpsFrames_ = 0;
     double fps_ = 0.0;
-    double renderMs_ = 0.0; // média do tempo de trabalho por frame (sem a espera pelo ecrã)
+    double renderMs_ = 0.0;
+    DsmPanelRenderer dsmPanels_;
+    std::map<std::string, DsmGeometry> ndiDsm_; // saídas NDI em modo DSM (1920x1080)
+    Clock::time_point lastDsm_{}; // média do tempo de trabalho por frame (sem a espera pelo ecrã)
 };
 
 } // namespace vthost

@@ -864,6 +864,14 @@
         <translation>+ Janela</translation>
     </message>
     <message>
+        <source>Caption (left):</source>
+        <translation>Legenda (esquerda):</translation>
+    </message>
+    <message>
+        <source>Caption (right):</source>
+        <translation>Legenda (direita):</translation>
+    </message>
+    <message>
         <source>Custom</source>
         <translation>Personalizada</translation>
     </message>
@@ -876,8 +884,16 @@
         <translation>Motor parado.</translation>
     </message>
     <message>
+        <source>For the crew: the video smaller at the top and, below it, the length of the video and the time left, with captions. Works on a screen, a window or NDI.</source>
+        <translation>Para a equipa: o vídeo mais pequeno em cima e, por baixo, a duração do vídeo e o tempo que falta, com legendas. Funciona num ecrã, numa janela ou em NDI.</translation>
+    </message>
+    <message>
         <source>Identify screens</source>
         <translation>Identificar ecrãs</translation>
+    </message>
+    <message>
+        <source>Left: the real length of the video on air (e.g. 02:41). Right: the time left, orange in the last 30 s and red in the last 10 s.</source>
+        <translation>Esquerda: a duração real do vídeo no ar (ex. 02:41). Direita: o tempo que falta, laranja nos últimos 30 s e vermelho nos últimos 10 s.</translation>
     </message>
     <message>
         <source>NDI (network)</source>
@@ -906,6 +922,10 @@
     <message>
         <source>Output %1</source>
         <translation>Saída %1</translation>
+    </message>
+    <message>
+        <source>Output for DSM</source>
+        <translation>Output para DSM</translation>
     </message>
     <message>
         <source>Outputs</source>
@@ -944,8 +964,16 @@
         <translation>Estado:</translation>
     </message>
     <message>
+        <source>TIME LEFT</source>
+        <translation>TEMPO QUE FALTA</translation>
+    </message>
+    <message>
         <source>Type:</source>
         <translation>Tipo:</translation>
+    </message>
+    <message>
+        <source>VIDEO LENGTH</source>
+        <translation>TEMPO DO VÍDEO</translation>
     </message>
     <message>
         <source>VIDEOHOST - &lt;output name&gt;</source>

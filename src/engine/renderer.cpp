@@ -556,10 +556,10 @@ bool Renderer::buildWarpMesh(const OutputMapping& mapping, WarpMesh& out) {
 }
 
 void Renderer::drawOutput(ID3D11RenderTargetView* rtv, int width, int height, const std::string& canvasId,
-                          const OutputMapping& mapping, const WarpMesh& mesh, bool testCard) {
+                          const OutputMapping& mapping, const WarpMesh& mesh, bool testCard, bool clear) {
     if (!rtv) return;
     const float black[4] = {0.f, 0.f, 0.f, 1.f};
-    ctx_->ClearRenderTargetView(rtv, black);
+    if (clear) ctx_->ClearRenderTargetView(rtv, black);
     auto it = canvases_.find(canvasId);
     if (it == canvases_.end() || !mesh.vb || width <= 0 || height <= 0) return;
     const CanvasTarget& cv = it->second;
@@ -699,6 +699,25 @@ bool Renderer::videoMemory(double& usedMb, double& budgetMb) const {
     if (FAILED(adapter3_->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info))) return false;
     usedMb = static_cast<double>(info.CurrentUsage) / (1024.0 * 1024.0);
     budgetMb = static_cast<double>(info.Budget) / (1024.0 * 1024.0);
+    return true;
+}
+
+ID3D11RenderTargetView* Renderer::canvasRtv(const std::string& id) const {
+    auto it = canvases_.find(id);
+    return it == canvases_.end() ? nullptr : it->second.rtv.Get();
+}
+
+void Renderer::clearCanvas(const std::string& id) {
+    auto it = canvases_.find(id);
+    if (it == canvases_.end()) return;
+    const float black[4] = {0.f, 0.f, 0.f, 1.f};
+    ctx_->ClearRenderTargetView(it->second.rtv.Get(), black);
+}
+
+bool Renderer::uploadCanvas(const std::string& id, const std::uint8_t* bgra, int w, int h) {
+    auto it = canvases_.find(id);
+    if (it == canvases_.end() || !bgra || it->second.w != w || it->second.h != h) return false;
+    ctx_->UpdateSubresource(it->second.tex.Get(), 0, nullptr, bgra, static_cast<UINT>(w) * 4, 0);
     return true;
 }
 

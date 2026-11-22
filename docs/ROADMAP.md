@@ -80,6 +80,7 @@ Referência funcional: até à 0.6, media servers como o Millumin 5; desde a 0.7
 - [x] 0.9.0: novo nome VIDEOHOST PLAYER; instalador pergunta a língua (PT/EN) logo no início e o programa abre nessa língua; trocar a língua nas Preferências com reabrir já; rodapé com CPU, RAM, VRAM e fps (com capacidade de render); VUs com dB escritos; a forma de onda mostra o ganho da normalização
 - [x] 0.10.0: OSC para o Companion; mudar In/Out/repetições/velocidade com a cue no ar aplica logo; dicas nos ícones das cues
 - [x] 0.11.0: escolher a placa gráfica (automático = alto desempenho/dedicada), reiniciar o motor retomando o show
+- [x] 0.12.0: Output para DSM (qualquer saída: ecrã, janela, NDI): vídeo mais pequeno em cima e por baixo a duração do vídeo e o tempo que falta, com legendas
 - [x] 0.7.2: atualizações como no MapSim (janela com as novidades de cada versão, progresso, aviso no rodapé, procura de 30 em 30 min); notas das releases geradas pela CI
 - [x] 0.7.1: miniatura escolhida (botão da câmara / Ctrl+P na cue a tocar), miniatura automática evita frames pretos, ícones de transporte claros, ESPAÇO arranca a cue selecionada
 - [ ] Seleção de várias cues para alterar em conjunto

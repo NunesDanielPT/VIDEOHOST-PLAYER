@@ -234,6 +234,38 @@ OutputsDialog::OutputsDialog(int width, int height, const std::vector<Output>& o
         pages_->addWidget(page);
     }
     f->addRow(pages_);
+
+    // Output para DSM: em qualquer tipo de saída (ecrã, janela, NDI).
+    dsm_ = new QCheckBox(tr("Output for DSM"), form_);
+    dsm_->setToolTip(tr("For the crew: the video smaller at the top and, below it, the length of the video and the "
+                        "time left, with captions. Works on a screen, a window or NDI."));
+    f->addRow(QString(), dsm_);
+    dsmLength_ = new QLineEdit(form_);
+    dsmRemaining_ = new QLineEdit(form_);
+    dsmLength_->setPlaceholderText(tr("VIDEO LENGTH"));
+    dsmRemaining_->setPlaceholderText(tr("TIME LEFT"));
+    f->addRow(tr("Caption (left):"), dsmLength_);
+    f->addRow(tr("Caption (right):"), dsmRemaining_);
+    auto* dsmNote = new QLabel(tr("Left: the real length of the video on air (e.g. 02:41). Right: the time left, orange "
+                                  "in the last 30 s and red in the last 10 s."),
+                               form_);
+    dsmNote->setWordWrap(true);
+    dsmNote->setStyleSheet(QStringLiteral("color: gray;"));
+    f->addRow(QString(), dsmNote);
+    connect(dsm_, &QCheckBox::toggled, this, [this, dsmNote](bool on) {
+        dsmLength_->setEnabled(on);
+        dsmRemaining_->setEnabled(on);
+        dsmNote->setEnabled(on);
+        // Ao ligar, as legendas ficam na língua do programa (dá para mudar).
+        if (on && !loading_) {
+            if (dsmLength_->text().trimmed().isEmpty()) dsmLength_->setText(tr("VIDEO LENGTH"));
+            if (dsmRemaining_->text().trimmed().isEmpty()) dsmRemaining_->setText(tr("TIME LEFT"));
+        }
+        changed();
+    });
+    connect(dsmLength_, &QLineEdit::editingFinished, this, &OutputsDialog::changed);
+    connect(dsmRemaining_, &QLineEdit::editingFinished, this, &OutputsDialog::changed);
+
     status_ = new QLabel(form_);
     status_->setWordWrap(true);
     f->addRow(tr("State:"), status_);
@@ -309,6 +341,7 @@ void OutputsDialog::rebuildList() {
         QString t = qs(o.name.empty() ? o.id : o.name);
         if (o.type == OutputType::Ndi) t += QStringLiteral("  [NDI]");
         else if (o.type == OutputType::Window) t += QStringLiteral("  [") + tr("window") + QStringLiteral("]");
+        if (o.dsm) t += QStringLiteral("  [DSM]");
         if (!o.enabled) t += QStringLiteral("  (") + tr("off") + QStringLiteral(")");
         list_->addItem(t);
     }
@@ -345,6 +378,11 @@ void OutputsDialog::showOutput(int index) {
     winH_->setValue(o.windowHeight);
     ndiName_->setText(qs(o.ndiName));
     ndiAlpha_->setChecked(o.ndiAlpha);
+    dsm_->setChecked(o.dsm);
+    dsmLength_->setText(qs(o.dsmLabelLength));
+    dsmRemaining_->setText(qs(o.dsmLabelRemaining));
+    dsmLength_->setEnabled(o.dsm);
+    dsmRemaining_->setEnabled(o.dsm);
     loading_ = false;
     updateStatus();
 }
@@ -364,6 +402,9 @@ void OutputsDialog::commitForm() {
     o.windowHeight = winH_->value();
     o.ndiName = ndiName_->text().trimmed().toStdString();
     o.ndiAlpha = ndiAlpha_->isChecked();
+    o.dsm = dsm_->isChecked();
+    o.dsmLabelLength = dsmLength_->text().trimmed().left(64).toStdString();
+    o.dsmLabelRemaining = dsmRemaining_->text().trimmed().left(64).toStdString();
 }
 
 void OutputsDialog::changed() {

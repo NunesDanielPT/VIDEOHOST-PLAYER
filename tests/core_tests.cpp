@@ -256,10 +256,13 @@ static void testProject() {
     p.cues.push_back(b);
     CHECK(a.id == "Q1" && b.id == "Q2");
 
+    p.outputs[0].dsm = true;
+    p.outputs[0].dsmLabelLength = "TEMPO DO VÍDEO";
     auto r = parseProject(serializeProject(p));
     CHECK(r.project && r.warnings.empty());
     if (!r.project) return;
     const Project& q = *r.project;
+    CHECK(q.outputs[0].dsm && q.outputs[0].dsmLabelLength == "TEMPO DO VÍDEO" && q.outputs[0].dsmLabelRemaining.empty());
     CHECK(q.name == p.name && q.loopPlaylist && q.cues.size() == 2 && q.outputs.size() == 1);
     const Cue& x = q.cues[0];
     CHECK(x.id == "Q1" && x.label == "INTRO" && x.color == "red" && x.notes == a.notes);
@@ -602,6 +605,22 @@ void testEngineConfig() {
     std::filesystem::remove_all(dir, ec);
 }
 
+void testDsmLayout() {
+    // 1920x1080 com canvas 16:9: vídeo encolhido em cima, faixa por baixo, tudo dentro da saída.
+    const DsmLayout l = computeDsmLayout(1920, 1080, 1920, 1080);
+    CHECK(l.videoW < 1.0 && l.videoH < 1.0 && l.videoX > 0 && l.videoY > 0);
+    CHECK(std::abs(l.videoW * 1920 / (l.videoH * 1080) - 16.0 / 9.0) < 1e-6);
+    CHECK(l.panelY >= l.videoY + l.videoH && l.panelY + l.panelH <= 1.0 + 1e-9 && l.panelH > 0.1);
+    CHECK(std::abs(l.panelX - l.videoX) < 1e-9 && std::abs(l.panelW - l.videoW) < 1e-9);
+    // Canvas muito largo numa saída 4:3: continua dentro e com a proporção.
+    const DsmLayout w = computeDsmLayout(1024, 768, 3840, 1080);
+    CHECK(w.videoX >= 0 && w.videoX + w.videoW <= 1.0 + 1e-9);
+    CHECK(std::abs(w.videoW * 1024 / (w.videoH * 768) - 3840.0 / 1080.0) < 1e-6);
+    // Entradas inválidas não rebentam.
+    const DsmLayout z = computeDsmLayout(0, 0, 0, 0);
+    CHECK(z.videoW == 1 && z.panelH == 0);
+}
+
 int main() {
     testLoudness();
     testProject();
@@ -617,6 +636,7 @@ int main() {
     testAtomicWrite();
     testOsc();
     testEngineConfig();
+    testDsmLayout();
     std::printf("%d verificações, %d falhas\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

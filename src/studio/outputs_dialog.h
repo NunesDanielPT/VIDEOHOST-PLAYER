@@ -65,6 +65,9 @@ private:
     QSpinBox* winH_ = nullptr;
     QLineEdit* ndiName_ = nullptr;
     QCheckBox* ndiAlpha_ = nullptr;
+    QCheckBox* dsm_ = nullptr;          // Output para DSM
+    QLineEdit* dsmLength_ = nullptr;
+    QLineEdit* dsmRemaining_ = nullptr;
     QLabel* status_ = nullptr;
     QLabel* source_ = nullptr;
 };

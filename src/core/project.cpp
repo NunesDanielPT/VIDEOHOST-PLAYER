@@ -331,6 +331,9 @@ ParseResult parseProject(const std::string& text) {
                 it.ndiName = getString(o, "ndiName");
                 it.ndiAlpha = getBool(o, "ndiAlpha", false);
                 it.deviceId = getString(o, "deviceId");
+                it.dsm = getBool(o, "dsm", false);
+                it.dsmLabelLength = getString(o, "dsmLabelLength").substr(0, 64);
+                it.dsmLabelRemaining = getString(o, "dsmLabelRemaining").substr(0, 64);
                 p.outputs.push_back(std::move(it));
             }
         }
@@ -341,6 +344,32 @@ ParseResult parseProject(const std::string& text) {
         r.error = "erro desconhecido";
     }
     return r;
+}
+
+DsmLayout computeDsmLayout(int outW, int outH, int canvasW, int canvasH) {
+    DsmLayout l;
+    if (outW <= 0 || outH <= 0 || canvasW <= 0 || canvasH <= 0) return l;
+    const double W = outW, H = outH;
+    const double m = std::round(0.035 * H);       // margem
+    const double panelH = std::round(0.22 * H);   // faixa dos tempos
+    // Área do vídeo: em cima, entre margens; o canvas fica centrado com a sua proporção.
+    const double areaX = m, areaY = m, areaW = std::max(1.0, W - 2 * m), areaH = std::max(1.0, H - panelH - 2 * m);
+    const double ca = static_cast<double>(canvasW) / canvasH;
+    double vw = areaW, vh = areaW / ca;
+    if (vh > areaH) {
+        vh = areaH;
+        vw = areaH * ca;
+    }
+    l.videoX = (areaX + (areaW - vw) / 2) / W;
+    l.videoY = (areaY + (areaH - vh) / 2) / H;
+    l.videoW = vw / W;
+    l.videoH = vh / H;
+    // Faixa: por baixo do vídeo, à largura do vídeo (alinha com a imagem).
+    l.panelX = l.videoX;
+    l.panelW = l.videoW;
+    l.panelY = (areaY + areaH + m * 0.5) / H;
+    l.panelH = std::min(panelH, H - (areaY + areaH + m * 0.5)) / H;
+    return l;
 }
 
 std::string serializeProject(const Project& p) {
@@ -367,7 +396,10 @@ std::string serializeProject(const Project& p) {
                                 {"windowHeight", o.windowHeight},
                                 {"ndiName", o.ndiName},
                                 {"ndiAlpha", o.ndiAlpha},
-                                {"deviceId", o.deviceId}});
+                                {"deviceId", o.deviceId},
+                                {"dsm", o.dsm},
+                                {"dsmLabelLength", o.dsmLabelLength},
+                                {"dsmLabelRemaining", o.dsmLabelRemaining}});
     // error_handler::replace: UTF-8 inválido num nome não pode impedir a gravação.
     return j.dump(2, ' ', false, json::error_handler_t::replace);
 }
