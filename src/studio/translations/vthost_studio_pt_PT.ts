@@ -731,8 +731,16 @@
         <translation>Sair</translation>
     </message>
     <message>
-        <source>Quit VIDEOHOST PLAYER? The engine and the show keep running.</source>
-        <translation>Sair do VIDEOHOST PLAYER? O motor e o show continuam a correr.</translation>
+        <source>Quit VIDEOHOST PLAYER and stop all the outputs?</source>
+        <translation>Sair do VIDEOHOST PLAYER e parar todas as saídas?</translation>
+    </message>
+    <message>
+        <source>Quit VIDEOHOST PLAYER?</source>
+        <translation>Sair do VIDEOHOST PLAYER?</translation>
+    </message>
+    <message>
+        <source>Quit and stop the outputs</source>
+        <translation>Sair e parar as saídas</translation>
     </message>
     <message>
         <source>RAM %1%</source>
@@ -797,6 +805,10 @@
     <message>
         <source>Show Mode (lock editing)</source>
         <translation>Modo Espetáculo (bloquear edição)</translation>
+    </message>
+    <message>
+        <source>Show Mode is on. Turn it off before quitting (this stops all the outputs).</source>
+        <translation>O Show Mode está ligado. Desligue-o antes de sair (isto pára todas as saídas).</translation>
     </message>
     <message>
         <source>Show in Explorer</source>
@@ -1329,8 +1341,8 @@
         <translation>Procurar atualizações agora</translation>
     </message>
     <message>
-        <source>Closing VIDEOHOST PLAYER never stops the engine: the show keeps running.</source>
-        <translation>Fechar o VIDEOHOST PLAYER nunca pára o motor: o show continua.</translation>
+        <source>Closing VIDEOHOST PLAYER stops the engine and all the outputs. If the program crashes, the engine keeps the show running.</source>
+        <translation>Fechar o VIDEOHOST PLAYER pára o motor e todas as saídas. Se o programa cair, o motor mantém o show.</translation>
     </message>
     <message>
         <source>Companion IP:</source>

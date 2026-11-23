@@ -94,6 +94,10 @@ Ver `src/core/include/vthost/core/protocol.h`. Uma mensagem JSON por linha, um p
 3. Ficheiros sempre gravados de forma atómica.
 4. Interface em PT e EN: qualquer texto novo no Studio usa `tr()` e é traduzido em `translations/vthost_studio_pt_PT.ts`.
 
+## Fechar o Studio
+
+Fechar o Studio pergunta e envia `shutdown` ao motor (o watchdog sai também): as saídas param. Em Show Mode é recusado. Se o Studio cair ou for morto, o motor e o watchdog continuam o show; ao reabrir, o Studio volta a ligar-se. Ao reabrir para mudar de língua ou para instalar uma atualização, o Studio não pára o motor (o instalador pára-o).
+
 ## Blocos
 
 `Project::blocks` (id, nome, escondido, loop, fim = continue/pause/stop) e `Cue::block`. As cues de um bloco ficam sempre seguidas (`normalizeBlocks`, ao abrir e depois de cada edição). `nextCue` volta à primeira cue do bloco quando ele tem loop; no motor, `handleCueEnd` aplica o fim do bloco (pausa no último frame ou preto) quando a última cue acaba. Na playlist, cada bloco é uma linha de cabeçalho (`PlaylistView::cueAt`/`blockAt` convertem linhas em cues).

@@ -108,7 +108,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         f->addRow(QString(), check(page, tr("Open the last project at startup"), "general/openLastProject", true));
         f->addRow(QString(), check(page, tr("Start the engine when VIDEOHOST PLAYER opens"), "general/autoStartEngine", false));
         f->addRow(QString(), check(page, tr("Ask before quitting"), "general/confirmQuit", true));
-        f->addRow(QString(), note(tr("Closing VIDEOHOST PLAYER never stops the engine: the show keeps running."), page));
+        f->addRow(QString(), note(tr("Closing VIDEOHOST PLAYER stops the engine and all the outputs. If the program crashes, the engine keeps the show running."), page));
         tabs->addTab(page, tr("General"));
     }
 

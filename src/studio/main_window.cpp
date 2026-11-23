@@ -26,6 +26,7 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QEventLoop>
 #include <QMenu>
 #include <QInputDialog>
 #include <QActionGroup>
@@ -1044,9 +1045,29 @@ void MainWindow::newProject() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
-    if (prefs::confirmQuit() && !dirty_ &&
-        QMessageBox::question(this, tr("Quit"), tr("Quit VIDEOHOST PLAYER? The engine and the show keep running.")) !=
-            QMessageBox::Yes) {
+    // Reabrir (mudança de língua) ou instalar uma atualização: o motor não é parado aqui.
+    const bool keepEngine = keepEngineOnClose_ || qApp->property("vthostRestart").toBool();
+    const bool engineOn = engine_->isConnected();
+    if (!keepEngine && engineOn && showMode_) {
+        QMessageBox::warning(this, tr("Quit"), tr("Show Mode is on. Turn it off before quitting (this stops all the outputs)."));
+        event->ignore();
+        return;
+    }
+    if (!keepEngine && engineOn) {
+        // Fechar = parar tudo. O motor só fica sozinho em fundo se o programa cair (o watchdog
+        // continua o show).
+        QMessageBox box(QMessageBox::Question, tr("Quit"),
+                        tr("Quit VIDEOHOST PLAYER and stop all the outputs?"), QMessageBox::NoButton, this);
+        auto* quit = box.addButton(tr("Quit and stop the outputs"), QMessageBox::AcceptRole);
+        box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(quit);
+        box.exec();
+        if (box.clickedButton() != quit) {
+            event->ignore();
+            return;
+        }
+    } else if (!keepEngine && prefs::confirmQuit() && !dirty_ &&
+               QMessageBox::question(this, tr("Quit"), tr("Quit VIDEOHOST PLAYER?")) != QMessageBox::Yes) {
         event->ignore();
         return;
     }
@@ -1054,12 +1075,23 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         event->ignore();
         return;
     }
+    if (!keepEngine && engine_->isConnected()) {
+        // Pára o motor (e o watchdog) e espera um pouco que feche as saídas.
+        protocol::Command c;
+        c.type = protocol::CommandType::Shutdown;
+        engine_->send(c);
+        QEventLoop wait;
+        QTimer::singleShot(3000, &wait, &QEventLoop::quit);
+        connect(engine_, &EngineClient::connectionChanged, &wait, [&wait](bool on) {
+            if (!on) wait.quit();
+        });
+        wait.exec();
+    }
     QSettings st;
     st.setValue(QStringLiteral("ui/geometry"), saveGeometry());
     st.setValue(QStringLiteral("ui/playerSplit"), mainSplit_->saveState());
     st.setValue(QStringLiteral("ui/centerSplit"), centerSplit_->saveState());
     if (countdownWindow_) countdownWindow_->close();
-    // O motor continua a correr: fechar a interface nunca pára o show.
     event->accept();
 }
 
@@ -2032,6 +2064,7 @@ void MainWindow::installUpdate(const QString& installerPath, bool ask) {
             QMessageBox::critical(this, tr("Update"), tr("Could not start the installer."));
             return;
         }
+        keepEngineOnClose_ = true; // o instalador é que pára o motor
         qApp->quit();
     };
 

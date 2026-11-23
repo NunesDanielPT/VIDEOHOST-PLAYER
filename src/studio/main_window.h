@@ -212,6 +212,7 @@ private:
     void fireArmedCue();
     TallyClient* tally_ = nullptr;
     std::string armedCueId_;
+    bool keepEngineOnClose_ = false; // a fechar para instalar uma atualização
     std::string watchedCueId_;  // cue disparada pelo misturador (ou a que se lhe seguiu sozinha)
     bool watchedSeen_ = false;  // já a vimos a tocar
     QElapsedTimer watchedSince_;
