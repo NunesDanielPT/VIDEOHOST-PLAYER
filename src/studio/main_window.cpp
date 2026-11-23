@@ -1021,7 +1021,24 @@ void MainWindow::showOscHelp() {
                    "<tr><td><b>Cue Status → Current Cue / Next Cue</b></td><td>name of the video on air / the next one</td></tr>"
                    "</table>"
                    "<p>Suggested Stream Deck page: top row Play Cue 1–5, middle row Previous · Pause/Resume · "
-                   "Next · Panic, bottom row Time Remaining · Goto 30 · Goto 10 · Test card (Generic OSC).</p>"));
+                   "Next · Panic, bottom row Time Remaining · Goto 30 · Goto 10 · Test card (Generic OSC).</p>") +
+                tr("<h3>Play a block</h3>"
+                   "<p><b>Here:</b> select the block header and press <b>Enter</b> or <b>Space</b> (or double-click it, "
+                   "or the <b>Play the block</b> button in the panel on the right). The block starts on its first video "
+                   "and the timers count the whole block.</p>"
+                   "<p><b>In Companion (by name, recommended):</b></p>"
+                   "<ol>"
+                   "<li>Connections → add <b>Generic OSC</b>. Target IP: <b>%1</b>, target port: <b>%2</b>.</li>"
+                   "<li>Create a button → action <b>Send message</b> (string): path <code>/mitti/playBlock</code>, "
+                   "value the name of the block as it is in the playlist (e.g. <code>Block 2</code>), or <code>B2</code> "
+                   "for the second block.</li>"
+                   "<li>With no transition: path <code>/mitti/playBlockForceCut</code>.</li>"
+                   "</ol>"
+                   "<p><b>With the Mitti module only:</b> a <b>Play Cue by ID</b> button with the ID of the first video "
+                   "of the block (its number in the playlist). If you change the order of the playlist, update the "
+                   "number.</p>")
+                    .arg(ip)
+                    .arg(prefs::oscPort()));
     box.exec();
 }
 

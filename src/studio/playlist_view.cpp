@@ -521,16 +521,14 @@ void CueDelegate::paintBlock(QPainter* p, const QStyleOptionViewItem& opt, const
     const QString title = QStringLiteral("#%1  ").arg(idx.data(kNumberRole).toInt()) +
                           (b.name.empty() ? PlaylistView::tr("BLOCK") : qs(b.name));
     // À direita: LOOP, o que acontece no fim, nº de vídeos e duração.
-    QString right = b.loop ? PlaylistView::tr("LOOP")
-                           : b.end == vthost::BlockEnd::Pause ? PlaylistView::tr("PAUSE")
-                           : b.end == vthost::BlockEnd::Stop  ? PlaylistView::tr("STOP")
-                                                              : PlaylistView::tr("CONTINUE");
+    // Só o LOOP aparece no cabeçalho; o que acontece no fim escolhe-se no painel do bloco.
+    const QString right = b.loop ? PlaylistView::tr("LOOP") : QString();
     QFont small = f;
     small.setPixelSize(11);
     const QString info = PlaylistView::tr("%1 video(s)").arg(cues) + QStringLiteral(" · ") + formatTimecode(total, 25.0).left(8);
     const QFontMetrics sm(small);
     const int infoW = sm.horizontalAdvance(info);
-    const int badgeW = sm.horizontalAdvance(right) + 12;
+    const int badgeW = right.isEmpty() ? 0 : sm.horizontalAdvance(right) + 12;
     const QRect menu = blockMenuRect(r);
     const QRect badge(menu.left() - 8 - badgeW, r.top() + 8, badgeW, r.height() - 16);
     p->drawText(QRect(ar.right() + 2, r.top(), std::max(10, badge.left() - infoW - 20 - ar.right()), r.height()),
@@ -538,11 +536,13 @@ void CueDelegate::paintBlock(QPainter* p, const QStyleOptionViewItem& opt, const
     p->setFont(small);
     p->setPen(QColor(200, 210, 225));
     p->drawText(QRect(badge.left() - infoW - 10, r.top(), infoW, r.height()), Qt::AlignRight | Qt::AlignVCenter, info);
-    p->setPen(Qt::NoPen);
-    p->setBrush(b.loop ? QColor(40, 140, 220) : b.end == vthost::BlockEnd::Continue ? QColor(70, 70, 70) : QColor(20, 20, 20, 150));
-    p->drawRoundedRect(badge, 3, 3);
-    p->setPen(Qt::white);
-    p->drawText(badge, Qt::AlignCenter, right);
+    if (!right.isEmpty()) {
+        p->setPen(Qt::NoPen);
+        p->setBrush(QColor(40, 140, 220));
+        p->drawRoundedRect(badge, 3, 3);
+        p->setPen(Qt::white);
+        p->drawText(badge, Qt::AlignCenter, right);
+    }
     // ⋯ opções
     p->setBrush(Qt::NoBrush);
     p->setPen(QColor(220, 220, 220));
@@ -598,7 +598,20 @@ void CueDelegate::paint(QPainter* p, const QStyleOptionViewItem& opt, const QMod
     if (const QColor cc = cueColor(q.color); cc.isValid()) {
         p->fillRect(QRect(r.left() + kInfoX - 18, r.top() + 9, 11, 11), cc);
     }
-    p->setPen(missing ? QColor(230, 90, 90) : (playing ? kBlue : QColor(235, 235, 235)));
+    if (playing) {
+        // Linha do nome como uma pequena timeline: vai enchendo à medida que o vídeo avança,
+        // para se ver o estado mesmo sem o vídeo selecionado.
+        const QRect track(x - 5, r.top() + 4, std::max(10, r.right() - 6 - (x - 5)), 20);
+        p->setPen(Qt::NoPen);
+        p->setBrush(QColor(0, 0, 0, 90));
+        p->drawRoundedRect(track, 3, 3);
+        const double prog = std::clamp(view_->progress_, 0.0, 1.0);
+        QColor fill = kBlue;
+        fill.setAlpha(view_->playingState_ == QStringLiteral("playing") ? 110 : 70);
+        p->setBrush(fill);
+        p->drawRoundedRect(QRect(track.left(), track.top(), static_cast<int>(track.width() * prog), track.height()), 3, 3);
+    }
+    p->setPen(missing ? QColor(230, 90, 90) : QColor(235, 235, 235));
     const QString name = qs(q.displayName());
     p->drawText(QRect(x, r.top() + 5, r.width() - kInfoX - 10, 18), Qt::AlignLeft | Qt::AlignVCenter,
                 QFontMetrics(bold).elidedText(missing ? name + QStringLiteral("  (?)") : name, Qt::ElideMiddle,

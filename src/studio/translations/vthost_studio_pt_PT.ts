@@ -452,6 +452,10 @@
         <translation>&lt;h3&gt;Botões mais usados (Companion → Buttons → Presets → Imimot Mitti)&lt;/h3&gt;&lt;table cellspacing=4&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Cues → Play Cue 1, 2, 3...&lt;/b&gt;&lt;/td&gt;&lt;td&gt;um botão por vídeo, com o nome&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Transport → Pause / Resume&lt;/b&gt;&lt;/td&gt;&lt;td&gt;GO / pausa (como o ESPAÇO)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Transport → Play Selected Cue&lt;/b&gt;&lt;/td&gt;&lt;td&gt;toca o vídeo selecionado&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Jump &amp;amp; Select → Jump to Next / Previous Cue&lt;/b&gt;&lt;/td&gt;&lt;td&gt;vídeo seguinte / anterior&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Playhead → Goto 30 / 20 / 10&lt;/b&gt;&lt;/td&gt;&lt;td&gt;últimos segundos do vídeo&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Playhead → Rewind&lt;/b&gt;&lt;/td&gt;&lt;td&gt;volta ao início do vídeo&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Emergency → Panic&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pára tudo (preto)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Cue Status → Cue Time Remaining&lt;/b&gt;&lt;/td&gt;&lt;td&gt;contagem no botão (laranja / vermelho perto do fim)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Cue Status → Current Cue / Next Cue&lt;/b&gt;&lt;/td&gt;&lt;td&gt;nome do vídeo no ar / do seguinte&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;p&gt;Página sugerida no Stream Deck: em cima Play Cue 1–5, no meio Anterior · Pause/Resume · Seguinte · Panic, em baixo Tempo que falta · Goto 30 · Goto 10 · Test card (Generic OSC).&lt;/p&gt;</translation>
     </message>
     <message>
+        <source>&lt;h3&gt;Play a block&lt;/h3&gt;&lt;p&gt;&lt;b&gt;Here:&lt;/b&gt; select the block header and press &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Space&lt;/b&gt; (or double-click it, or the &lt;b&gt;Play the block&lt;/b&gt; button in the panel on the right). The block starts on its first video and the timers count the whole block.&lt;/p&gt;&lt;p&gt;&lt;b&gt;In Companion (by name, recommended):&lt;/b&gt;&lt;/p&gt;&lt;ol&gt;&lt;li&gt;Connections → add &lt;b&gt;Generic OSC&lt;/b&gt;. Target IP: &lt;b&gt;%1&lt;/b&gt;, target port: &lt;b&gt;%2&lt;/b&gt;.&lt;/li&gt;&lt;li&gt;Create a button → action &lt;b&gt;Send message&lt;/b&gt; (string): path &lt;code&gt;/mitti/playBlock&lt;/code&gt;, value the name of the block as it is in the playlist (e.g. &lt;code&gt;Block 2&lt;/code&gt;), or &lt;code&gt;B2&lt;/code&gt; for the second block.&lt;/li&gt;&lt;li&gt;With no transition: path &lt;code&gt;/mitti/playBlockForceCut&lt;/code&gt;.&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;&lt;b&gt;With the Mitti module only:&lt;/b&gt; a &lt;b&gt;Play Cue by ID&lt;/b&gt; button with the ID of the first video of the block (its number in the playlist). If you change the order of the playlist, update the number.&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;Tocar um bloco&lt;/h3&gt;&lt;p&gt;&lt;b&gt;Aqui:&lt;/b&gt; selecione o cabeçalho do bloco e carregue &lt;b&gt;ENTER&lt;/b&gt; ou &lt;b&gt;ESPAÇO&lt;/b&gt; (ou faça duplo clique, ou use o botão &lt;b&gt;Tocar o bloco&lt;/b&gt; no painel da direita). O bloco começa no primeiro vídeo e os tempos contam o bloco inteiro.&lt;/p&gt;&lt;p&gt;&lt;b&gt;No Companion (pelo nome, recomendado):&lt;/b&gt;&lt;/p&gt;&lt;ol&gt;&lt;li&gt;Connections → adicione &lt;b&gt;Generic OSC&lt;/b&gt;. Target IP: &lt;b&gt;%1&lt;/b&gt;, target port: &lt;b&gt;%2&lt;/b&gt;.&lt;/li&gt;&lt;li&gt;Crie um botão → ação &lt;b&gt;Send message&lt;/b&gt; (string): path &lt;code&gt;/mitti/playBlock&lt;/code&gt;, valor o nome do bloco como está na playlist (ex.: &lt;code&gt;Bloco 2&lt;/code&gt;), ou &lt;code&gt;B2&lt;/code&gt; para o segundo bloco.&lt;/li&gt;&lt;li&gt;Sem transição: path &lt;code&gt;/mitti/playBlockForceCut&lt;/code&gt;.&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;&lt;b&gt;Só com o módulo do Mitti:&lt;/b&gt; um botão &lt;b&gt;Play Cue by ID&lt;/b&gt; com o ID do primeiro vídeo do bloco (o número dele na playlist). Se mudar a ordem da playlist, atualize o número.&lt;/p&gt;</translation>
+    </message>
+    <message>
         <source>About VIDEOHOST PLAYER</source>
         <translation>Sobre o VIDEOHOST PLAYER</translation>
     </message>
@@ -1238,10 +1242,6 @@
         <translation>Bloco: clique na seta para esconder / mostrar os vídeos, ⋯ ou botão direito para as opções (loop, o que acontece no fim). Largue aqui ficheiros para os juntar ao bloco.</translation>
     </message>
     <message>
-        <source>CONTINUE</source>
-        <translation>CONTINUA</translation>
-    </message>
-    <message>
         <source>CUE: arm this video (it turns red). It plays with Space when nothing is playing, or when the switcher (vMix / ATEM) puts the player on air. Click again to disarm.</source>
         <translation>CUE: arma este vídeo (fica vermelho). Toca com o ESPAÇO quando nada está a tocar, ou quando o misturador (vMix / ATEM) põe o player no ar. Clique outra vez para desarmar.</translation>
     </message>
@@ -1286,10 +1286,6 @@
         <translation>Loop: repete a cue (número de repetições no Inspector)</translation>
     </message>
     <message>
-        <source>PAUSE</source>
-        <translation>PAUSA</translation>
-    </message>
-    <message>
         <source>Pause at end: holds the last frame</source>
         <translation>Pausa no fim: fica na última imagem</translation>
     </message>
@@ -1304,10 +1300,6 @@
     <message>
         <source>Plays: %1</source>
         <translation>Repetições: %1</translation>
-    </message>
-    <message>
-        <source>STOP</source>
-        <translation>STOP</translation>
     </message>
     <message>
         <source>Sound on / off (mute)</source>

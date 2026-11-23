@@ -87,6 +87,7 @@ Referência funcional: até à 0.6, media servers como o Millumin 5; desde a 0.7
 - [x] 0.14.1: botão + BLOCO, vídeos dentro de blocos avançados e mais escuros, botão CUE sempre visível (ESPAÇO toca a cue em CUE), ícone de repetir redesenhado
 - [x] 0.14.2: fechar o programa pergunta e pára o motor e todas as saídas (o motor só fica sozinho se o programa cair)
 - [x] 0.15.0: tocar o bloco com ENTER/ESPAÇO no cabeçalho, tempos do bloco inteiro, painel do bloco à direita (cor, no fim, dissolve entre vídeos, fade in/out), OSC /mitti/playBlock
+- [x] 0.15.1: ajuda com "Tocar um bloco" (aqui e no Companion), cabeçalho do bloco só mostra LOOP, linha do nome do vídeo no ar enche como uma timeline
 - [x] 0.7.2: atualizações como no MapSim (janela com as novidades de cada versão, progresso, aviso no rodapé, procura de 30 em 30 min); notas das releases geradas pela CI
 - [x] 0.7.1: miniatura escolhida (botão da câmara / Ctrl+P na cue a tocar), miniatura automática evita frames pretos, ícones de transporte claros, ESPAÇO arranca a cue selecionada
 - [ ] Seleção de várias cues para alterar em conjunto
