@@ -175,6 +175,16 @@ void EngineApp::handleCueEnd() {
     } else if (cue.clearAtEnd || idx < 0) {
         player_->stop(0.0);
         log::info("fim da cue " + std::to_string(idx + 1) + ": apagar");
+    } else if (const Block* blk = project_.isLastInBlock(idx) && cue.gotoCue.empty() ? project_.findBlock(cue.block) : nullptr;
+               blk && !blk->loop && blk->end != BlockEnd::Continue) {
+        // Fim do bloco: pausa no último frame (ESPAÇO segue para o bloco seguinte) ou preto.
+        if (blk->end == BlockEnd::Pause) {
+            player_->holdAtEnd();
+            log::info("fim do bloco " + blk->id + ": pausa");
+        } else {
+            player_->stop(0.0);
+            log::info("fim do bloco " + blk->id + ": stop");
+        }
     } else {
         const int next = project_.nextCue(idx);
         if (next < 0) {

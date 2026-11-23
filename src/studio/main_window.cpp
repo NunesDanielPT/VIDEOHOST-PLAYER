@@ -27,6 +27,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QInputDialog>
+#include <QActionGroup>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPainter>
@@ -45,6 +47,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <set>
 #include <cmath>
 #include <memory>
 
@@ -456,8 +459,12 @@ void MainWindow::buildUi() {
     connect(playlist_, &QListWidget::currentRowChanged, this, [this](int) { updateSelection(); });
     connect(playlist_, &PlaylistView::playRequested, this, [this](int i) { playCue(i); });
     connect(playlist_, &PlaylistView::iconClicked, this, &MainWindow::onIconClicked);
-    connect(playlist_, &PlaylistView::filesDropped, this, &MainWindow::addFiles);
-    connect(playlist_, &PlaylistView::cueMoved, this, &MainWindow::moveCue);
+    connect(playlist_, &PlaylistView::filesDropped, this, [this](int before, const QStringList& files, const QString& block) {
+        addFiles(before, files, block);
+    });
+    connect(playlist_, &PlaylistView::cueDropped, this, &MainWindow::dropCue);
+    connect(playlist_, &PlaylistView::blockToggleRequested, this, &MainWindow::toggleBlock);
+    connect(playlist_, &PlaylistView::blockMenuRequested, this, &MainWindow::showBlockMenu);
     connect(playlist_, &PlaylistView::deleteRequested, this, &MainWindow::deleteCue);
     connect(playlist_, &PlaylistView::contextMenuRequested, this, &MainWindow::showCueMenu);
     connect(playlist_, &PlaylistView::thumbnailRequested, this, [this](int) { thumbnailFromPlayhead(); });
@@ -565,9 +572,12 @@ void MainWindow::buildMenus() {
     file->addAction(tr("Save &as..."), QKeySequence::SaveAs, this, [this] { saveProjectAs(); });
     file->addSeparator();
     auto* aAdd = file->addAction(tr("Add media..."), QKeySequence(Qt::CTRL | Qt::Key_I), this, &MainWindow::addMedia);
+    auto* aBlock = file->addAction(tr("New block"), QKeySequence(Qt::CTRL | Qt::Key_B), this, [this] {
+        newBlock(selectedCue());
+    });
     file->addSeparator();
     file->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
-    editActions_ << aNew << aOpen << aAdd;
+    editActions_ << aNew << aOpen << aAdd << aBlock;
 
     auto* edit = menuBar()->addMenu(tr("&Edit"));
     undoAction_ = edit->addAction(tr("&Undo"), this, &MainWindow::undo);
@@ -717,10 +727,40 @@ void MainWindow::fireArmedCue() {
     if (i < 0 || !engine_->isConnected()) return;
     playCue(i);
     infoLabel_->setText(tr("Cue %1 started by the switcher (input on air)").arg(cueOscId(i)));
-    // A seguinte fica armada (opção): o próximo corte para o player dispara-a.
-    const int n = static_cast<int>(project_.cues.size());
-    armedCueId_ = prefs::tallyArmNext() && i + 1 < n ? project_.cues[static_cast<std::size_t>(i + 1)].id : std::string();
+    // Enquanto toca nada fica armado (um novo corte para o player não a reinicia).
+    // Quando acabar, a seguinte fica em CUE (opção) — ver followTallyPlayback.
+    watchedCueId_ = project_.cues[static_cast<std::size_t>(i)].id;
+    watchedSeen_ = false;
+    watchedSince_.start();
+    armedCueId_.clear();
     updateArmed();
+}
+
+void MainWindow::followTallyPlayback(const protocol::EngineStatus& s) {
+    if (watchedCueId_.empty()) return;
+    const bool running = s.state == "playing" || s.state == "paused" || s.state == "loading";
+    const std::string cur = running && playingCue_ >= 0 && playingCue_ < static_cast<int>(project_.cues.size())
+                                ? project_.cues[static_cast<std::size_t>(playingCue_)].id
+                                : std::string();
+    if (!watchedSeen_) {
+        if (cur == watchedCueId_) watchedSeen_ = true;
+        else if (watchedSince_.elapsed() > 5000) watchedCueId_.clear(); // nunca chegou a tocar
+        return;
+    }
+    if (cur == watchedCueId_) return;
+    if (!cur.empty()) {
+        // Seguiu sozinha para outra cue (ex. dentro de um bloco): passa a vigiar essa.
+        watchedCueId_ = cur;
+        return;
+    }
+    // Acabou (preto ou parada no fim): a cue seguinte fica em CUE, se o operador não armou outra.
+    const int i = project_.cueIndex(watchedCueId_);
+    watchedCueId_.clear();
+    const int n = static_cast<int>(project_.cues.size());
+    if (prefs::tallyArmNext() && armedCueId_.empty() && i >= 0 && i + 1 < n) {
+        armedCueId_ = project_.cues[static_cast<std::size_t>(i + 1)].id;
+        updateArmed();
+    }
 }
 
 // ------------------------------------------------------------------ OSC (Companion)
@@ -1062,11 +1102,21 @@ void MainWindow::addMedia() {
     if (files.isEmpty()) return;
     QSettings().setValue(QStringLiteral("lastMediaDir"), QFileInfo(files.front()).absolutePath());
     const int sel = selectedCue();
-    addFiles(sel >= 0 ? sel + 1 : static_cast<int>(project_.cues.size()), files);
+    if (const QString blk = playlist_->selectedBlock(); !blk.isEmpty()) {
+        // Bloco selecionado: os vídeos entram no fim desse bloco.
+        int last = -1;
+        for (int k = 0; k < static_cast<int>(project_.cues.size()); ++k)
+            if (qs(project_.cues[static_cast<std::size_t>(k)].block) == blk) last = k;
+        addFiles(last >= 0 ? last + 1 : static_cast<int>(project_.cues.size()), files, blk);
+        return;
+    }
+    addFiles(sel >= 0 ? sel + 1 : static_cast<int>(project_.cues.size()), files,
+             sel >= 0 ? qs(project_.cues[static_cast<std::size_t>(sel)].block) : QString());
 }
 
-void MainWindow::addFiles(int row, const QStringList& paths) {
+void MainWindow::addFiles(int row, const QStringList& paths, const QString& block) {
     if (showMode_ || paths.isEmpty()) return;
+    const std::string blk = project_.findBlock(block.toStdString()) ? block.toStdString() : std::string();
     row = std::clamp(row, 0, static_cast<int>(project_.cues.size()));
     int inserted = 0;
     for (const QString& path : paths) {
@@ -1077,14 +1127,20 @@ void MainWindow::addFiles(int row, const QStringList& paths) {
         q.path = ss(QDir::toNativeSeparators(fi.absoluteFilePath()).replace(QLatin1Char('\\'), QLatin1Char('/')));
         if (isImageFile(path)) q.outPoint = prefs::imageDuration(); // imagens: duração = ponto Out
         q.pauseAtEnd = prefs::newCuesPauseAtEnd();
+        q.block = blk;
+        // Num bloco, cada vídeo segue para o próximo (o fim do bloco decide se pára).
+        if (!blk.empty()) q.pauseAtEnd = false;
         project_.cues.insert(project_.cues.begin() + row + inserted, q);
         media_->info(qs(q.path));
         media_->audio(qs(q.path));
         ++inserted;
     }
     if (inserted == 0) return;
+    const std::string firstId = project_.cues[static_cast<std::size_t>(row)].id;
+    project_.normalizeBlocks();
+    if (const Block* b = project_.findBlock(blk); b && b->collapsed) project_.findBlock(blk)->collapsed = false;
     refreshPlaylist();
-    playlist_->selectIndex(row);
+    playlist_->selectIndex(project_.cueIndex(firstId));
     markChanged();
 }
 
@@ -1113,11 +1169,138 @@ void MainWindow::moveCue(int from, int to) {
     const int n = static_cast<int>(project_.cues.size());
     if (showMode_ || from < 0 || from >= n || to < 0 || to >= n || from == to) return;
     Cue q = std::move(project_.cues[static_cast<std::size_t>(from)]);
+    // Fica no bloco da cue que estava nesse lugar.
+    q.block = project_.cues[static_cast<std::size_t>(to)].block;
+    const std::string id = q.id;
     project_.cues.erase(project_.cues.begin() + from);
     project_.cues.insert(project_.cues.begin() + to, std::move(q));
+    project_.normalizeBlocks();
     refreshPlaylist();
-    playlist_->selectIndex(to);
+    playlist_->selectIndex(project_.cueIndex(id));
     markChanged();
+}
+
+void MainWindow::dropCue(int from, int before, const QString& block) {
+    const int n = static_cast<int>(project_.cues.size());
+    if (showMode_ || from < 0 || from >= n) return;
+    before = std::clamp(before, 0, n);
+    Cue q = std::move(project_.cues[static_cast<std::size_t>(from)]);
+    const std::string blk = project_.findBlock(block.toStdString()) ? block.toStdString() : std::string();
+    const bool same = q.block == blk && (before == from || before == from + 1);
+    if (same) {
+        project_.cues[static_cast<std::size_t>(from)] = std::move(q);
+        return;
+    }
+    q.block = blk;
+    const std::string id = q.id;
+    project_.cues.erase(project_.cues.begin() + from);
+    const int at = before > from ? before - 1 : before;
+    project_.cues.insert(project_.cues.begin() + at, std::move(q));
+    project_.normalizeBlocks();
+    refreshPlaylist();
+    playlist_->selectIndex(project_.cueIndex(id));
+    markChanged();
+}
+
+void MainWindow::newBlock(int withCue) {
+    if (showMode_) return;
+    Block b;
+    b.id = project_.newBlockId();
+    b.name = tr("Block %1").arg(project_.blocks.size() + 1).toStdString();
+    project_.blocks.push_back(b);
+    if (withCue >= 0 && withCue < static_cast<int>(project_.cues.size()))
+        project_.cues[static_cast<std::size_t>(withCue)].block = b.id;
+    project_.normalizeBlocks();
+    refreshPlaylist();
+    playlist_->selectBlock(qs(b.id));
+    markChanged();
+}
+
+void MainWindow::toggleBlock(const QString& id) {
+    Block* b = project_.findBlock(id.toStdString());
+    if (!b) return;
+    b->collapsed = !b->collapsed;
+    refreshPlaylist();
+    markChanged();
+}
+
+void MainWindow::showBlockMenu(const QString& id, const QPoint& globalPos) {
+    Block* b = project_.findBlock(id.toStdString());
+    if (!b) return;
+    QMenu menu(this);
+    const int first = project_.firstInBlock(b->id);
+    auto* play = menu.addAction(tr("Play the block"), this, [this, first] { playCue(first); });
+    play->setEnabled(first >= 0);
+    menu.addAction(b->collapsed ? tr("Show the videos") : tr("Hide the videos"), this, [this, id] { toggleBlock(id); });
+    menu.addSeparator();
+    QList<QAction*> edits;
+    edits << menu.addAction(tr("Rename..."), this, [this, id] {
+        Block* blk = project_.findBlock(id.toStdString());
+        if (!blk) return;
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("Block"), tr("Name:"), QLineEdit::Normal, qs(blk->name), &ok);
+        blk = project_.findBlock(id.toStdString());
+        if (!ok || !blk) return;
+        blk->name = name.trimmed().left(200).toStdString();
+        refreshPlaylist();
+        markChanged();
+    });
+    auto* loop = menu.addAction(tr("Loop this block"), this, [this, id](bool on) {
+        if (Block* blk = project_.findBlock(id.toStdString())) blk->loop = on;
+        refreshPlaylist();
+        markChanged();
+    });
+    loop->setCheckable(true);
+    loop->setChecked(b->loop);
+    edits << loop;
+    auto* endMenu = menu.addMenu(tr("At the end of the block"));
+    endMenu->setEnabled(!b->loop);
+    auto* group = new QActionGroup(endMenu);
+    const std::pair<BlockEnd, QString> ends[] = {{BlockEnd::Pause, tr("Pause on the last frame (Space continues)")},
+                                                 {BlockEnd::Stop, tr("Stop (black)")},
+                                                 {BlockEnd::Continue, tr("Continue to the next video")}};
+    for (const auto& [e, label] : ends) {
+        auto* a = endMenu->addAction(label, this, [this, id, e = e] {
+            if (Block* blk = project_.findBlock(id.toStdString())) blk->end = e;
+            refreshPlaylist();
+            markChanged();
+        });
+        a->setCheckable(true);
+        a->setChecked(b->end == e);
+        group->addAction(a);
+    }
+    edits << endMenu->menuAction();
+    menu.addSeparator();
+    edits << menu.addAction(tr("Remove the block (keep the videos)"), this, [this, id] {
+        const std::string bid = id.toStdString();
+        for (auto& q : project_.cues)
+            if (q.block == bid) q.block.clear();
+        auto& v = project_.blocks;
+        v.erase(std::remove_if(v.begin(), v.end(), [&](const Block& x) { return x.id == bid; }), v.end());
+        refreshPlaylist();
+        markChanged();
+    });
+    edits << menu.addAction(tr("Delete the block and its videos"), this, [this, id] {
+        const std::string bid = id.toStdString();
+        int n = 0;
+        for (const auto& q : project_.cues) n += q.block == bid;
+        if (n > 0 && QMessageBox::question(this, tr("Block"), tr("Delete the block and its %1 video(s) from the playlist?").arg(n)) !=
+                         QMessageBox::Yes)
+            return;
+        std::set<std::string> gone;
+        for (const auto& q : project_.cues)
+            if (q.block == bid) gone.insert(q.id);
+        project_.cues.erase(std::remove_if(project_.cues.begin(), project_.cues.end(), [&](const Cue& q) { return q.block == bid; }),
+                            project_.cues.end());
+        for (auto& q : project_.cues)
+            if (gone.count(q.gotoCue)) q.gotoCue.clear();
+        auto& v = project_.blocks;
+        v.erase(std::remove_if(v.begin(), v.end(), [&](const Block& x) { return x.id == bid; }), v.end());
+        refreshPlaylist();
+        markChanged();
+    });
+    for (auto* a : edits) a->setEnabled(a->isEnabled() && !showMode_);
+    menu.exec(globalPos);
 }
 
 void MainWindow::replaceFile(int index) {
@@ -1223,6 +1406,7 @@ void MainWindow::showCueMenu(int index, const QPoint& globalPos) {
     }
     QList<QAction*> edit;
     edit << menu.addAction(tr("Add media..."), this, &MainWindow::addMedia);
+    edit << menu.addAction(tr("New block"), this, [this] { newBlock(-1); });
     if (valid) {
         QAction* fromHead = menu.addAction(tr("Thumbnail from the playing position"), this, [this] { thumbnailFromPlayhead(); });
         fromHead->setEnabled(index == playingCue_);
@@ -1243,6 +1427,31 @@ void MainWindow::showCueMenu(int index, const QPoint& globalPos) {
 #else
             QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
 #endif
+        });
+        // Blocos
+        auto* blocks = menu.addMenu(tr("Block"));
+        edit << blocks->menuAction();
+        blocks->addAction(tr("New block with this video"), this, [this, index] { newBlock(index); });
+        const std::string cur = project_.cues[static_cast<std::size_t>(index)].block;
+        if (!project_.blocks.empty()) blocks->addSeparator();
+        for (const auto& b : project_.blocks) {
+            const std::string bid = b.id;
+            auto* a = blocks->addAction(b.name.empty() ? qs(b.id) : qs(b.name), this, [this, index, bid] {
+                // Vai para o fim do bloco (bloco vazio: fim da lista).
+                int last = -1;
+                for (int k = 0; k < static_cast<int>(project_.cues.size()); ++k)
+                    if (project_.cues[static_cast<std::size_t>(k)].block == bid) last = k;
+                dropCue(index, last >= 0 ? last + 1 : static_cast<int>(project_.cues.size()), qs(bid));
+            });
+            a->setCheckable(true);
+            a->setChecked(cur == bid);
+        }
+        if (!cur.empty()) blocks->addAction(tr("Out of the block"), this, [this, index] {
+            int last = -1;
+            const std::string bid = project_.cues[static_cast<std::size_t>(index)].block;
+            for (int k = 0; k < static_cast<int>(project_.cues.size()); ++k)
+                if (project_.cues[static_cast<std::size_t>(k)].block == bid) last = k;
+            dropCue(index, last + 1, QString());
         });
         auto* colors = menu.addMenu(tr("Color"));
         edit << colors->menuAction();
@@ -1523,6 +1732,7 @@ void MainWindow::onEngineStatus() {
     refreshCountdown();
     if (playingCue_ != previous && playingCue_ >= 0 && prefs::selectionFollowsPlayback()) playlist_->selectIndex(playingCue_);
     playlist_->setPlaying(playingCue_, countdown_.duration > 0.0 ? countdown_.elapsed / countdown_.duration : 0.0, qs(s.state));
+    followTallyPlayback(s);
     playBtn_->setIcon(transportIcon(s.state == "playing" ? TIcon::Pause : TIcon::Play, kBlue));
     if (playingCue_ >= 0 && playingCue_ < static_cast<int>(project_.cues.size())) {
         const Cue& q = project_.cues[static_cast<std::size_t>(playingCue_)];

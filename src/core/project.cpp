@@ -111,11 +111,81 @@ int Project::cueIndex(const std::string& id) const {
     return -1;
 }
 
+const char* toString(BlockEnd e) {
+    switch (e) {
+    case BlockEnd::Continue: return "continue";
+    case BlockEnd::Stop: return "stop";
+    case BlockEnd::Pause: break;
+    }
+    return "pause";
+}
+
+BlockEnd blockEndFromString(const std::string& s) {
+    if (s == "continue") return BlockEnd::Continue;
+    if (s == "stop") return BlockEnd::Stop;
+    return BlockEnd::Pause;
+}
+
+const Block* Project::findBlock(const std::string& id) const {
+    if (id.empty()) return nullptr;
+    for (const auto& b : blocks)
+        if (b.id == id) return &b;
+    return nullptr;
+}
+
+Block* Project::findBlock(const std::string& id) {
+    return const_cast<Block*>(static_cast<const Project*>(this)->findBlock(id));
+}
+
+std::string Project::newBlockId() const {
+    for (int i = 1;; ++i) {
+        std::string id = "B" + std::to_string(i);
+        if (!findBlock(id)) return id;
+    }
+}
+
+bool Project::isLastInBlock(int index) const {
+    const int n = static_cast<int>(cues.size());
+    if (index < 0 || index >= n) return false;
+    const std::string& b = cues[static_cast<std::size_t>(index)].block;
+    if (b.empty() || !findBlock(b)) return false;
+    return index + 1 >= n || cues[static_cast<std::size_t>(index) + 1].block != b;
+}
+
+int Project::firstInBlock(const std::string& blockId) const {
+    for (std::size_t i = 0; i < cues.size(); ++i)
+        if (!blockId.empty() && cues[i].block == blockId) return static_cast<int>(i);
+    return -1;
+}
+
+void Project::normalizeBlocks() {
+    for (auto& q : cues)
+        if (!q.block.empty() && !findBlock(q.block)) q.block.clear();
+    // Cada bloco fica junto, na posição da sua primeira cue (ordem estável).
+    std::vector<Cue> out;
+    out.reserve(cues.size());
+    std::set<std::string> placed;
+    for (std::size_t i = 0; i < cues.size(); ++i) {
+        const std::string& b = cues[i].block;
+        if (b.empty()) {
+            out.push_back(cues[i]);
+        } else if (placed.insert(b).second) {
+            for (std::size_t k = i; k < cues.size(); ++k)
+                if (cues[k].block == b) out.push_back(cues[k]);
+        }
+    }
+    cues = std::move(out);
+}
+
 int Project::nextCue(int current) const {
     const int n = static_cast<int>(cues.size());
     if (n == 0) return -1;
     if (current < 0 || current >= n) return 0;
     if (const int j = cueIndex(cues[static_cast<std::size_t>(current)].gotoCue); j >= 0) return j;
+    if (isLastInBlock(current)) {
+        const Block* b = findBlock(cues[static_cast<std::size_t>(current)].block);
+        if (b && b->loop) return firstInBlock(b->id);
+    }
     if (current + 1 < n) return current + 1;
     return loopPlaylist ? 0 : -1;
 }
@@ -201,6 +271,7 @@ Cue cueFromJson(const json& c) {
     q.fadeOut = getNumber(c, "fadeOut", 0.0);
     q.crossfade = getNumber(c, "crossfade", 0.0);
     q.gotoCue = getString(c, "goto");
+    q.block = getString(c, "block").substr(0, 64);
     q.muted = getBool(c, "muted", false);
     q.volumeDb = getNumber(c, "volumeDb", 0.0);
     q.normalize = getBool(c, "normalize", true);
@@ -232,6 +303,7 @@ json cueToJson(const Cue& q) {
            {"fadeOut", q.fadeOut},
            {"crossfade", q.crossfade},
            {"goto", q.gotoCue},
+           {"block", q.block},
            {"muted", q.muted},
            {"volumeDb", q.volumeDb},
            {"normalize", q.normalize},
@@ -311,6 +383,21 @@ ParseResult parseProject(const std::string& text) {
                 }
         }
 
+        if (auto a = j.find("blocks"); a != j.end() && a->is_array()) {
+            for (const auto& b : *a) {
+                if (!b.is_object() || p.blocks.size() >= 1000) continue;
+                Block blk;
+                blk.id = getString(b, "id").substr(0, 64);
+                if (blk.id.empty() || p.findBlock(blk.id)) continue;
+                blk.name = getString(b, "name").substr(0, 200);
+                blk.collapsed = getBool(b, "collapsed", false);
+                blk.loop = getBool(b, "loop", false);
+                blk.end = blockEndFromString(getString(b, "end", "pause"));
+                p.blocks.push_back(std::move(blk));
+            }
+        }
+        p.normalizeBlocks();
+
         std::set<std::string> outputIds;
         if (auto a = j.find("outputs"); a != j.end() && a->is_array()) {
             for (const auto& o : *a) {
@@ -384,6 +471,9 @@ std::string serializeProject(const Project& p) {
     j["masterVolumeDb"] = p.masterVolumeDb;
     j["cues"] = json::array();
     for (const auto& q : p.cues) j["cues"].push_back(cueToJson(q));
+    j["blocks"] = json::array();
+    for (const auto& b : p.blocks)
+        j["blocks"].push_back({{"id", b.id}, {"name", b.name}, {"collapsed", b.collapsed}, {"loop", b.loop}, {"end", toString(b.end)}});
     j["outputs"] = json::array();
     for (const auto& o : p.outputs)
         j["outputs"].push_back({{"id", o.id},

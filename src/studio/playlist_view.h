@@ -32,8 +32,14 @@ public:
     double playingProgress() const { return progress_; }
     QString playingState() const { return playingState_; }
 
-    int selectedIndex() const;
+    int selectedIndex() const;          // cue selecionada (-1 se for um bloco)
+    QString selectedBlock() const;      // bloco selecionado (cabeçalho), "" se nenhum
     void selectIndex(int index);
+    void selectBlock(const QString& blockId);
+    // Linhas: cabeçalhos de bloco e cues. Estas funções convertem.
+    int cueAt(int row) const;           // -1 = cabeçalho / fora
+    QString blockAt(int row) const;     // id do bloco do cabeçalho ("" = não é cabeçalho)
+    int rowOfCue(int cue) const;
     void setEditable(bool editable) { editable_ = editable; }
     bool editable() const { return editable_; }
 
@@ -45,8 +51,11 @@ public:
 signals:
     void playRequested(int index);
     void iconClicked(int index, CueIcon icon, const QPoint& globalPos);
-    void filesDropped(int row, const QStringList& paths);
-    void cueMoved(int from, int to);
+    // Inserir antes da cue `before` (== nº de cues: no fim), dentro do bloco `block` ("" = fora).
+    void filesDropped(int before, const QStringList& paths, const QString& block);
+    void cueDropped(int from, int before, const QString& block);
+    void blockToggleRequested(const QString& block); // esconder / mostrar as cues
+    void blockMenuRequested(const QString& block, const QPoint& globalPos);
     void deleteRequested(int index);
     void contextMenuRequested(int index, const QPoint& globalPos);
     void thumbnailRequested(int index);
@@ -64,6 +73,7 @@ protected:
 
 private:
     friend class CueDelegate;
+    void dropTarget(const QPoint& pos, int& before, QString& block) const;
     MediaCache* media_;
     const vthost::Project* project_ = nullptr;
     int playing_ = -1;
@@ -85,8 +95,11 @@ public:
     static QRect iconRect(const QRect& row, int i);
     static QRect thumbButtonRect(const QRect& row);
     static QRect cueButtonRect(const QRect& row);
+    static QRect blockArrowRect(const QRect& row);
+    static QRect blockMenuRect(const QRect& row);
 
 private:
+    void paintBlock(QPainter* p, const QStyleOptionViewItem& opt, const QModelIndex& idx) const;
     PlaylistView* view_;
 };
 

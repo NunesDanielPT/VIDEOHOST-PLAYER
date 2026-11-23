@@ -672,6 +672,47 @@ void testTally() {
     }
 }
 
+void testBlocks() {
+    Project p;
+    for (int i = 0; i < 5; ++i) {
+        Cue q;
+        q.id = "Q" + std::to_string(i + 1);
+        q.path = "v.mp4";
+        p.cues.push_back(q);
+    }
+    Block a;
+    a.id = "B1";
+    a.loop = true;
+    Block b;
+    b.id = "B2";
+    b.end = BlockEnd::Stop;
+    p.blocks = {a, b};
+    // Q1 B1, Q2 -, Q3 B1, Q4 B2, Q5 B2 -> normalizar junta o B1: Q1 Q3 Q2 Q4 Q5.
+    p.cues[0].block = "B1";
+    p.cues[2].block = "B1";
+    p.cues[3].block = "B2";
+    p.cues[4].block = "B2";
+    p.normalizeBlocks();
+    CHECK(p.cues[0].id == "Q1" && p.cues[1].id == "Q3" && p.cues[2].id == "Q2" && p.cues[3].id == "Q4");
+    CHECK(!p.isLastInBlock(0) && p.isLastInBlock(1) && !p.isLastInBlock(2) && p.isLastInBlock(4));
+    CHECK(p.nextCue(1) == 0);  // loop do B1: volta à primeira cue do bloco
+    CHECK(p.nextCue(0) == 1);
+    CHECK(p.nextCue(2) == 3);  // fora de blocos: segue
+    CHECK(p.nextCue(4) == -1); // fim do B2 (sem loop) e da playlist
+    CHECK(p.firstInBlock("B2") == 3 && p.firstInBlock("X") == -1);
+
+    p.cues[2].block = "NAO_EXISTE";
+    auto r = parseProject(serializeProject(p));
+    CHECK(r.project && r.project->blocks.size() == 2);
+    if (r.project) {
+        CHECK(r.project->cues[2].block.empty());
+        CHECK(r.project->findBlock("B1")->loop && r.project->findBlock("B2")->end == BlockEnd::Stop);
+        CHECK(r.project->cues[0].block == "B1" && r.project->cues[3].block == "B2");
+    }
+    CHECK(blockEndFromString("lixo") == BlockEnd::Pause && std::string(toString(BlockEnd::Continue)) == "continue");
+    CHECK(p.newBlockId() == "B3");
+}
+
 int main() {
     testLoudness();
     testProject();
@@ -689,6 +730,7 @@ int main() {
     testEngineConfig();
     testDsmLayout();
     testTally();
+    testBlocks();
     std::printf("%d verificações, %d falhas\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

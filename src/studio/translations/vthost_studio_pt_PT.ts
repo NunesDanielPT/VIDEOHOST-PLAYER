@@ -355,6 +355,10 @@
 %1</translation>
     </message>
     <message>
+        <source>At the end of the block</source>
+        <translation>No fim do bloco</translation>
+    </message>
+    <message>
         <source>Audio level (L / R)</source>
         <translation>Nível de som (L / R)</translation>
     </message>
@@ -371,6 +375,14 @@
         <translation>Miniatura automática</translation>
     </message>
     <message>
+        <source>Block</source>
+        <translation>Bloco</translation>
+    </message>
+    <message>
+        <source>Block %1</source>
+        <translation>Bloco %1</translation>
+    </message>
+    <message>
         <source>CPU %1%</source>
         <translation>CPU %1%</translation>
     </message>
@@ -385,6 +397,10 @@
     <message>
         <source>Connected to a running show.</source>
         <translation>Ligado a um espetáculo em curso.</translation>
+    </message>
+    <message>
+        <source>Continue to the next video</source>
+        <translation>Continuar para o vídeo seguinte</translation>
     </message>
     <message>
         <source>Copy</source>
@@ -459,6 +475,14 @@
         <translation>Apagar cue</translation>
     </message>
     <message>
+        <source>Delete the block and its %1 video(s) from the playlist?</source>
+        <translation>Apagar o bloco e os seus %1 vídeo(s) da playlist?</translation>
+    </message>
+    <message>
+        <source>Delete the block and its videos</source>
+        <translation>Apagar o bloco e os seus vídeos</translation>
+    </message>
+    <message>
         <source>Downloading VIDEOHOST PLAYER %1... %2%</source>
         <translation>A descarregar o VIDEOHOST PLAYER %1... %2%</translation>
     </message>
@@ -511,6 +535,10 @@
         <translation>Verde</translation>
     </message>
     <message>
+        <source>Hide the videos</source>
+        <translation>Esconder os vídeos</translation>
+    </message>
+    <message>
         <source>If Windows asks, allow VIDEOHOST PLAYER on private networks. Double-click the page to go full screen.</source>
         <translation>Se o Windows perguntar, permita o VIDEOHOST PLAYER em redes privadas. Duplo clique na página para ecrã inteiro.</translation>
     </message>
@@ -531,6 +559,10 @@
         <translation>Repetir a playlist (Ctrl+R)</translation>
     </message>
     <message>
+        <source>Loop this block</source>
+        <translation>Repetir este bloco (loop)</translation>
+    </message>
+    <message>
         <source>Master volume</source>
         <translation>Volume geral</translation>
     </message>
@@ -539,8 +571,20 @@
         <translation>Media (*.mp4 *.mov *.mkv *.avi *.webm *.m4v *.mxf *.wmv *.mpg *.mpeg *.ts *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.mp3 *.wav *.aif *.aiff *.flac *.m4a *.ogg);;Todos os ficheiros (*)</translation>
     </message>
     <message>
+        <source>Name:</source>
+        <translation>Nome:</translation>
+    </message>
+    <message>
         <source>Network...</source>
         <translation>Rede...</translation>
+    </message>
+    <message>
+        <source>New block</source>
+        <translation>Novo bloco</translation>
+    </message>
+    <message>
+        <source>New block with this video</source>
+        <translation>Novo bloco com este vídeo</translation>
     </message>
     <message>
         <source>Next cue</source>
@@ -599,6 +643,10 @@
         <translation>Abrir projeto</translation>
     </message>
     <message>
+        <source>Out of the block</source>
+        <translation>Tirar do bloco</translation>
+    </message>
+    <message>
         <source>Output %1: %2</source>
         <translation>Saída %1: %2</translation>
     </message>
@@ -609,6 +657,10 @@
     <message>
         <source>Outputs...</source>
         <translation>Saídas...</translation>
+    </message>
+    <message>
+        <source>Pause on the last frame (Space continues)</source>
+        <translation>Pausa no último frame (o ESPAÇO continua)</translation>
     </message>
     <message>
         <source>People on the same network (Wi-Fi or cable) can follow the countdown on a phone, tablet or computer by opening this address in the browser:</source>
@@ -633,6 +685,10 @@
     <message>
         <source>Play failed: %1</source>
         <translation>Não foi possível tocar: %1</translation>
+    </message>
+    <message>
+        <source>Play the block</source>
+        <translation>Tocar o bloco</translation>
     </message>
     <message>
         <source>Play the cue first: the thumbnail is taken from the position on air.</source>
@@ -677,6 +733,14 @@
     <message>
         <source>Red</source>
         <translation>Vermelho</translation>
+    </message>
+    <message>
+        <source>Remove the block (keep the videos)</source>
+        <translation>Remover o bloco (ficam os vídeos)</translation>
+    </message>
+    <message>
+        <source>Rename...</source>
+        <translation>Mudar o nome...</translation>
     </message>
     <message>
         <source>Replace file</source>
@@ -725,6 +789,10 @@
     <message>
         <source>Show in Explorer</source>
         <translation>Mostrar no Explorador</translation>
+    </message>
+    <message>
+        <source>Show the videos</source>
+        <translation>Mostrar os vídeos</translation>
     </message>
     <message>
         <source>Start engine</source>
@@ -1027,6 +1095,22 @@
 <context>
     <name>PlaylistView</name>
     <message>
+        <source>%1 video(s)</source>
+        <translation>%1 vídeo(s)</translation>
+    </message>
+    <message>
+        <source>BLOCK</source>
+        <translation>BLOCO</translation>
+    </message>
+    <message>
+        <source>Block: click the arrow to hide / show its videos, ⋯ or right-click for its options (loop, what happens at the end). Drop files here to add them to the block.</source>
+        <translation>Bloco: clique na seta para esconder / mostrar os vídeos, ⋯ ou botão direito para as opções (loop, o que acontece no fim). Largue aqui ficheiros para os juntar ao bloco.</translation>
+    </message>
+    <message>
+        <source>CONTINUE</source>
+        <translation>CONTINUA</translation>
+    </message>
+    <message>
         <source>CUE: this cue plays when the player input goes on air in the switcher (vMix / ATEM). Click to arm / disarm.</source>
         <translation>CUE: esta cue toca quando o input do player vai para o ar no misturador (vMix / ATEM). Clique para armar / desarmar.</translation>
     </message>
@@ -1059,12 +1143,20 @@
         <translation>No último frame</translation>
     </message>
     <message>
+        <source>LOOP</source>
+        <translation>LOOP</translation>
+    </message>
+    <message>
         <source>Loading...</source>
         <translation>A carregar...</translation>
     </message>
     <message>
         <source>Loop: repeat the cue (number of repeats in the Inspector)</source>
         <translation>Loop: repete a cue (número de repetições no Inspector)</translation>
+    </message>
+    <message>
+        <source>PAUSE</source>
+        <translation>PAUSA</translation>
     </message>
     <message>
         <source>Pause at end: holds the last frame</source>
@@ -1081,6 +1173,10 @@
     <message>
         <source>Plays: %1</source>
         <translation>Repetições: %1</translation>
+    </message>
+    <message>
+        <source>STOP</source>
+        <translation>STOP</translation>
     </message>
     <message>
         <source>Sound on / off (mute)</source>

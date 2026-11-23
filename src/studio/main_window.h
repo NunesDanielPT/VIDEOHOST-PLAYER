@@ -70,10 +70,15 @@ private:
 
     // Playlist
     void addMedia();
-    void addFiles(int row, const QStringList& paths);
+    void addFiles(int row, const QStringList& paths, const QString& block = QString());
     void deleteCue(int index);
     void duplicateCue(int index);
     void moveCue(int from, int to);
+    void dropCue(int from, int before, const QString& block);
+    // Blocos
+    void newBlock(int withCue);           // cria um bloco (com essa cue, ou vazio se -1)
+    void showBlockMenu(const QString& block, const QPoint& globalPos);
+    void toggleBlock(const QString& block);
     void replaceFile(int index);
     void onIconClicked(int index, CueIcon icon, const QPoint& globalPos);
     void showCueMenu(int index, const QPoint& globalPos);
@@ -207,6 +212,10 @@ private:
     void fireArmedCue();
     TallyClient* tally_ = nullptr;
     std::string armedCueId_;
+    std::string watchedCueId_;  // cue disparada pelo misturador (ou a que se lhe seguiu sozinha)
+    bool watchedSeen_ = false;  // já a vimos a tocar
+    QElapsedTimer watchedSince_;
+    void followTallyPlayback(const vthost::protocol::EngineStatus& s);
     QTimer oscTimer_;
     QString oscPlaylistSignature_;
     QAction* showModeAction_ = nullptr;

@@ -32,6 +32,7 @@ struct Cue {
     std::string name;   // "" = nome do ficheiro
     std::string path;   // caminho absoluto (UTF-8)
     std::string color;  // "" ou uma de kCueColors
+    std::string block;  // id do bloco a que pertence ("" = fora de blocos)
     std::string notes;
     std::optional<double> thumbTime; // miniatura escolhida (segundos no ficheiro); vazio = automática
 
@@ -116,6 +117,21 @@ struct DsmLayout {
 };
 DsmLayout computeDsmLayout(int outW, int outH, int canvasW, int canvasH);
 
+// Bloco: agrupa cues seguidas da playlist (podem esconder-se) e diz o que acontece
+// quando a última cue do bloco acaba.
+enum class BlockEnd { Continue, Pause, Stop };
+// Continue = segue para a cue seguinte; Pause = fica no último frame à espera (ESPAÇO
+// segue); Stop = preto.
+struct Block {
+    std::string id;   // "B1", "B2"...
+    std::string name; // "" = "Block <n>"
+    bool collapsed = false;
+    bool loop = false; // no fim do bloco volta à primeira cue do bloco
+    BlockEnd end = BlockEnd::Pause;
+};
+const char* toString(BlockEnd e);
+BlockEnd blockEndFromString(const std::string& s);
+
 struct Project {
     int version = kProjectFormatVersion;
     std::string name = "Untitled";
@@ -126,10 +142,19 @@ struct Project {
     double masterVolumeDb = 0.0;        // -60..+12
     std::vector<Cue> cues;
     std::vector<Output> outputs;
+    std::vector<Block> blocks; // ordem dos blocos vazios; as cues de cada bloco ficam seguidas
 
     const Cue* findCue(const std::string& id) const;
+    const Block* findBlock(const std::string& id) const;
+    Block* findBlock(const std::string& id);
+    std::string newBlockId() const;
+    // Última cue do seu bloco? (então conta o loop / fim do bloco)
+    bool isLastInBlock(int index) const;
+    int firstInBlock(const std::string& blockId) const; // -1 se vazio
+    // Põe as cues de cada bloco seguidas (na posição da primeira) e limpa blocos inexistentes.
+    void normalizeBlocks();
     int cueIndex(const std::string& id) const; // -1 se não existir
-    // Cue que se segue a `current` (respeita gotoCue e loopPlaylist).
+    // Cue que se segue a `current` (respeita gotoCue, loop do bloco e loopPlaylist).
     // -1 se não houver. current < 0 -> primeira cue.
     int nextCue(int current) const;
     std::string newCueId() const;
