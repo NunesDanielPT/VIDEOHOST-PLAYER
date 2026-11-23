@@ -96,6 +96,9 @@ private:
     int fpsFrames_ = 0;
     double fps_ = 0.0;
     double renderMs_ = 0.0;
+    void keepCursorOffOutputs();
+    POINT lastCursor_{};
+    bool haveCursor_ = false;
     DsmPanelRenderer dsmPanels_;
     std::map<std::string, DsmGeometry> ndiDsm_; // saídas NDI em modo DSM (1920x1080)
     Clock::time_point lastDsm_{}; // média do tempo de trabalho por frame (sem a espera pelo ecrã)

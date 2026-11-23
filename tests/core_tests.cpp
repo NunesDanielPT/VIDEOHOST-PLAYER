@@ -376,6 +376,7 @@ static void testProtocol() {
         c.action = TransportAction::Stop;
         c.settings.audioDevice = "{0.0.0.00000000}.{abc}";
         c.settings.previewFps = 25;
+        c.settings.lockCursor = false;
         all.push_back(c);
     }
     for (const auto& c : all) {

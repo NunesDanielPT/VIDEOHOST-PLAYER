@@ -87,9 +87,14 @@ void OutputWindow::placeOnMonitor() {
 
     protocol::DisplayInfo d;
     // Com um ecrã escolhido pelo nome, nunca salta para outro ecrã por engano.
-    const bool found = findDisplay(displays, config_.displayId, config_.monitor, config_.displayId.empty(), d);
+    const bool exists = findDisplay(displays, config_.displayId, config_.monitor, config_.displayId.empty(), d);
+    // Nunca em ecrã inteiro no ecrã principal: tapava o programa e só se saía desligando o PC.
+    const bool blocked = exists && d.primary;
+    const bool found = exists && !blocked;
     RECT r{};
+    fullscreenRect_ = RECT{};
     if (found) {
+        fullscreenRect_ = {d.x, d.y, d.x + d.width, d.y + d.height};
         r = {d.x, d.y, d.x + d.width, d.y + d.height};
         SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_POPUP | WS_VISIBLE);
         if (!onRightMonitor_) log::info("output " + config_.id + " em " + d.id + " (" + describeDisplay(d) + ")");
@@ -102,9 +107,11 @@ void OutputWindow::placeOnMonitor() {
         r = {primary.left + 40, primary.top + 40, primary.left + 40 + 640, primary.top + 40 + 360};
         SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_OVERLAPPED | WS_CAPTION | WS_VISIBLE);
         const std::string which = config_.displayId.empty() ? "monitor " + std::to_string(config_.monitor) : config_.displayId;
-        if (onRightMonitor_ || error_.empty()) log::warn("output " + config_.id + ": ecrã " + which + " não encontrado");
+        const std::string why = blocked ? "o ecrã principal não pode ser saída em ecrã inteiro (escolha outro ecrã)"
+                                        : "ecrã " + which + " não encontrado";
+        if (onRightMonitor_ || error_.empty()) log::warn("output " + config_.id + ": " + why);
         onRightMonitor_ = false;
-        error_ = "ecrã " + which + " não encontrado";
+        error_ = why;
         detail_.clear();
     }
     SetWindowPos(hwnd_, found ? HWND_TOPMOST : HWND_NOTOPMOST, r.left, r.top, r.right - r.left, r.bottom - r.top,

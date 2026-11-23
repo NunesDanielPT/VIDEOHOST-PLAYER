@@ -93,6 +93,7 @@ ParsedCommand parseCommand(const std::string& line) {
         } else if (cmd == "set_settings") {
             c.type = CommandType::SetSettings;
             c.settings.vsync = boolean(j, "vsync", true);
+            c.settings.lockCursor = boolean(j, "lockCursor", true);
             const double fps = num(j, "previewFps").value_or(30.0);
             c.settings.previewFps = fps <= 0.0 ? 0 : static_cast<int>(std::clamp(fps, 5.0, 60.0));
             const std::string pr = str(j, "priority");
@@ -148,7 +149,8 @@ std::string serializeCommand(const Command& c) {
              {"vsync", c.settings.vsync},
              {"previewFps", c.settings.previewFps},
              {"priority", c.settings.priority},
-             {"audioDevice", c.settings.audioDevice}};
+             {"audioDevice", c.settings.audioDevice},
+             {"lockCursor", c.settings.lockCursor}};
         break;
     case CommandType::SetShowMode: j = {{"cmd", "set_show_mode"}, {"on", c.on}}; break;
     case CommandType::SetTestCard: j = {{"cmd", "set_test_card"}, {"on", c.on}}; break;

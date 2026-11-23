@@ -54,6 +54,7 @@ struct EngineSettings {
     int previewFps = 30;                   // 0 = sem preview; 5..60
     std::string priority = "above_normal"; // "normal" | "above_normal" | "high"
     std::string audioDevice;               // id WASAPI ("" = placa de som por omissão)
+    bool lockCursor = true;                // o rato não entra nas saídas em ecrã inteiro
     friend bool operator==(const EngineSettings&, const EngineSettings&) = default;
 };
 

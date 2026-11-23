@@ -20,7 +20,9 @@ inline void set(const char* key, const T& v) {
 
 // Geral
 inline bool openLastProject() { return get("general/openLastProject", true); }
-inline bool autoStartEngine() { return get("general/autoStartEngine", true); }
+// Desligado por omissão: o motor só arranca quando o operador quer (Saídas → Arrancar o motor).
+inline bool autoStartEngine() { return get("general/autoStartEngine", false); }
+inline bool lockCursor() { return get("engine/lockCursor", true); }
 inline bool confirmQuit() { return get("general/confirmQuit", true); }
 
 // Playlist
@@ -69,6 +71,7 @@ inline vthost::protocol::EngineSettings engineSettings() {
     s.previewFps = previewFps();
     s.priority = enginePriority().toStdString();
     s.audioDevice = audioDevice().toStdString();
+    s.lockCursor = lockCursor();
     return s;
 }
 

@@ -16,6 +16,14 @@ int main(int argc, char* argv[]) {
     // o nome visível é VIDEOHOST PLAYER.
     QApplication::setApplicationName(QStringLiteral("VTHOST Studio"));
     QApplication::setApplicationDisplayName(QStringLiteral("VIDEOHOST PLAYER"));
+    {
+        // 0.13.1: o motor deixa de arrancar sozinho por omissão (também para quem já tinha gravado "sim").
+        QSettings st;
+        if (!st.value(QStringLiteral("general/autoStartMigrated013"), false).toBool()) {
+            st.setValue(QStringLiteral("general/autoStartEngine"), false);
+            st.setValue(QStringLiteral("general/autoStartMigrated013"), true);
+        }
+    }
     QApplication::setApplicationVersion(QStringLiteral(VTHOST_VERSION));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/branding/vthost-icon-256.png")));
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));

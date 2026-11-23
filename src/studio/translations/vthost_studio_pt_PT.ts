@@ -1012,6 +1012,10 @@
         <translation>Tamanho da janela:</translation>
     </message>
     <message>
+        <source>not allowed</source>
+        <translation>não permitido</translation>
+    </message>
+    <message>
         <source>off</source>
         <translation>desligado</translation>
     </message>
@@ -1351,6 +1355,10 @@
     <message>
         <source>In use now: %1</source>
         <translation>Em uso agora: %1</translation>
+    </message>
+    <message>
+        <source>Keep the mouse out of the full-screen outputs</source>
+        <translation>Não deixar o rato entrar nas saídas em ecrã inteiro</translation>
     </message>
     <message>
         <source>Language</source>

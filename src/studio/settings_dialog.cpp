@@ -106,7 +106,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
         language_->setCurrentIndex(std::max(0, language_->findData(initialLanguage_)));
         f->addRow(tr("Language:"), language_);
         f->addRow(QString(), check(page, tr("Open the last project at startup"), "general/openLastProject", true));
-        f->addRow(QString(), check(page, tr("Start the engine when VIDEOHOST PLAYER opens"), "general/autoStartEngine", true));
+        f->addRow(QString(), check(page, tr("Start the engine when VIDEOHOST PLAYER opens"), "general/autoStartEngine", false));
         f->addRow(QString(), check(page, tr("Ask before quitting"), "general/confirmQuit", true));
         f->addRow(QString(), note(tr("Closing VIDEOHOST PLAYER never stops the engine: the show keeps running."), page));
         tabs->addTab(page, tr("General"));
@@ -190,6 +190,7 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
                                          "seconds). Use the dedicated card whenever there is one."),
                                   page));
         f->addRow(QString(), check(page, tr("Synchronize with the screen refresh (V-Sync)"), "engine/vsync", true));
+        f->addRow(QString(), check(page, tr("Keep the mouse out of the full-screen outputs"), "engine/lockCursor", true));
         f->addRow(tr("Workspace preview frame rate:"),
                   combo(page, "engine/previewFps", 30,
                         {{tr("15 fps (lighter)"), 15}, {tr("30 fps"), 30}, {tr("60 fps"), 60}, {tr("Off"), 0}}));

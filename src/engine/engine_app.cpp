@@ -475,8 +475,36 @@ void EngineApp::updateDsm() {
 
 // ---------------------------------------------------------------- render loop
 
+void EngineApp::keepCursorOffOutputs() {
+    // Como no PLAYERSLICE: o rato não entra nos ecrãs que estão a mostrar o show.
+    if (!settings_.lockCursor) return;
+    POINT pt{};
+    if (!GetCursorPos(&pt)) return;
+    bool inside = false;
+    for (const auto& w : outputs_) {
+        const RECT& r = w->fullscreenRect();
+        if (r.right > r.left && pt.x >= r.left && pt.x < r.right && pt.y >= r.top && pt.y < r.bottom) inside = true;
+    }
+    if (!inside) {
+        lastCursor_ = pt;
+        haveCursor_ = true;
+    } else if (haveCursor_) {
+        SetCursorPos(lastCursor_.x, lastCursor_.y);
+    } else {
+        // Ainda sem posição boa (o rato já estava numa saída): leva-o para o centro do ecrã principal.
+        MONITORINFO mi{};
+        mi.cbSize = sizeof(mi);
+        if (GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &mi)) {
+            lastCursor_ = {(mi.rcWork.left + mi.rcWork.right) / 2, (mi.rcWork.top + mi.rcWork.bottom) / 2};
+            haveCursor_ = true;
+            SetCursorPos(lastCursor_.x, lastCursor_.y);
+        }
+    }
+}
+
 void EngineApp::renderFrame() {
     const auto frameStart = Clock::now();
+    keepCursorOffOutputs();
     player_->update(project_);
     handleCueEnd();
 

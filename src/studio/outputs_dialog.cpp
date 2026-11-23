@@ -16,6 +16,7 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QStandardItemModel>
 #include <QTimer>
 
 #include <algorithm>
@@ -365,6 +366,14 @@ void OutputsDialog::showOutput(int index) {
     int sel = -1;
     for (const auto& d : displays_) {
         display_->addItem(displayLabel(d), qs(d.id));
+        // O ecrã principal (onde está o programa) nunca pode ser saída em ecrã inteiro:
+        // ficava tudo por trás da imagem e só se saía desligando o PC.
+        if (d.primary)
+            if (auto* m = qobject_cast<QStandardItemModel*>(display_->model()))
+                if (auto* item = m->item(display_->count() - 1)) {
+                    item->setEnabled(false);
+                    item->setText(displayLabel(d) + QStringLiteral("  — ") + tr("not allowed"));
+                }
         if ((!o.displayId.empty() && (d.id == o.displayId || d.name == o.displayId)) ||
             (o.displayId.empty() && d.index == o.monitor))
             sel = display_->count() - 1;

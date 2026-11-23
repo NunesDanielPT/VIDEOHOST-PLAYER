@@ -36,6 +36,8 @@ public:
     bool ok() const { return ok_; }
     const std::string& error() const { return error_; }
     bool swapChainLost() const { return lost_; }
+    // Ecrã ocupado em ecrã inteiro (vazio se não estiver): o rato não deve entrar.
+    const RECT& fullscreenRect() const { return fullscreenRect_; }
     // Modo DSM: tamanho (px) da faixa dos tempos, para a imagem do texto. false = sem DSM.
     bool dsmPanelSize(int& w, int& h);
 
@@ -53,6 +55,7 @@ private:
     int canvasH_ = 1080;
     OutputMapping mapping_; // canvas inteiro, centrado e com a proporção certa
     WarpMesh mesh_;
+    RECT fullscreenRect_{};
     DsmGeometry dsm_;
     std::string detail_;
     HWND hwnd_ = nullptr;
