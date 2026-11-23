@@ -78,7 +78,7 @@ private:
     const vthost::Project* project_ = nullptr;
     int playing_ = -1;
     int armed_ = -1;
-    bool tallyEnabled_ = false;
+    bool tallyEnabled_ = true; // botão CUE sempre visível
     double progress_ = 0.0;
     QString playingState_;
     bool editable_ = true;
@@ -96,6 +96,7 @@ public:
     static QRect thumbButtonRect(const QRect& row);
     static QRect cueButtonRect(const QRect& row);
     static QRect blockArrowRect(const QRect& row);
+    static QRect contentRect(const QRect& row, const QModelIndex& idx); // cue num bloco: avançada
     static QRect blockMenuRect(const QRect& row);
 
 private:

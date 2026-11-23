@@ -29,6 +29,8 @@ constexpr int kBlockHeight = 34;
 constexpr int kKindRole = Qt::UserRole + 2;   // 0 cue, 1 bloco
 constexpr int kIndexRole = Qt::UserRole + 3;  // índice da cue / do bloco
 constexpr int kNumberRole = Qt::UserRole + 4; // número do bloco (#1, #2...)
+constexpr int kIndentRole = Qt::UserRole + 5; // cue dentro de um bloco: avança um pouco
+constexpr int kBlockIndent = 14;
 constexpr int kThumbX = 22, kThumbY = 28, kThumbW = 112, kThumbH = 63;
 constexpr int kInfoX = kThumbX + kThumbW + 12;
 const QColor kBlue(42, 160, 255);
@@ -112,10 +114,25 @@ void paintCueIcon(QPainter* p, const QRectF& r, CueIcon icon, bool on) {
         p->drawPolyline(QPolygonF({QPointF(l, t), QPointF(l + w * 0.3, t), QPointF(l + w * 0.7, bt), QPointF(rr, bt)}));
         break;
     case CueIcon::Loop: {
-        p->drawArc(b.adjusted(1, 1, -1, -1), 40 * 16, 290 * 16);
-        const QPointF tip(b.center().x() + w * 0.38, b.center().y() - h * 0.32);
-        p->drawLine(tip, tip + QPointF(-w * 0.3, -h * 0.02));
-        p->drawLine(tip, tip + QPointF(0, h * 0.3));
+        // Símbolo "repetir": dois traços em retângulo arredondado, cada um com a sua seta.
+        const double y0 = t + h * 0.18, y1 = bt - h * 0.18, rad = h * 0.22, ah = h * 0.2, aw = w * 0.22;
+        QPainterPath a;
+        a.moveTo(l, y1 - rad * 0.5);
+        a.lineTo(l, y0 + rad);
+        a.quadTo(l, y0, l + rad, y0);
+        a.lineTo(rr - aw, y0);
+        QPainterPath b2;
+        b2.moveTo(rr, y0 + rad * 0.5);
+        b2.lineTo(rr, y1 - rad);
+        b2.quadTo(rr, y1, rr - rad, y1);
+        b2.lineTo(l + aw, y1);
+        p->setBrush(Qt::NoBrush);
+        p->drawPath(a);
+        p->drawPath(b2);
+        p->setBrush(c);
+        p->drawPolygon(QPolygonF({QPointF(rr + 0.5, y0), QPointF(rr - aw, y0 - ah), QPointF(rr - aw, y0 + ah)}));
+        p->drawPolygon(QPolygonF({QPointF(l - 0.5, y1), QPointF(l + aw, y1 - ah), QPointF(l + aw, y1 + ah)}));
+        p->setBrush(Qt::NoBrush);
         break;
     }
     case CueIcon::Crossfade:
@@ -191,6 +208,7 @@ void PlaylistView::setProject(const Project* project) {
         it->setData(Qt::UserRole, qs(q.id));
         it->setData(kKindRole, 0);
         it->setData(kIndexRole, static_cast<int>(i));
+        it->setData(kIndentRole, b ? kBlockIndent : 0);
         it->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
         if (b && b->collapsed) it->setHidden(true);
         if (qs(q.id) == selId) setCurrentItem(it);
@@ -344,7 +362,7 @@ bool PlaylistView::event(QEvent* e) {
             tip = tr("Block: click the arrow to hide / show its videos, ⋯ or right-click for its options "
                      "(loop, what happens at the end). Drop files here to add them to the block.");
         } else if (idx.isValid()) {
-            const QRect row = visualRect(idx);
+            const QRect row = CueDelegate::contentRect(visualRect(idx), idx);
             auto name = [this](int i) -> QString {
                 switch (static_cast<CueIcon>(i)) {
                 case CueIcon::Audio: return tr("Sound on / off (mute)");
@@ -364,8 +382,8 @@ bool PlaylistView::event(QEvent* e) {
                 if (CueDelegate::iconRect(row, i).contains(pos))
                     tip = name(i) + QStringLiteral("\n") + tr("Click to turn on / off (Ctrl+Z undoes).");
             if (tip.isEmpty() && tallyEnabled_ && CueDelegate::cueButtonRect(row).contains(pos))
-                tip = tr("CUE: this cue plays when the player input goes on air in the switcher (vMix / ATEM). "
-                         "Click to arm / disarm.");
+                tip = tr("CUE: arm this video (it turns red). It plays with Space when nothing is playing, or when "
+                         "the switcher (vMix / ATEM) puts the player on air. Click again to disarm.");
             if (tip.isEmpty() && cueAt(idx.row()) == playing_ && CueDelegate::thumbButtonRect(row).contains(pos))
                 tip = tr("Use the current frame as the thumbnail (Ctrl+P)");
         }
@@ -410,7 +428,7 @@ void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
         return;
     }
     // Duplo clique num ícone não dispara a cue.
-    const QRect row = visualRect(idx);
+    const QRect row = CueDelegate::contentRect(visualRect(idx), idx);
     for (int i = 0; i < static_cast<int>(CueIcon::Count); ++i)
         if (CueDelegate::iconRect(row, i).contains(e->position().toPoint())) return;
     if (CueDelegate::thumbButtonRect(row).contains(e->position().toPoint())) return;
@@ -433,6 +451,10 @@ CueDelegate::CueDelegate(PlaylistView* view) : QStyledItemDelegate(view), view_(
 
 QSize CueDelegate::sizeHint(const QStyleOptionViewItem&, const QModelIndex& idx) const {
     return {300, idx.data(kKindRole).toInt() == 1 ? kBlockHeight : kRowHeight};
+}
+
+QRect CueDelegate::contentRect(const QRect& row, const QModelIndex& idx) {
+    return row.adjusted(idx.data(kIndentRole).toInt(), 0, 0, 0);
 }
 
 QRect CueDelegate::blockArrowRect(const QRect& row) { return {row.left(), row.top(), 28, row.height()}; }
@@ -528,7 +550,8 @@ void CueDelegate::paint(QPainter* p, const QStyleOptionViewItem& opt, const QMod
     const int i = idx.data(kIndexRole).toInt();
     if (!pr || i < 0 || i >= static_cast<int>(pr->cues.size())) return;
     const Cue& q = pr->cues[static_cast<std::size_t>(i)];
-    const QRect r = opt.rect;
+    const QRect r = contentRect(opt.rect, idx);
+    const bool inBlock = r.left() != opt.rect.left();
     const bool playing = i == view_->playing_;
     const bool selected = opt.state & QStyle::State_Selected;
     const MediaInfo info = view_->media_->info(qs(q.path));
@@ -539,6 +562,12 @@ void CueDelegate::paint(QPainter* p, const QStyleOptionViewItem& opt, const QMod
     QColor bg(38, 38, 38);
     if (!q.color.empty()) bg = QColor(56, 50, 30); // linha com cor de etiqueta fica ligeiramente tingida
     if (selected) bg = QColor(58, 58, 64);
+    if (inBlock) {
+        // Dentro de um bloco: um pouco mais escuro (mesmo com cor) e uma faixa à esquerda.
+        bg = bg.darker(125);
+        p->fillRect(QRect(opt.rect.left(), opt.rect.top(), r.left() - opt.rect.left(), opt.rect.height()), QColor(26, 34, 46));
+        p->fillRect(QRect(opt.rect.left() + 5, opt.rect.top(), 3, opt.rect.height()), QColor(60, 88, 128));
+    }
     p->fillRect(r, bg);
     p->setPen(QColor(25, 25, 25));
     p->drawLine(r.bottomLeft(), r.bottomRight());
@@ -676,16 +705,17 @@ bool CueDelegate::editorEvent(QEvent* e, QAbstractItemModel*, const QStyleOption
         return false;
     }
     const int cue = idx.data(kIndexRole).toInt();
-    if (cue == view_->playing_ && view_->editable_ && thumbButtonRect(opt.rect).contains(me->position().toPoint())) {
+    const QRect cr = contentRect(opt.rect, idx);
+    if (cue == view_->playing_ && view_->editable_ && thumbButtonRect(cr).contains(me->position().toPoint())) {
         emit view_->thumbnailRequested(cue);
         return true;
     }
-    if (view_->tallyEnabled_ && cueButtonRect(opt.rect).contains(me->position().toPoint())) {
+    if (view_->tallyEnabled_ && cueButtonRect(cr).contains(me->position().toPoint())) {
         emit view_->armClicked(cue); // também em Show Mode: armar é operação ao vivo
         return true;
     }
     for (int k = 0; k < static_cast<int>(CueIcon::Count); ++k)
-        if (iconRect(opt.rect, k).contains(me->position().toPoint())) {
+        if (iconRect(cr, k).contains(me->position().toPoint())) {
             if (!view_->editable_) return true;
             emit view_->iconClicked(cue, static_cast<CueIcon>(k), me->globalPosition().toPoint());
             return true;

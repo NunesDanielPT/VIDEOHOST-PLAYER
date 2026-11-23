@@ -84,6 +84,7 @@ Referência funcional: até à 0.6, media servers como o Millumin 5; desde a 0.7
 - [x] 0.13.0: disparo pelo misturador (vMix TCP 8099 e Blackmagic ATEM UDP 9910): botão CUE arma uma cue que toca quando o input do player vai para o ar
 - [x] 0.13.1: o motor não arranca sozinho por omissão; o ecrã principal nunca pode ser saída em ecrã inteiro; o rato não entra nas saídas em ecrã inteiro
 - [x] 0.14.0: blocos na playlist (agrupar vídeos, esconder, loop do bloco, no fim: pausa / stop / continua); misturador: a cue seguinte fica em CUE quando a disparada acaba
+- [x] 0.14.1: botão + BLOCO, vídeos dentro de blocos avançados e mais escuros, botão CUE sempre visível (ESPAÇO toca a cue em CUE), ícone de repetir redesenhado
 - [x] 0.7.2: atualizações como no MapSim (janela com as novidades de cada versão, progresso, aviso no rodapé, procura de 30 em 30 min); notas das releases geradas pela CI
 - [x] 0.7.1: miniatura escolhida (botão da câmara / Ctrl+P na cue a tocar), miniatura automática evita frames pretos, ícones de transporte claros, ESPAÇO arranca a cue selecionada
 - [ ] Seleção de várias cues para alterar em conjunto

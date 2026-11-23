@@ -333,6 +333,10 @@
         <translation>(máx ≈ %1)</translation>
     </message>
     <message>
+        <source>+ BLOCK</source>
+        <translation>+ BLOCO</translation>
+    </message>
+    <message>
         <source>&lt;h3&gt;Bitfocus Companion&lt;/h3&gt;&lt;ol&gt;&lt;li&gt;Here: Settings → Network → &lt;b&gt;Allow control by OSC&lt;/b&gt;, choose the network card, and write the &lt;b&gt;Companion IP&lt;/b&gt; (127.0.0.1 if Companion runs on this PC).&lt;/li&gt;&lt;li&gt;In Companion: Connections → add &lt;b&gt;Imimot Mitti&lt;/b&gt;. Mitti Connection: &lt;b&gt;Manual&lt;/b&gt;, IP address: &lt;b&gt;%1&lt;/b&gt;. Feedback port: &lt;b&gt;%2&lt;/b&gt;.&lt;/li&gt;&lt;li&gt;Use the module's presets: Play / Pause, Play Cue by ID (one button per cue, with its name), GOTO 30/20/10, previous / next, time remaining &lt;code&gt;$(mitti:cueTimeLeft)&lt;/code&gt;...&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;The cue ID is the number in the playlist (or the text you wrote in ID).&lt;/p&gt;&lt;h3&gt;Commands (UDP port %3)&lt;/h3&gt;&lt;table cellspacing=4&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/play&lt;/code&gt;, &lt;code&gt;/mitti/togglePlay&lt;/code&gt;, &lt;code&gt;/mitti/stop&lt;/code&gt; (pause)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/panic&lt;/code&gt; — stop everything (black)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/playCueWithCueID "3"&lt;/code&gt;, &lt;code&gt;/mitti/playCueAtIndex 3&lt;/code&gt; (add &lt;code&gt;ForceCut&lt;/code&gt; for no transition)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/jumpToNextCue&lt;/code&gt;, &lt;code&gt;/mitti/jumpToPrevCue&lt;/code&gt;, &lt;code&gt;/mitti/goto30&lt;/code&gt; / &lt;code&gt;goto20&lt;/code&gt; / &lt;code&gt;goto10&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/mainFader 0..1&lt;/code&gt; — master volume&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/testPattern&lt;/code&gt; (toggle, or 1 / 0) — test card. Not in the Mitti module: send it with a &lt;b&gt;Generic OSC&lt;/b&gt; connection.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;p&gt;State sent to Companion: &lt;code&gt;/mitti/cueTimeLeft&lt;/code&gt; (-HH:MM:SS), &lt;code&gt;cueTimeElapsed&lt;/code&gt;, &lt;code&gt;currentCueID&lt;/code&gt;, &lt;code&gt;currentCueName&lt;/code&gt;, &lt;code&gt;togglePlay&lt;/code&gt; (1 = playing)...&lt;/p&gt;</source>
         <translation>&lt;h3&gt;Bitfocus Companion&lt;/h3&gt;&lt;ol&gt;&lt;li&gt;Aqui: Definições → Rede → &lt;b&gt;Permitir controlo por OSC&lt;/b&gt;, escolha a placa de rede e escreva o &lt;b&gt;IP do Companion&lt;/b&gt; (127.0.0.1 se o Companion estiver neste PC).&lt;/li&gt;&lt;li&gt;No Companion: Connections → adicione &lt;b&gt;Imimot Mitti&lt;/b&gt;. Mitti Connection: &lt;b&gt;Manual&lt;/b&gt;, IP address: &lt;b&gt;%1&lt;/b&gt;. Feedback port: &lt;b&gt;%2&lt;/b&gt;.&lt;/li&gt;&lt;li&gt;Use os presets do módulo: Play / Pause, Play Cue by ID (um botão por cue, com o nome), GOTO 30/20/10, anterior / seguinte, tempo que falta &lt;code&gt;$(mitti:cueTimeLeft)&lt;/code&gt;...&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;O ID da cue é o número na playlist (ou o texto que escreveu no ID).&lt;/p&gt;&lt;h3&gt;Comandos (porta UDP %3)&lt;/h3&gt;&lt;table cellspacing=4&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/play&lt;/code&gt;, &lt;code&gt;/mitti/togglePlay&lt;/code&gt;, &lt;code&gt;/mitti/stop&lt;/code&gt; (pausa)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/panic&lt;/code&gt; — pára tudo (preto)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/playCueWithCueID "3"&lt;/code&gt;, &lt;code&gt;/mitti/playCueAtIndex 3&lt;/code&gt; (junte &lt;code&gt;ForceCut&lt;/code&gt; para sem transição)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/jumpToNextCue&lt;/code&gt;, &lt;code&gt;/mitti/jumpToPrevCue&lt;/code&gt;, &lt;code&gt;/mitti/goto30&lt;/code&gt; / &lt;code&gt;goto20&lt;/code&gt; / &lt;code&gt;goto10&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/mainFader 0..1&lt;/code&gt; — volume geral&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/testPattern&lt;/code&gt; (alterna, ou 1 / 0) — test card. Não existe no módulo do Mitti: envie-o com uma ligação &lt;b&gt;Generic OSC&lt;/b&gt;.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;p&gt;Estado enviado para o Companion: &lt;code&gt;/mitti/cueTimeLeft&lt;/code&gt; (-HH:MM:SS), &lt;code&gt;cueTimeElapsed&lt;/code&gt;, &lt;code&gt;currentCueID&lt;/code&gt;, &lt;code&gt;currentCueName&lt;/code&gt;, &lt;code&gt;togglePlay&lt;/code&gt; (1 = a tocar)...&lt;/p&gt;</translation>
     </message>
@@ -581,6 +585,10 @@
     <message>
         <source>New block</source>
         <translation>Novo bloco</translation>
+    </message>
+    <message>
+        <source>New block (Ctrl+B): groups videos; drop files on it, loop it, pause at its end</source>
+        <translation>Novo bloco (Ctrl+B): agrupa vídeos; largue ficheiros nele, ponha em loop, pausa no fim</translation>
     </message>
     <message>
         <source>New block with this video</source>
@@ -1111,8 +1119,8 @@
         <translation>CONTINUA</translation>
     </message>
     <message>
-        <source>CUE: this cue plays when the player input goes on air in the switcher (vMix / ATEM). Click to arm / disarm.</source>
-        <translation>CUE: esta cue toca quando o input do player vai para o ar no misturador (vMix / ATEM). Clique para armar / desarmar.</translation>
+        <source>CUE: arm this video (it turns red). It plays with Space when nothing is playing, or when the switcher (vMix / ATEM) puts the player on air. Click again to disarm.</source>
+        <translation>CUE: arma este vídeo (fica vermelho). Toca com o ESPAÇO quando nada está a tocar, ou quando o misturador (vMix / ATEM) põe o player no ar. Clique outra vez para desarmar.</translation>
     </message>
     <message>
         <source>Clear at end: black when the cue ends</source>

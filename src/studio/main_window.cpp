@@ -392,6 +392,13 @@ QWidget* MainWindow::buildTransportBar() {
     button(transportIcon(TIcon::Next, kIconLight), tr("Next cue (Ctrl+Right)"), 20, [this] { nextCue(); });
     loopBtn_ = button(cueIcon(CueIcon::Loop), tr("Loop the playlist (Ctrl+R)"), 22, [this] { toggleLoopPlaylist(); });
     loopBtn_->setCheckable(true);
+    auto* blockBtn = new QToolButton(bar);
+    blockBtn->setText(tr("+ BLOCK"));
+    blockBtn->setToolTip(tr("New block (Ctrl+B): groups videos; drop files on it, loop it, pause at its end"));
+    blockBtn->setStyleSheet(QStringLiteral("QToolButton { font-size: 10px; font-weight: bold; color: #9cc3ff; "
+                                           "border: 1px solid #3c5880; padding: 3px 6px; }"));
+    connect(blockBtn, &QToolButton::clicked, this, [this] { newBlock(selectedCue()); });
+    l->addWidget(blockBtn);
     l->addSpacing(10);
     for (int s : {30, 20, 10}) {
         auto* b = new QToolButton(bar);
@@ -714,7 +721,6 @@ void MainWindow::applyTally() {
     c.host = prefs::tallyHost();
     c.input = std::clamp(prefs::tallyInput(), 0, 9999);
     tally_->configure(c);
-    playlist_->setTallyEnabled(c.mode != TallyClient::Mode::Off);
     updatePerf();
 }
 
@@ -726,7 +732,7 @@ void MainWindow::fireArmedCue() {
     const int i = armedCueId_.empty() ? -1 : project_.cueIndex(armedCueId_);
     if (i < 0 || !engine_->isConnected()) return;
     playCue(i);
-    infoLabel_->setText(tr("Cue %1 started by the switcher (input on air)").arg(cueOscId(i)));
+    if (tally_->onAir()) infoLabel_->setText(tr("Cue %1 started by the switcher (input on air)").arg(cueOscId(i)));
     // Enquanto toca nada fica armado (um novo corte para o player não a reinicia).
     // Quando acabar, a seguinte fica em CUE (opção) — ver followTallyPlayback.
     watchedCueId_ = project_.cues[static_cast<std::size_t>(i)].id;
@@ -1565,6 +1571,11 @@ void MainWindow::playPause() {
         c.type = protocol::CommandType::Transport;
         c.action = protocol::TransportAction::Toggle;
         engine_->send(c);
+        return;
+    }
+    // Parado com uma cue em CUE (vermelha): ESPAÇO toca essa (e, no fim, a seguinte fica em CUE).
+    if (!armedCueId_.empty() && project_.cueIndex(armedCueId_) >= 0) {
+        fireArmedCue();
         return;
     }
     // Parado: ESPAÇO arranca a cue selecionada (ou a primeira).
