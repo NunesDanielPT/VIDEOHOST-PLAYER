@@ -964,7 +964,21 @@ void MainWindow::showOscHelp() {
                    "<code>togglePlay</code> (1 = playing)...</p>")
                     .arg(ip)
                     .arg(prefs::oscFeedbackPort())
-                    .arg(prefs::oscPort()));
+                    .arg(prefs::oscPort()) +
+                tr("<h3>Most used buttons (Companion → Buttons → Presets → Imimot Mitti)</h3>"
+                   "<table cellspacing=4>"
+                   "<tr><td><b>Cues → Play Cue 1, 2, 3...</b></td><td>one button per video, with its name</td></tr>"
+                   "<tr><td><b>Transport → Pause / Resume</b></td><td>GO / pause (like Space)</td></tr>"
+                   "<tr><td><b>Transport → Play Selected Cue</b></td><td>plays the selected video</td></tr>"
+                   "<tr><td><b>Jump &amp; Select → Jump to Next / Previous Cue</b></td><td>next / previous video</td></tr>"
+                   "<tr><td><b>Playhead → Goto 30 / 20 / 10</b></td><td>last seconds of the video</td></tr>"
+                   "<tr><td><b>Playhead → Rewind</b></td><td>back to the start of the video</td></tr>"
+                   "<tr><td><b>Emergency → Panic</b></td><td>stops everything (black)</td></tr>"
+                   "<tr><td><b>Cue Status → Cue Time Remaining</b></td><td>countdown on the button (orange / red near the end)</td></tr>"
+                   "<tr><td><b>Cue Status → Current Cue / Next Cue</b></td><td>name of the video on air / the next one</td></tr>"
+                   "</table>"
+                   "<p>Suggested Stream Deck page: top row Play Cue 1–5, middle row Previous · Pause/Resume · "
+                   "Next · Panic, bottom row Time Remaining · Goto 30 · Goto 10 · Test card (Generic OSC).</p>"));
     box.exec();
 }
 
