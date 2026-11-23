@@ -40,6 +40,8 @@ class QLabel;
 class QSlider;
 class QSplitter;
 class QStackedWidget;
+class BlockInspector;
+class QStackedWidget;
 class QToolButton;
 class WaveformView;
 
@@ -110,6 +112,7 @@ private:
 
     // Countdown (preview, janela própria e página web na rede local)
     vthost::Countdown currentCountdown() const;
+    int blockByOscId(const QString& arg, double num) const; // primeira cue do bloco, -1 se não houver
     void refreshCountdown();
     void openCountdownWindow();
     void showCountdownWebInfo();
@@ -178,6 +181,8 @@ private:
     PreviewWidget* preview_ = nullptr;
     WaveformView* waveform_ = nullptr;
     InspectorPanel* inspector_ = nullptr;
+    BlockInspector* blockInspector_ = nullptr;
+    QStackedWidget* rightStack_ = nullptr;
     CountdownWindow* countdownWindow_ = nullptr;
     CountdownServer* countdownServer_ = nullptr;
 

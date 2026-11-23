@@ -6,6 +6,7 @@
 #include "vthost/core/project.h"
 #include "vthost/core/protocol.h"
 
+#include <functional>
 #include <string>
 
 namespace vthost {
@@ -24,9 +25,15 @@ struct Countdown {
     std::string mediaName;  // vídeo contado (nome do ficheiro, sem pasta)
     std::string mode;       // "cue" | "idle"
     std::string state;      // estado do motor ("playing", "paused", "ended", "loading"...)
+    std::string blockName;  // cue dentro de um bloco: o tempo conta o bloco inteiro
 };
 
 Countdown computeCountdown(const Project& project, const protocol::EngineStatus& status);
+
+// Cue no ar dentro de um bloco: o tempo passa a ser o do bloco inteiro (as cues antes
+// contam no decorrido, as depois no que falta). `cueSeconds` dá a duração total de uma cue.
+Countdown blockCountdown(const Countdown& c, const Project& project, int cueIndex,
+                         const std::function<double(const Cue&)>& cueSeconds);
 
 // Avança `c` em `seconds` (interpolação entre estados do motor).
 Countdown advanceCountdown(const Countdown& c, double seconds);

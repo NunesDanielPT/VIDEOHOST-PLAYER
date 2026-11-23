@@ -96,6 +96,7 @@ private:
     int fpsFrames_ = 0;
     double fps_ = 0.0;
     double renderMs_ = 0.0;
+    int previousCue_ = -1; // cue que estava no ar quando a actual começou (regras dos blocos)
     void keepCursorOffOutputs();
     POINT lastCursor_{};
     bool haveCursor_ = false;

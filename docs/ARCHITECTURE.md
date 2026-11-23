@@ -102,6 +102,8 @@ Fechar o Studio pergunta e envia `shutdown` ao motor (o watchdog sai também): a
 
 `Project::blocks` (id, nome, escondido, loop, fim = continue/pause/stop) e `Cue::block`. As cues de um bloco ficam sempre seguidas (`normalizeBlocks`, ao abrir e depois de cada edição). `nextCue` volta à primeira cue do bloco quando ele tem loop; no motor, `handleCueEnd` aplica o fim do bloco (pausa no último frame ou preto) quando a última cue acaba. Na playlist, cada bloco é uma linha de cabeçalho (`PlaylistView::cueAt`/`blockAt` convertem linhas em cues).
 
+Desde a 0.15 o bloco tem também cor, `dissolve`, `fadeIn` e `fadeOut`. O motor não conhece estas opções: `Project::effectiveCue(index, anterior)` devolve a cue com elas aplicadas (dissolve quando vem de outra cue do mesmo bloco, fade in quando entra no bloco, fade out na última cue sem loop) e é isso que vai para o `Player`. Os tempos mostrados (countdown, OSC, preview) passam por `blockCountdown`, que soma as durações das outras cues do bloco; o tempo de media continua a ser o do vídeo.
+
 ## Output para DSM
 
 Uma saída com `dsm` desenha o canvas mais pequeno (`computeDsmLayout`, núcleo) e por baixo uma faixa com a duração e o tempo que falta (`computeCountdown`). O texto é desenhado com GDI numa thread (`DsmPanelRenderer`, só quando muda) e o render loop copia a imagem para o canvas `dsm:<saída>` (`uploadCanvas`). Saídas NDI em DSM compõem num canvas `ndidsm:<saída>` 1920x1080.

@@ -82,7 +82,7 @@ bool EngineApp::loadProject(const std::string& path, std::string* error) {
     // A cue no ar continua; recebe os parâmetros novos (volume, fades...) e o índice actual.
     if (player_ && player_->active()) {
         const int idx = project_.cueIndex(player_->cueId());
-        if (idx >= 0) player_->updateCue(project_.cues[static_cast<std::size_t>(idx)], idx);
+        if (idx >= 0) player_->updateCue(project_.effectiveCue(idx, previousCue_), idx);
         else player_->updateCue(player_->cue(), -1); // cue apagada: acaba e pára
     }
     return true;
@@ -157,7 +157,9 @@ bool EngineApp::play(int index, const CuePlayer::StartOptions& opts, std::string
         if (error) *error = "cue inexistente";
         return false;
     }
-    player_->start(project_.cues[static_cast<std::size_t>(index)], index, opts);
+    // Regras do bloco (dissolve entre vídeos, fades) conforme a cue que estava no ar.
+    previousCue_ = player_->active() ? player_->index() : -1;
+    player_->start(project_.effectiveCue(index, previousCue_), index, opts);
     saveStateIfDue(true);
     return true;
 }

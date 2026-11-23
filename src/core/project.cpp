@@ -177,6 +177,26 @@ void Project::normalizeBlocks() {
     cues = std::move(out);
 }
 
+void Block::clamp() {
+    auto c = [](double v) { return std::isfinite(v) ? std::clamp(v, 0.0, 60.0) : 0.0; };
+    dissolve = c(dissolve);
+    fadeIn = c(fadeIn);
+    fadeOut = c(fadeOut);
+}
+
+Cue Project::effectiveCue(int index, int previous) const {
+    Cue q = cues.at(static_cast<std::size_t>(index));
+    const Block* b = findBlock(q.block);
+    if (!b) return q;
+    const int n = static_cast<int>(cues.size());
+    const bool fromSameBlock = previous >= 0 && previous < n && previous != index &&
+                               cues[static_cast<std::size_t>(previous)].block == q.block;
+    if (fromSameBlock && b->dissolve > 0.0) q.crossfade = std::max(q.crossfade, b->dissolve);
+    if (!fromSameBlock && b->fadeIn > 0.0) q.fadeIn = std::max(q.fadeIn, b->fadeIn);
+    if (isLastInBlock(index) && !b->loop && b->fadeOut > 0.0) q.fadeOut = std::max(q.fadeOut, b->fadeOut);
+    return q;
+}
+
 int Project::nextCue(int current) const {
     const int n = static_cast<int>(cues.size());
     if (n == 0) return -1;
@@ -393,6 +413,11 @@ ParseResult parseProject(const std::string& text) {
                 blk.collapsed = getBool(b, "collapsed", false);
                 blk.loop = getBool(b, "loop", false);
                 blk.end = blockEndFromString(getString(b, "end", "pause"));
+                blk.color = getString(b, "color").substr(0, 16);
+                blk.dissolve = getNumber(b, "dissolve", 0.0);
+                blk.fadeIn = getNumber(b, "fadeIn", 0.0);
+                blk.fadeOut = getNumber(b, "fadeOut", 0.0);
+                blk.clamp();
                 p.blocks.push_back(std::move(blk));
             }
         }
@@ -473,7 +498,15 @@ std::string serializeProject(const Project& p) {
     for (const auto& q : p.cues) j["cues"].push_back(cueToJson(q));
     j["blocks"] = json::array();
     for (const auto& b : p.blocks)
-        j["blocks"].push_back({{"id", b.id}, {"name", b.name}, {"collapsed", b.collapsed}, {"loop", b.loop}, {"end", toString(b.end)}});
+        j["blocks"].push_back({{"id", b.id},
+                               {"name", b.name},
+                               {"collapsed", b.collapsed},
+                               {"loop", b.loop},
+                               {"end", toString(b.end)},
+                               {"color", b.color},
+                               {"dissolve", b.dissolve},
+                               {"fadeIn", b.fadeIn},
+                               {"fadeOut", b.fadeOut}});
     j["outputs"] = json::array();
     for (const auto& o : p.outputs)
         j["outputs"].push_back({{"id", o.id},

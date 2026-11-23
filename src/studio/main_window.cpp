@@ -5,6 +5,7 @@
 #include "countdown_view.h"
 #include "osc_server.h"
 #include "tally_client.h"
+#include "block_inspector.h"
 #include "inspector_panel.h"
 #include "outputs_dialog.h"
 #include "prefs.h"
@@ -501,6 +502,21 @@ void MainWindow::buildUi() {
             updateSelection();
         }
     });
+    blockInspector_ = new BlockInspector(this);
+    connect(blockInspector_, &BlockInspector::changed, this, [this](const Block& edited) {
+        Block* b = project_.findBlock(edited.id);
+        if (!b || showMode_) return;
+        const Block before = *b;
+        *b = edited;
+        b->collapsed = before.collapsed;
+        b->clamp();
+        refreshPlaylist();
+        markChanged();
+    });
+    connect(blockInspector_, &BlockInspector::playRequested, this, [this](const QString& id) {
+        if (const int first = project_.firstInBlock(id.toStdString()); first >= 0) playCue(first);
+    });
+    connect(blockInspector_, &BlockInspector::toggleRequested, this, &MainWindow::toggleBlock);
     inspector_ = new InspectorPanel(this);
     connect(inspector_, &InspectorPanel::cueChanged, this, &MainWindow::onCueEdited);
     connect(inspector_, &InspectorPanel::reanalyzeRequested, this, [this](const QString& path) {
@@ -535,7 +551,10 @@ void MainWindow::buildUi() {
     mainSplit_ = new QSplitter(Qt::Horizontal, this);
     mainSplit_->addWidget(playlist_);
     mainSplit_->addWidget(centerSplit_);
-    mainSplit_->addWidget(inspector_);
+    rightStack_ = new QStackedWidget(this);
+    rightStack_->addWidget(inspector_);
+    rightStack_->addWidget(blockInspector_);
+    mainSplit_->addWidget(rightStack_);
     mainSplit_->setStretchFactor(0, 0);
     mainSplit_->setStretchFactor(1, 1);
     mainSplit_->setStretchFactor(2, 0);
@@ -809,6 +828,22 @@ int MainWindow::cueByOscId(const QString& raw) const {
     return ok && n >= 1 && n <= static_cast<int>(project_.cues.size()) ? n - 1 : -1;
 }
 
+int MainWindow::blockByOscId(const QString& raw, double num) const {
+    QString key = raw.trimmed();
+    int n = -1;
+    if (num >= 1.0) n = static_cast<int>(num);
+    if (n < 0 && !key.isEmpty()) {
+        for (const Block& b : project_.blocks)
+            if (qs(b.name).compare(key, Qt::CaseInsensitive) == 0 || qs(b.id) == key) return project_.firstInBlock(b.id);
+        if (key.startsWith(QLatin1Char('B'), Qt::CaseInsensitive)) key = key.mid(1);
+        bool ok = false;
+        const int k = key.toInt(&ok);
+        if (ok) n = k;
+    }
+    if (n < 1 || n > static_cast<int>(project_.blocks.size())) return -1;
+    return project_.firstInBlock(project_.blocks[static_cast<std::size_t>(n - 1)].id);
+}
+
 void MainWindow::onOscMessage(const osc::Message& m) {
     // Protocolo do Mitti: /mitti/<comando> [valor]. Também aceita /videohost/<comando>.
     QString addr = qs(m.address);
@@ -860,6 +895,10 @@ void MainWindow::onOscMessage(const osc::Message& m) {
     } else if (addr == QStringLiteral("playCueWithCueID") || addr == QStringLiteral("playCueWithCueIDForceCut")) {
         const int i = cueByOscId(arg);
         if (i >= 0) playCue(i, addr.endsWith(QStringLiteral("ForceCut")));
+    } else if (addr == QStringLiteral("playBlock") || addr == QStringLiteral("playBlockForceCut")) {
+        // Bloco por nome, por número ("2" ou "B2") ou pelo id; toca o primeiro vídeo do bloco.
+        const int first = blockByOscId(arg, hasNum ? num : -1.0);
+        if (first >= 0) playCue(first, addr.endsWith(QStringLiteral("ForceCut")));
     } else if (addr == QStringLiteral("playCueAtIndex") || addr == QStringLiteral("playCueAtIndexForceCut")) {
         if (hasNum && num >= 1 && num <= static_cast<double>(project_.cues.size()))
             playCue(static_cast<int>(num) - 1, addr.endsWith(QStringLiteral("ForceCut")));
@@ -954,6 +993,9 @@ void MainWindow::showOscHelp() {
                    "<tr><td><code>/mitti/panic</code> — stop everything (black)</td></tr>"
                    "<tr><td><code>/mitti/playCueWithCueID \"3\"</code>, <code>/mitti/playCueAtIndex 3</code> "
                    "(add <code>ForceCut</code> for no transition)</td></tr>"
+                   "<tr><td><code>/mitti/playBlock \"Block 2\"</code> (name), <code>\"B2\"</code> or <code>2</code> "
+                   "(number of the block) — plays the block from its first video. Not in the Mitti module: use a "
+                   "<b>Generic OSC</b> connection, or Play Cue by ID with the ID of the first video of the block.</td></tr>"
                    "<tr><td><code>/mitti/jumpToNextCue</code>, <code>/mitti/jumpToPrevCue</code>, "
                    "<code>/mitti/goto30</code> / <code>goto20</code> / <code>goto10</code></td></tr>"
                    "<tr><td><code>/mitti/mainFader 0..1</code> — master volume</td></tr>"
@@ -1109,6 +1151,22 @@ void MainWindow::refreshPlaylist() {
 }
 
 void MainWindow::updateSelection() {
+    const QString blk = playlist_->selectedBlock();
+    if (rightStack_) rightStack_->setCurrentWidget(blk.isEmpty() ? static_cast<QWidget*>(inspector_) : blockInspector_);
+    if (!blk.isEmpty()) {
+        const Block* b = project_.findBlock(blk.toStdString());
+        int count = 0, number = 0;
+        double total = 0.0;
+        for (const Cue& q : project_.cues)
+            if (qs(q.block) == blk) {
+                ++count;
+                const MediaInfo mi = media_->info(qs(q.path));
+                if (mi.ready && q.playCount > 0) total += q.totalSeconds(mi.duration);
+            }
+        for (std::size_t k = 0; k < project_.blocks.size(); ++k)
+            if (qs(project_.blocks[k].id) == blk) number = static_cast<int>(k) + 1;
+        blockInspector_->setBlock(b, number, count, total);
+    }
     const int i = selectedCue();
     if (i < 0) {
         inspector_->setCue(nullptr, -1, &project_, {}, {}, prefs::normalizeTarget());
@@ -1619,6 +1677,11 @@ void MainWindow::playPause() {
         engine_->send(c);
         return;
     }
+    // Cabeçalho de bloco selecionado: ESPAÇO toca o bloco desde o primeiro vídeo.
+    if (const QString blk = playlist_->selectedBlock(); !blk.isEmpty()) {
+        if (const int first = project_.firstInBlock(blk.toStdString()); first >= 0) playCue(first);
+        return;
+    }
     // Parado com uma cue em CUE (vermelha): ESPAÇO toca essa (e, no fim, a seguinte fica em CUE).
     if (!armedCueId_.empty() && project_.cueIndex(armedCueId_) >= 0) {
         fireArmedCue();
@@ -1824,6 +1887,7 @@ void MainWindow::updateEditingEnabled() {
     for (auto* a : editActions_) a->setEnabled(edit);
     playlist_->setEditable(edit);
     inspector_->setEditable(edit);
+    blockInspector_->setEditable(edit);
     waveform_->setEditable(edit);
     updateUndoActions();
     // Play, pausa, GOTO, volume geral e test card continuam: são controlos ao vivo.
@@ -2137,7 +2201,13 @@ void MainWindow::updateUndoActions() {
 
 Countdown MainWindow::currentCountdown() const {
     if (!engine_->isConnected()) return {};
-    return advanceCountdown(countdown_, countdownClock_.elapsed() / 1000.0);
+    const Countdown c = advanceCountdown(countdown_, countdownClock_.elapsed() / 1000.0);
+    // Vídeo dentro de um bloco: os tempos contam o bloco inteiro (o media time fica por vídeo).
+    return blockCountdown(c, project_, playingCue_, [this](const Cue& q) {
+        const MediaInfo i = media_->info(qs(q.path));
+        if (!i.ready || q.playCount <= 0) return -1.0;
+        return q.totalSeconds(i.duration);
+    });
 }
 
 void MainWindow::refreshCountdown() {

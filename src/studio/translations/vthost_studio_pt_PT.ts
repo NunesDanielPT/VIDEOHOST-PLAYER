@@ -2,6 +2,113 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="pt_PT" sourcelanguage="en">
 <context>
+    <name>BlockInspector</name>
+    <message>
+        <source>%1 video(s) · %2</source>
+        <translation>%1 vídeo(s) · %2</translation>
+    </message>
+    <message>
+        <source>At the end:</source>
+        <translation>No fim:</translation>
+    </message>
+    <message>
+        <source>BLOCK</source>
+        <translation>BLOCO</translation>
+    </message>
+    <message>
+        <source>Block</source>
+        <translation>Bloco</translation>
+    </message>
+    <message>
+        <source>Color:</source>
+        <translation>Cor:</translation>
+    </message>
+    <message>
+        <source>Continue to the next video</source>
+        <translation>Continuar para o vídeo seguinte</translation>
+    </message>
+    <message>
+        <source>Dissolve between videos:</source>
+        <translation>Dissolve entre vídeos:</translation>
+    </message>
+    <message>
+        <source>Dissolve from each video of the block into the next (and from the last to the first in loop)</source>
+        <translation>Dissolve de cada vídeo do bloco para o seguinte (e do último para o primeiro em loop)</translation>
+    </message>
+    <message>
+        <source>Fade in at the start:</source>
+        <translation>Fade in no início:</translation>
+    </message>
+    <message>
+        <source>Fade in from black when the block starts</source>
+        <translation>Fade in a partir do preto quando o bloco começa</translation>
+    </message>
+    <message>
+        <source>Fade out at the end:</source>
+        <translation>Fade out no fim:</translation>
+    </message>
+    <message>
+        <source>Fade out to black at the end of the last video (not in loop)</source>
+        <translation>Fade out para preto no fim do último vídeo (não em loop)</translation>
+    </message>
+    <message>
+        <source>Hide the videos</source>
+        <translation>Esconder os vídeos</translation>
+    </message>
+    <message>
+        <source>Loop the block (back to the first video)</source>
+        <translation>Repetir o bloco (volta ao primeiro vídeo)</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>Nome:</translation>
+    </message>
+    <message>
+        <source>No block selected</source>
+        <translation>Nenhum bloco selecionado</translation>
+    </message>
+    <message>
+        <source>No color</source>
+        <translation>Sem cor</translation>
+    </message>
+    <message>
+        <source>Pause on the last frame (Space continues)</source>
+        <translation>Pausa no último frame (o ESPAÇO continua)</translation>
+    </message>
+    <message>
+        <source>Play the block</source>
+        <translation>Tocar o bloco</translation>
+    </message>
+    <message>
+        <source>Playback</source>
+        <translation>Reprodução</translation>
+    </message>
+    <message>
+        <source>Plays the first video of the block (also Enter or Space with the block selected)</source>
+        <translation>Toca o primeiro vídeo do bloco (também ENTER ou ESPAÇO com o bloco selecionado)</translation>
+    </message>
+    <message>
+        <source>Show the videos</source>
+        <translation>Mostrar os vídeos</translation>
+    </message>
+    <message>
+        <source>Stop (black)</source>
+        <translation>Parar (preto)</translation>
+    </message>
+    <message>
+        <source>The timers count the whole block while one of its videos is on air. Each video keeps its own options; the block adds these on top.</source>
+        <translation>Os tempos contam o bloco inteiro enquanto um dos seus vídeos está no ar. Cada vídeo mantém as suas opções; o bloco junta estas por cima.</translation>
+    </message>
+    <message>
+        <source>cut</source>
+        <translation>corte</translation>
+    </message>
+    <message>
+        <source>off</source>
+        <translation>desligado</translation>
+    </message>
+</context>
+<context>
     <name>CountdownServer</name>
     <message>
         <source>Invalid network address: %1</source>
@@ -337,8 +444,8 @@
         <translation>+ BLOCO</translation>
     </message>
     <message>
-        <source>&lt;h3&gt;Bitfocus Companion&lt;/h3&gt;&lt;ol&gt;&lt;li&gt;Here: Settings → Network → &lt;b&gt;Allow control by OSC&lt;/b&gt;, choose the network card, and write the &lt;b&gt;Companion IP&lt;/b&gt; (127.0.0.1 if Companion runs on this PC).&lt;/li&gt;&lt;li&gt;In Companion: Connections → add &lt;b&gt;Imimot Mitti&lt;/b&gt;. Mitti Connection: &lt;b&gt;Manual&lt;/b&gt;, IP address: &lt;b&gt;%1&lt;/b&gt;. Feedback port: &lt;b&gt;%2&lt;/b&gt;.&lt;/li&gt;&lt;li&gt;Use the module's presets: Play / Pause, Play Cue by ID (one button per cue, with its name), GOTO 30/20/10, previous / next, time remaining &lt;code&gt;$(mitti:cueTimeLeft)&lt;/code&gt;...&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;The cue ID is the number in the playlist (or the text you wrote in ID).&lt;/p&gt;&lt;h3&gt;Commands (UDP port %3)&lt;/h3&gt;&lt;table cellspacing=4&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/play&lt;/code&gt;, &lt;code&gt;/mitti/togglePlay&lt;/code&gt;, &lt;code&gt;/mitti/stop&lt;/code&gt; (pause)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/panic&lt;/code&gt; — stop everything (black)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/playCueWithCueID "3"&lt;/code&gt;, &lt;code&gt;/mitti/playCueAtIndex 3&lt;/code&gt; (add &lt;code&gt;ForceCut&lt;/code&gt; for no transition)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/jumpToNextCue&lt;/code&gt;, &lt;code&gt;/mitti/jumpToPrevCue&lt;/code&gt;, &lt;code&gt;/mitti/goto30&lt;/code&gt; / &lt;code&gt;goto20&lt;/code&gt; / &lt;code&gt;goto10&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/mainFader 0..1&lt;/code&gt; — master volume&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/testPattern&lt;/code&gt; (toggle, or 1 / 0) — test card. Not in the Mitti module: send it with a &lt;b&gt;Generic OSC&lt;/b&gt; connection.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;p&gt;State sent to Companion: &lt;code&gt;/mitti/cueTimeLeft&lt;/code&gt; (-HH:MM:SS), &lt;code&gt;cueTimeElapsed&lt;/code&gt;, &lt;code&gt;currentCueID&lt;/code&gt;, &lt;code&gt;currentCueName&lt;/code&gt;, &lt;code&gt;togglePlay&lt;/code&gt; (1 = playing)...&lt;/p&gt;</source>
-        <translation>&lt;h3&gt;Bitfocus Companion&lt;/h3&gt;&lt;ol&gt;&lt;li&gt;Aqui: Definições → Rede → &lt;b&gt;Permitir controlo por OSC&lt;/b&gt;, escolha a placa de rede e escreva o &lt;b&gt;IP do Companion&lt;/b&gt; (127.0.0.1 se o Companion estiver neste PC).&lt;/li&gt;&lt;li&gt;No Companion: Connections → adicione &lt;b&gt;Imimot Mitti&lt;/b&gt;. Mitti Connection: &lt;b&gt;Manual&lt;/b&gt;, IP address: &lt;b&gt;%1&lt;/b&gt;. Feedback port: &lt;b&gt;%2&lt;/b&gt;.&lt;/li&gt;&lt;li&gt;Use os presets do módulo: Play / Pause, Play Cue by ID (um botão por cue, com o nome), GOTO 30/20/10, anterior / seguinte, tempo que falta &lt;code&gt;$(mitti:cueTimeLeft)&lt;/code&gt;...&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;O ID da cue é o número na playlist (ou o texto que escreveu no ID).&lt;/p&gt;&lt;h3&gt;Comandos (porta UDP %3)&lt;/h3&gt;&lt;table cellspacing=4&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/play&lt;/code&gt;, &lt;code&gt;/mitti/togglePlay&lt;/code&gt;, &lt;code&gt;/mitti/stop&lt;/code&gt; (pausa)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/panic&lt;/code&gt; — pára tudo (preto)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/playCueWithCueID "3"&lt;/code&gt;, &lt;code&gt;/mitti/playCueAtIndex 3&lt;/code&gt; (junte &lt;code&gt;ForceCut&lt;/code&gt; para sem transição)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/jumpToNextCue&lt;/code&gt;, &lt;code&gt;/mitti/jumpToPrevCue&lt;/code&gt;, &lt;code&gt;/mitti/goto30&lt;/code&gt; / &lt;code&gt;goto20&lt;/code&gt; / &lt;code&gt;goto10&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/mainFader 0..1&lt;/code&gt; — volume geral&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/testPattern&lt;/code&gt; (alterna, ou 1 / 0) — test card. Não existe no módulo do Mitti: envie-o com uma ligação &lt;b&gt;Generic OSC&lt;/b&gt;.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;p&gt;Estado enviado para o Companion: &lt;code&gt;/mitti/cueTimeLeft&lt;/code&gt; (-HH:MM:SS), &lt;code&gt;cueTimeElapsed&lt;/code&gt;, &lt;code&gt;currentCueID&lt;/code&gt;, &lt;code&gt;currentCueName&lt;/code&gt;, &lt;code&gt;togglePlay&lt;/code&gt; (1 = a tocar)...&lt;/p&gt;</translation>
+        <source>&lt;h3&gt;Bitfocus Companion&lt;/h3&gt;&lt;ol&gt;&lt;li&gt;Here: Settings → Network → &lt;b&gt;Allow control by OSC&lt;/b&gt;, choose the network card, and write the &lt;b&gt;Companion IP&lt;/b&gt; (127.0.0.1 if Companion runs on this PC).&lt;/li&gt;&lt;li&gt;In Companion: Connections → add &lt;b&gt;Imimot Mitti&lt;/b&gt;. Mitti Connection: &lt;b&gt;Manual&lt;/b&gt;, IP address: &lt;b&gt;%1&lt;/b&gt;. Feedback port: &lt;b&gt;%2&lt;/b&gt;.&lt;/li&gt;&lt;li&gt;Use the module's presets: Play / Pause, Play Cue by ID (one button per cue, with its name), GOTO 30/20/10, previous / next, time remaining &lt;code&gt;$(mitti:cueTimeLeft)&lt;/code&gt;...&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;The cue ID is the number in the playlist (or the text you wrote in ID).&lt;/p&gt;&lt;h3&gt;Commands (UDP port %3)&lt;/h3&gt;&lt;table cellspacing=4&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/play&lt;/code&gt;, &lt;code&gt;/mitti/togglePlay&lt;/code&gt;, &lt;code&gt;/mitti/stop&lt;/code&gt; (pause)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/panic&lt;/code&gt; — stop everything (black)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/playCueWithCueID "3"&lt;/code&gt;, &lt;code&gt;/mitti/playCueAtIndex 3&lt;/code&gt; (add &lt;code&gt;ForceCut&lt;/code&gt; for no transition)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/playBlock "Block 2"&lt;/code&gt; (name), &lt;code&gt;"B2"&lt;/code&gt; or &lt;code&gt;2&lt;/code&gt; (number of the block) — plays the block from its first video. Not in the Mitti module: use a &lt;b&gt;Generic OSC&lt;/b&gt; connection, or Play Cue by ID with the ID of the first video of the block.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/jumpToNextCue&lt;/code&gt;, &lt;code&gt;/mitti/jumpToPrevCue&lt;/code&gt;, &lt;code&gt;/mitti/goto30&lt;/code&gt; / &lt;code&gt;goto20&lt;/code&gt; / &lt;code&gt;goto10&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/mainFader 0..1&lt;/code&gt; — master volume&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/testPattern&lt;/code&gt; (toggle, or 1 / 0) — test card. Not in the Mitti module: send it with a &lt;b&gt;Generic OSC&lt;/b&gt; connection.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;p&gt;State sent to Companion: &lt;code&gt;/mitti/cueTimeLeft&lt;/code&gt; (-HH:MM:SS), &lt;code&gt;cueTimeElapsed&lt;/code&gt;, &lt;code&gt;currentCueID&lt;/code&gt;, &lt;code&gt;currentCueName&lt;/code&gt;, &lt;code&gt;togglePlay&lt;/code&gt; (1 = playing)...&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;Bitfocus Companion&lt;/h3&gt;&lt;ol&gt;&lt;li&gt;Aqui: Definições → Rede → &lt;b&gt;Permitir controlo por OSC&lt;/b&gt;, escolha a placa de rede e escreva o &lt;b&gt;IP do Companion&lt;/b&gt; (127.0.0.1 se o Companion estiver neste PC).&lt;/li&gt;&lt;li&gt;No Companion: Connections → adicione &lt;b&gt;Imimot Mitti&lt;/b&gt;. Mitti Connection: &lt;b&gt;Manual&lt;/b&gt;, IP address: &lt;b&gt;%1&lt;/b&gt;. Feedback port: &lt;b&gt;%2&lt;/b&gt;.&lt;/li&gt;&lt;li&gt;Use os presets do módulo: Play / Pause, Play Cue by ID (um botão por cue, com o nome), GOTO 30/20/10, anterior / seguinte, tempo que falta &lt;code&gt;$(mitti:cueTimeLeft)&lt;/code&gt;...&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;O ID da cue é o número na playlist (ou o texto que escreveu no ID).&lt;/p&gt;&lt;h3&gt;Comandos (porta UDP %3)&lt;/h3&gt;&lt;table cellspacing=4&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/play&lt;/code&gt;, &lt;code&gt;/mitti/togglePlay&lt;/code&gt;, &lt;code&gt;/mitti/stop&lt;/code&gt; (pausa)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/panic&lt;/code&gt; — pára tudo (preto)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/playCueWithCueID "3"&lt;/code&gt;, &lt;code&gt;/mitti/playCueAtIndex 3&lt;/code&gt; (junte &lt;code&gt;ForceCut&lt;/code&gt; para sem transição)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/playBlock "Bloco 2"&lt;/code&gt; (nome), &lt;code&gt;"B2"&lt;/code&gt; ou &lt;code&gt;2&lt;/code&gt; (número do bloco) — toca o bloco desde o primeiro vídeo. Não existe no módulo do Mitti: use uma ligação &lt;b&gt;Generic OSC&lt;/b&gt;, ou Play Cue by ID com o ID do primeiro vídeo do bloco.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/jumpToNextCue&lt;/code&gt;, &lt;code&gt;/mitti/jumpToPrevCue&lt;/code&gt;, &lt;code&gt;/mitti/goto30&lt;/code&gt; / &lt;code&gt;goto20&lt;/code&gt; / &lt;code&gt;goto10&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/mainFader 0..1&lt;/code&gt; — volume geral&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;/mitti/testPattern&lt;/code&gt; (alterna, ou 1 / 0) — test card. Não existe no módulo do Mitti: envie-o com uma ligação &lt;b&gt;Generic OSC&lt;/b&gt;.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;p&gt;Estado enviado para o Companion: &lt;code&gt;/mitti/cueTimeLeft&lt;/code&gt; (-HH:MM:SS), &lt;code&gt;cueTimeElapsed&lt;/code&gt;, &lt;code&gt;currentCueID&lt;/code&gt;, &lt;code&gt;currentCueName&lt;/code&gt;, &lt;code&gt;togglePlay&lt;/code&gt; (1 = a tocar)...&lt;/p&gt;</translation>
     </message>
     <message>
         <source>&lt;h3&gt;Most used buttons (Companion → Buttons → Presets → Imimot Mitti)&lt;/h3&gt;&lt;table cellspacing=4&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Cues → Play Cue 1, 2, 3...&lt;/b&gt;&lt;/td&gt;&lt;td&gt;one button per video, with its name&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Transport → Pause / Resume&lt;/b&gt;&lt;/td&gt;&lt;td&gt;GO / pause (like Space)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Transport → Play Selected Cue&lt;/b&gt;&lt;/td&gt;&lt;td&gt;plays the selected video&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Jump &amp;amp; Select → Jump to Next / Previous Cue&lt;/b&gt;&lt;/td&gt;&lt;td&gt;next / previous video&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Playhead → Goto 30 / 20 / 10&lt;/b&gt;&lt;/td&gt;&lt;td&gt;last seconds of the video&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Playhead → Rewind&lt;/b&gt;&lt;/td&gt;&lt;td&gt;back to the start of the video&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Emergency → Panic&lt;/b&gt;&lt;/td&gt;&lt;td&gt;stops everything (black)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Cue Status → Cue Time Remaining&lt;/b&gt;&lt;/td&gt;&lt;td&gt;countdown on the button (orange / red near the end)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Cue Status → Current Cue / Next Cue&lt;/b&gt;&lt;/td&gt;&lt;td&gt;name of the video on air / the next one&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;p&gt;Suggested Stream Deck page: top row Play Cue 1–5, middle row Previous · Pause/Resume · Next · Panic, bottom row Time Remaining · Goto 30 · Goto 10 · Test card (Generic OSC).&lt;/p&gt;</source>

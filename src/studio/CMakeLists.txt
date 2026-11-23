@@ -39,6 +39,8 @@ qt_add_executable(vthost-studio WIN32
     countdown_view.h
     osc_server.cpp
     osc_server.h
+    block_inspector.cpp
+    block_inspector.h
     system_stats.cpp
     tally_client.cpp
     tally_client.h

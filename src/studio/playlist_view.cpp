@@ -407,9 +407,16 @@ void PlaylistView::keyPressEvent(QKeyEvent* e) {
         emit spacePressed();
         return;
     }
-    if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && selectedIndex() >= 0) {
-        emit playRequested(selectedIndex());
-        return;
+    if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
+        if (selectedIndex() >= 0) {
+            emit playRequested(selectedIndex());
+            return;
+        }
+        // Cabeçalho de bloco selecionado: ENTER toca o bloco desde o primeiro vídeo.
+        if (const QString b = selectedBlock(); !b.isEmpty() && project_) {
+            if (const int first = project_->firstInBlock(b.toStdString()); first >= 0) emit playRequested(first);
+            return;
+        }
     }
     if ((e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) && selectedIndex() >= 0 && editable_) {
         emit deleteRequested(selectedIndex());
@@ -493,6 +500,8 @@ void CueDelegate::paintBlock(QPainter* p, const QStyleOptionViewItem& opt, const
     p->save();
     p->setRenderHint(QPainter::Antialiasing);
     p->fillRect(r, live ? QColor(48, 92, 40) : selected ? QColor(52, 74, 110) : QColor(38, 52, 74));
+    // Cor do bloco: faixa à esquerda (e nos vídeos do bloco).
+    if (!b.color.empty()) p->fillRect(QRect(r.left(), r.top(), 7, r.height()), cueColor(b.color));
     p->setPen(QColor(20, 20, 20));
     p->drawLine(r.bottomLeft(), r.bottomRight());
     // Seta (esconder / mostrar).
@@ -566,6 +575,8 @@ void CueDelegate::paint(QPainter* p, const QStyleOptionViewItem& opt, const QMod
         // Dentro de um bloco: um pouco mais escuro (mesmo com cor) e uma faixa à esquerda.
         bg = bg.darker(125);
         p->fillRect(QRect(opt.rect.left(), opt.rect.top(), r.left() - opt.rect.left(), opt.rect.height()), QColor(26, 34, 46));
+        if (const vthost::Block* blk = pr->findBlock(q.block); blk && !blk->color.empty())
+            p->fillRect(QRect(opt.rect.left() + 3, opt.rect.top(), 4, opt.rect.height()), cueColor(blk->color).darker(130));
         p->fillRect(QRect(opt.rect.left() + 5, opt.rect.top(), 3, opt.rect.height()), QColor(60, 88, 128));
     }
     p->fillRect(r, bg);

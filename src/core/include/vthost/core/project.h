@@ -128,6 +128,11 @@ struct Block {
     bool collapsed = false;
     bool loop = false; // no fim do bloco volta à primeira cue do bloco
     BlockEnd end = BlockEnd::Pause;
+    std::string color;     // "" ou uma de kCueColors (cabeçalho e faixa)
+    double dissolve = 0.0; // s: dissolve entre os vídeos do bloco (0 = como cada cue)
+    double fadeIn = 0.0;   // s: fade in a partir do preto ao entrar no bloco
+    double fadeOut = 0.0;  // s: fade out para preto no fim do bloco (sem loop)
+    void clamp();
 };
 const char* toString(BlockEnd e);
 BlockEnd blockEndFromString(const std::string& s);
@@ -151,6 +156,9 @@ struct Project {
     // Última cue do seu bloco? (então conta o loop / fim do bloco)
     bool isLastInBlock(int index) const;
     int firstInBlock(const std::string& blockId) const; // -1 se vazio
+    // Cue com as regras do bloco aplicadas (dissolve entre vídeos, fade in à entrada,
+    // fade out no fim). `previous` = cue que estava no ar (-1 = nenhuma).
+    Cue effectiveCue(int index, int previous) const;
     // Põe as cues de cada bloco seguidas (na posição da primeira) e limpa blocos inexistentes.
     void normalizeBlocks();
     int cueIndex(const std::string& id) const; // -1 se não existir

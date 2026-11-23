@@ -50,6 +50,29 @@ Countdown computeCountdown(const Project& project, const protocol::EngineStatus&
     return c;
 }
 
+Countdown blockCountdown(const Countdown& c, const Project& p, int cueIndex,
+                         const std::function<double(const Cue&)>& cueSeconds) {
+    const int n = static_cast<int>(p.cues.size());
+    if (!c.active || c.loops || cueIndex < 0 || cueIndex >= n || !cueSeconds) return c;
+    const Cue& cur = p.cues[static_cast<std::size_t>(cueIndex)];
+    const Block* b = p.findBlock(cur.block);
+    if (!b) return c;
+    double before = 0.0, after = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const Cue& q = p.cues[static_cast<std::size_t>(i)];
+        if (q.block != cur.block || i == cueIndex) continue;
+        const double s = cueSeconds(q);
+        if (!std::isfinite(s) || s < 0.0) return c; // duração desconhecida (ex. loop infinito)
+        (i < cueIndex ? before : after) += s;
+    }
+    Countdown r = c;
+    r.elapsed += before;
+    r.remaining += after;
+    if (r.duration > 0.0) r.duration += before + after;
+    r.blockName = b->name.empty() ? b->id : b->name;
+    return r;
+}
+
 Countdown advanceCountdown(const Countdown& c, double seconds) {
     Countdown r = c;
     if (!r.active || !r.running || !(seconds > 0.0) || !std::isfinite(seconds)) return r;

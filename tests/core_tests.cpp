@@ -711,6 +711,36 @@ void testBlocks() {
     }
     CHECK(blockEndFromString("lixo") == BlockEnd::Pause && std::string(toString(BlockEnd::Continue)) == "continue");
     CHECK(p.newBlockId() == "B3");
+
+    // Regras do bloco nas cues (dissolve entre vídeos, fades à entrada e no fim).
+    Block& b1 = *p.findBlock("B1");
+    b1.dissolve = 1.5;
+    b1.fadeIn = 2.0;
+    b1.fadeOut = 3.0;
+    b1.loop = false;
+    CHECK(p.effectiveCue(0, -1).fadeIn == 2.0 && p.effectiveCue(0, -1).crossfade == 0.0);
+    CHECK(p.effectiveCue(1, 0).crossfade == 1.5 && p.effectiveCue(1, 0).fadeIn == 0.0);
+    CHECK(p.effectiveCue(1, 0).fadeOut == 3.0 && p.effectiveCue(0, -1).fadeOut == 0.0);
+    CHECK(p.effectiveCue(2, 1).fadeIn == 0.0); // fora de blocos: igual
+    b1.color = "red";
+    b1.dissolve = 999;
+    auto r2 = parseProject(serializeProject(p));
+    CHECK(r2.project && r2.project->findBlock("B1")->color == "red" && r2.project->findBlock("B1")->dissolve == 60.0);
+
+    // Tempo do bloco: cues antes contam no decorrido, depois no que falta.
+    Countdown c;
+    c.active = true;
+    c.elapsed = 4.0;
+    c.remaining = 6.0;
+    c.duration = 10.0;
+    const auto secs = [](const Cue&) { return 10.0; };
+    const Countdown bc = blockCountdown(c, p, 1, secs); // Q3, segunda cue do B1
+    CHECK(bc.elapsed == 14.0 && bc.remaining == 6.0 && bc.duration == 20.0 && !bc.blockName.empty());
+    const Countdown first = blockCountdown(c, p, 0, secs);
+    CHECK(first.elapsed == 4.0 && first.remaining == 16.0);
+    CHECK(blockCountdown(c, p, 2, secs).blockName.empty()); // cue fora de blocos: igual
+    c.loops = true;
+    CHECK(blockCountdown(c, p, 1, secs).elapsed == 4.0);
 }
 
 int main() {
