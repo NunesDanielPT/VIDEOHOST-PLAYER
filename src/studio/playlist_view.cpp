@@ -172,6 +172,18 @@ void PlaylistView::setProject(const Project* project) {
 
 void PlaylistView::refresh() { viewport()->update(); }
 
+void PlaylistView::setTallyEnabled(bool on) {
+    if (on == tallyEnabled_) return;
+    tallyEnabled_ = on;
+    viewport()->update();
+}
+
+void PlaylistView::setArmed(int index) {
+    if (index == armed_) return;
+    armed_ = index;
+    viewport()->update();
+}
+
 void PlaylistView::setPlaying(int index, double progress, const QString& state) {
     if (index == playing_ && std::abs(progress - progress_) < 0.001 && state == playingState_) return;
     playing_ = index;
@@ -276,6 +288,9 @@ bool PlaylistView::event(QEvent* e) {
             for (int i = 0; i < static_cast<int>(CueIcon::Count); ++i)
                 if (CueDelegate::iconRect(row, i).contains(pos))
                     tip = name(i) + QStringLiteral("\n") + tr("Click to turn on / off (Ctrl+Z undoes).");
+            if (tip.isEmpty() && tallyEnabled_ && CueDelegate::cueButtonRect(row).contains(pos))
+                tip = tr("CUE: this cue plays when the player input goes on air in the switcher (vMix / ATEM). "
+                         "Click to arm / disarm.");
             if (tip.isEmpty() && idx.row() == playing_ && CueDelegate::thumbButtonRect(row).contains(pos))
                 tip = tr("Use the current frame as the thumbnail (Ctrl+P)");
         }
@@ -335,6 +350,10 @@ QSize CueDelegate::sizeHint(const QStyleOptionViewItem&, const QModelIndex&) con
 
 QRect CueDelegate::thumbButtonRect(const QRect& row) {
     return {row.left() + kThumbX + kThumbW - 26, row.top() + kThumbY + 3, 23, 18};
+}
+
+QRect CueDelegate::cueButtonRect(const QRect& row) {
+    return {row.left() + kThumbX + 3, row.top() + kThumbY + kThumbH - 19, 34, 16};
 }
 
 QRect CueDelegate::iconRect(const QRect& row, int i) {
@@ -398,6 +417,20 @@ void CueDelegate::paint(QPainter* p, const QStyleOptionViewItem& opt, const QMod
     } else if (info.ready && info.ok && info.hasAudio) {
         p->setPen(QColor(120, 120, 120));
         paintCueIcon(p, QRectF(th.center().x() - 14, th.center().y() - 12, 28, 24), CueIcon::Audio, false);
+    }
+    if (view_->tallyEnabled_) {
+        // CUE: esta cue dispara quando o input do player for para o ar no misturador.
+        const QRect cb = cueButtonRect(r);
+        const bool armed = i == view_->armed_;
+        p->setPen(armed ? Qt::NoPen : QPen(QColor(150, 150, 150, 160), 1));
+        p->setBrush(armed ? QColor(220, 45, 45) : QColor(0, 0, 0, 170));
+        p->drawRoundedRect(cb, 3, 3);
+        QFont cf = p->font();
+        cf.setBold(true);
+        cf.setPixelSize(10);
+        p->setFont(cf);
+        p->setPen(armed ? Qt::white : QColor(170, 170, 170));
+        p->drawText(cb, Qt::AlignCenter, QStringLiteral("CUE"));
     }
     if (playing && view_->editable_ && !info.still && info.ok && !info.thumb.isNull()) {
         // Botão da câmara: a miniatura passa a ser o ponto actual do vídeo.
@@ -469,6 +502,10 @@ bool CueDelegate::editorEvent(QEvent* e, QAbstractItemModel*, const QStyleOption
     if (me->button() != Qt::LeftButton) return false;
     if (idx.row() == view_->playing_ && view_->editable_ && thumbButtonRect(opt.rect).contains(me->position().toPoint())) {
         emit view_->thumbnailRequested(idx.row());
+        return true;
+    }
+    if (view_->tallyEnabled_ && cueButtonRect(opt.rect).contains(me->position().toPoint())) {
+        emit view_->armClicked(idx.row()); // também em Show Mode: armar é operação ao vivo
         return true;
     }
     for (int k = 0; k < static_cast<int>(CueIcon::Count); ++k)

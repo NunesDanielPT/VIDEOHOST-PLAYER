@@ -54,6 +54,12 @@ inline QString oscFeedbackHost() { return get("osc/feedbackHost", QString()); }
 inline int oscFeedbackPort() { return get("osc/feedbackPort", 51001); }
 inline bool oscOnlyFromFeedbackHost() { return get("osc/onlyFromFeedbackHost", true); }
 
+// Misturador (vMix / Blackmagic ATEM): dispara a cue armada (CUE) quando o input do player vai para o ar.
+inline int tallyMode() { return get("tally/mode", 0); } // 0 desligado, 1 vMix, 2 ATEM
+inline QString tallyHost() { return get("tally/host", QString()); }
+inline int tallyInput() { return get("tally/input", 1); }
+inline bool tallyArmNext() { return get("tally/armNext", true); }
+
 // Show Mode
 inline bool confirmLeaveShowMode() { return get("show/confirmLeave", true); }
 

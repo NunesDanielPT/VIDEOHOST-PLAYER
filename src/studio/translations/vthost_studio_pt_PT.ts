@@ -443,6 +443,10 @@
         <translation>Countdown: %1</translation>
     </message>
     <message>
+        <source>Cue %1 started by the switcher (input on air)</source>
+        <translation>Cue %1 disparada pelo misturador (input no ar)</translation>
+    </message>
+    <message>
         <source>Cue (ready, paused on the first frame)</source>
         <translation>Preparar (pronta, em pausa no 1.º frame)</translation>
     </message>
@@ -569,6 +573,10 @@
     <message>
         <source>Normalized %1%2 dB (%3 → %4 LUFS)</source>
         <translation>Normalizado %1%2 dB (%3 → %4 LUFS)</translation>
+    </message>
+    <message>
+        <source>ON AIR</source>
+        <translation>NO AR</translation>
     </message>
     <message>
         <source>OSC commands (Companion)</source>
@@ -829,8 +837,20 @@
         <translation>Amarelo</translation>
     </message>
     <message>
+        <source>connecting...</source>
+        <translation>a ligar...</translation>
+    </message>
+    <message>
         <source>limited by the peak</source>
         <translation>limitado pelo pico</translation>
+    </message>
+    <message>
+        <source>not connected</source>
+        <translation>sem ligação</translation>
+    </message>
+    <message>
+        <source>ready</source>
+        <translation>pronto</translation>
     </message>
     <message>
         <source>the IP of this PC</source>
@@ -1003,6 +1023,10 @@
 <context>
     <name>PlaylistView</name>
     <message>
+        <source>CUE: this cue plays when the player input goes on air in the switcher (vMix / ATEM). Click to arm / disarm.</source>
+        <translation>CUE: esta cue toca quando o input do player vai para o ar no misturador (vMix / ATEM). Clique para armar / desarmar.</translation>
+    </message>
+    <message>
         <source>Clear at end: black when the cue ends</source>
         <translation>Apagar no fim: preto quando a cue acaba</translation>
     </message>
@@ -1145,12 +1169,20 @@
         <translation>Adicionar media</translation>
     </message>
     <message>
+        <source>After it plays, arm the next cue</source>
+        <translation>Depois de tocar, armar a cue seguinte</translation>
+    </message>
+    <message>
         <source>All network cards</source>
         <translation>Todas as placas de rede</translation>
     </message>
     <message>
         <source>Allow control by OSC (Companion, Stream Deck...)</source>
         <translation>Permitir controlo por OSC (Companion, Stream Deck...)</translation>
+    </message>
+    <message>
+        <source>Arm a cue with its CUE button in the playlist (it turns red). When the switcher puts this input on air, the cue plays. vMix: TCP 8099 (API on by default). ATEM: UDP 9910.</source>
+        <translation>Arme uma cue com o botão CUE na playlist (fica vermelho). Quando o misturador põe este input no ar, a cue toca. vMix: TCP 8099 (API ligada por omissão). ATEM: UDP 9910.</translation>
     </message>
     <message>
         <source>Ask before quitting</source>
@@ -1301,6 +1333,14 @@
         <translation>SHIFT para tocar sem transição (corte)</translation>
     </message>
     <message>
+        <source>IP address:</source>
+        <translation>Endereço IP:</translation>
+    </message>
+    <message>
+        <source>IP of the vMix PC or of the ATEM (e.g. 192.168.10.240)</source>
+        <translation>IP do PC do vMix ou do ATEM (ex. 192.168.10.240)</translation>
+    </message>
+    <message>
         <source>In Companion add the connection "Imimot Mitti" with the IP of this PC (Manual) and feedback port 51001. Keep the receive port at 51000: the Mitti module always sends there. Its presets work: play, pause, play cue by ID, GOTO, time remaining... Help → OSC commands lists everything.</source>
         <translation>No Companion adicione a ligação "Imimot Mitti" com o IP deste PC (Manual) e a porta de feedback 51001. Mantenha a porta de receção em 51000: o módulo do Mitti envia sempre para lá. Os presets funcionam: play, pausa, tocar cue por ID, GOTO, tempo que falta... Ajuda → Comandos OSC tem a lista completa.</translation>
     </message>
@@ -1405,6 +1445,10 @@
         <translation>Reprodução</translation>
     </message>
     <message>
+        <source>Player input:</source>
+        <translation>Input do player:</translation>
+    </message>
+    <message>
         <source>Playlist</source>
         <translation>Playlist</translation>
     </message>
@@ -1505,6 +1549,10 @@
         <translation>Parar (preto)</translation>
     </message>
     <message>
+        <source>Switcher:</source>
+        <translation>Misturador:</translation>
+    </message>
+    <message>
         <source>Synchronize with the screen refresh (V-Sync)</source>
         <translation>Sincronizar com a frequência do ecrã (V-Sync)</translation>
     </message>
@@ -1545,6 +1593,10 @@
         <translation>Versão %1</translation>
     </message>
     <message>
+        <source>Video switcher (vMix / Blackmagic ATEM)</source>
+        <translation>Misturador de vídeo (vMix / Blackmagic ATEM)</translation>
+    </message>
+    <message>
         <source>Windows default sound card</source>
         <translation>Placa de som do Windows (omissão)</translation>
     </message>
@@ -1557,8 +1609,27 @@
         <translation>ex. 192.168.1.50 (127.0.0.1 se o Companion estiver neste PC)</translation>
     </message>
     <message>
+        <source>vMix: the number of the input where this player comes in. ATEM: the number of the input (1 = Input 1).</source>
+        <translation>vMix: o número do input onde entra este player. ATEM: o número do input (1 = Input 1).</translation>
+    </message>
+    <message>
         <source>© %1 %2. All rights reserved.</source>
         <translation>© %1 %2. Todos os direitos reservados.</translation>
+    </message>
+</context>
+<context>
+    <name>TallyClient</name>
+    <message>
+        <source>connection closed</source>
+        <translation>ligação fechada</translation>
+    </message>
+    <message>
+        <source>no answer from the ATEM</source>
+        <translation>sem resposta do ATEM</translation>
+    </message>
+    <message>
+        <source>write the IP address of the ATEM</source>
+        <translation>escreva o endereço IP do ATEM</translation>
     </message>
 </context>
 <context>

@@ -7,6 +7,7 @@
 #include "vthost/core/loudness.h"
 #include "vthost/core/mapping.h"
 #include "vthost/core/osc.h"
+#include "vthost/core/tally.h"
 #include "vthost/core/preview.h"
 #include "vthost/core/project.h"
 #include "vthost/core/protocol.h"
@@ -621,6 +622,55 @@ void testDsmLayout() {
     CHECK(z.videoW == 1 && z.panelH == 0);
 }
 
+void testTally() {
+    using namespace vthost::tally;
+    CHECK(vmixProgram("TALLY OK 0121\r\n", 2) == std::optional<bool>(true));
+    CHECK(vmixProgram("TALLY OK 0121", 3) == std::optional<bool>(false));
+    CHECK(vmixProgram("TALLY OK 0121", 9) == std::nullopt);
+    CHECK(vmixProgram("SUBSCRIBE OK TALLY", 1) == std::nullopt);
+    CHECK(vmixProgram("TALLY OK ", 1) == std::nullopt && vmixProgram("", 1) == std::nullopt);
+
+    const auto hello = atemHello();
+    AtemHeader h;
+    CHECK(parseAtemHeader(hello.data(), hello.size(), h) && h.flags == kFlagNewSession && h.length == 20 && h.session == 0x53ab);
+    const auto ack = atemAck(0x8123, 42);
+    CHECK(parseAtemHeader(ack.data(), ack.size(), h) && h.flags == kFlagAckReply && h.session == 0x8123 && h.ackId == 42);
+    CHECK(!parseAtemHeader(ack.data(), 11, h));
+    std::vector<std::uint8_t> bad = ack;
+    bad[1] = 13; // comprimento não bate
+    CHECK(!parseAtemHeader(bad.data(), bad.size(), h));
+
+    // Pacote com dois comandos: TlSr (fontes 1 e 3) e InCm.
+    std::vector<std::uint8_t> pl = {0, 17, 0, 0, 'T', 'l', 'S', 'r', 0, 3, 0, 1, 0x01, 0, 2, 0x02, 0, 3};
+    pl.resize(17); // fonte 3 sem byte de estado: lista truncada
+    pl[0] = 0;
+    pl[1] = 17;
+    std::vector<std::uint8_t> full = {0, 18, 0, 0, 'T', 'l', 'S', 'r', 0, 3, 0, 1, 0x01, 0, 2, 0x02, 0, 3};
+    full.push_back(0x03);
+    full[1] = 19;
+    const std::uint8_t incm[] = {0, 12, 0, 0, 'I', 'n', 'C', 'm', 1, 2, 3, 4};
+    full.insert(full.end(), incm, incm + sizeof incm);
+    const auto cmds = parseAtemCommands(full.data(), full.size());
+    CHECK(cmds.size() == 2 && cmds[0].name == "TlSr" && cmds[1].name == "InCm");
+    if (cmds.size() == 2) {
+        CHECK(atemTallyProgram(cmds[0], 1) == std::optional<bool>(true));
+        CHECK(atemTallyProgram(cmds[0], 2) == std::optional<bool>(false));
+        CHECK(atemTallyProgram(cmds[0], 3) == std::optional<bool>(true));
+        CHECK(atemTallyProgram(cmds[0], 4) == std::nullopt);
+        CHECK(atemTallyProgram(cmds[1], 1) == std::nullopt);
+    }
+    const auto cut = parseAtemCommands(pl.data(), pl.size());
+    CHECK(cut.size() == 1 && atemTallyProgram(cut[0], 3) == std::nullopt);
+    // Lixo: não rebenta.
+    std::mt19937 rng(11);
+    for (int i = 0; i < 2000; ++i) {
+        std::vector<std::uint8_t> r(rng() % 64);
+        for (auto& c : r) c = static_cast<std::uint8_t>(rng());
+        for (const auto& c : parseAtemCommands(r.data(), r.size())) (void)atemTallyProgram(c, 1);
+        (void)parseAtemHeader(r.data(), r.size(), h);
+    }
+}
+
 int main() {
     testLoudness();
     testProject();
@@ -637,6 +687,7 @@ int main() {
     testOsc();
     testEngineConfig();
     testDsmLayout();
+    testTally();
     std::printf("%d verificações, %d falhas\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

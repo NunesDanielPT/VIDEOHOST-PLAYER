@@ -8,6 +8,7 @@ add_library(vthost_core STATIC
     loudness.cpp
     mapping.cpp
     osc.cpp
+    tally.cpp
     paths.cpp
     project.cpp
     protocol.cpp

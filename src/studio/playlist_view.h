@@ -24,6 +24,10 @@ public:
 
     // Cue no ar: índice, progresso 0..1 e estado ("playing", "paused", ...).
     void setPlaying(int index, double progress, const QString& state);
+    // Disparo pelo misturador (vMix / ATEM): botão CUE nas cues e a cue armada.
+    void setTallyEnabled(bool on);
+    void setArmed(int index);
+    int armed() const { return armed_; }
     int playingIndex() const { return playing_; }
     double playingProgress() const { return progress_; }
     QString playingState() const { return playingState_; }
@@ -46,6 +50,7 @@ signals:
     void deleteRequested(int index);
     void contextMenuRequested(int index, const QPoint& globalPos);
     void thumbnailRequested(int index);
+    void armClicked(int index); // botão CUE
     void spacePressed(); // ESPAÇO com a playlist em foco = play/pausa (não mexe na seleção) // botão da câmara: miniatura = ponto actual da cue no ar
 
 protected:
@@ -62,6 +67,8 @@ private:
     MediaCache* media_;
     const vthost::Project* project_ = nullptr;
     int playing_ = -1;
+    int armed_ = -1;
+    bool tallyEnabled_ = false;
     double progress_ = 0.0;
     QString playingState_;
     bool editable_ = true;
@@ -77,6 +84,7 @@ public:
 
     static QRect iconRect(const QRect& row, int i);
     static QRect thumbButtonRect(const QRect& row);
+    static QRect cueButtonRect(const QRect& row);
 
 private:
     PlaylistView* view_;

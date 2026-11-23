@@ -102,6 +102,10 @@ Uma saída com `dsm` desenha o canvas mais pequeno (`computeDsmLayout`, núcleo)
 
 O Studio grava a escolha em `%LOCALAPPDATA%\VTHOST\engine_config.json` (`engine_config.h`); o motor lê-a ao arrancar e cria o dispositivo D3D11 nessa placa (`gpus.h`: vazio = a de alto desempenho via `IDXGIFactory6`). Se não existir, usa a de alto desempenho e avisa. Mudar de placa = comando `restart` (o motor grava o estado e sai com o código 6; o watchdog relança com `--recover`).
 
+## Misturador (tally)
+
+O Studio liga-se ao vMix (TCP 8099, `SUBSCRIBE TALLY`) ou a um ATEM (UDP 9910: hello, confirmações de cada pacote, comando `TlSr` = tally por fonte) — a parte pura (pacotes, comandos) está no núcleo (`tally.h`, testada). Quando o input do player passa a programa (só transições depois do primeiro estado), toca a cue armada (botão CUE) e, por opção, arma a seguinte. Sem ligação, nada dispara.
+
 ## OSC (Companion)
 
 O Studio (não o motor) escuta OSC em UDP (porta 51000, só na placa escolhida, desligado por omissão) e fala o protocolo do Mitti (`/mitti/...`), para o módulo "Imimot Mitti" do Companion funcionar com os seus presets. O estado (cue no ar, tempo que falta, play/pausa, nomes das cues) vai para o IP do Companion (porta 51001) 10×/s, só quando muda. Descodificação OSC no núcleo (`osc.h`, testada com dados aleatórios).

@@ -308,6 +308,31 @@ SettingsDialog::SettingsDialog(QWidget* parent, int initialTab, EngineClient* en
                                      "Its presets work: play, pause, play cue by ID, GOTO, time remaining... "
                                      "Help → OSC commands lists everything."),
                                   page));
+
+        // Misturador de vídeo: quando o input do player vai para o ar, dispara a cue armada (CUE).
+        f->addRow(new QLabel(QStringLiteral("<b>%1</b>").arg(tr("Video switcher (vMix / Blackmagic ATEM)")), page));
+        auto* tMode = new QComboBox(page);
+        tMode->addItem(tr("Off"), 0);
+        tMode->addItem(QStringLiteral("vMix"), 1);
+        tMode->addItem(QStringLiteral("Blackmagic ATEM"), 2);
+        tMode->setCurrentIndex(std::max(0, tMode->findData(prefs::tallyMode())));
+        savers_.push_back([tMode] { prefs::set("tally/mode", tMode->currentData().toInt()); });
+        f->addRow(tr("Switcher:"), tMode);
+        auto* tHost = new QLineEdit(prefs::tallyHost(), page);
+        tHost->setPlaceholderText(tr("IP of the vMix PC or of the ATEM (e.g. 192.168.10.240)"));
+        savers_.push_back([tHost] { prefs::set("tally/host", tHost->text().trimmed()); });
+        f->addRow(tr("IP address:"), tHost);
+        auto* tInput = new QSpinBox(page);
+        tInput->setRange(1, 9999);
+        tInput->setValue(std::max(1, prefs::tallyInput()));
+        tInput->setToolTip(tr("vMix: the number of the input where this player comes in. ATEM: the number of the "
+                              "input (1 = Input 1)."));
+        savers_.push_back([tInput] { prefs::set("tally/input", tInput->value()); });
+        f->addRow(tr("Player input:"), tInput);
+        f->addRow(QString(), check(page, tr("After it plays, arm the next cue"), "tally/armNext", true));
+        f->addRow(QString(), note(tr("Arm a cue with its CUE button in the playlist (it turns red). When the switcher puts "
+                                     "this input on air, the cue plays. vMix: TCP 8099 (API on by default). ATEM: UDP 9910."),
+                                  page));
         tabs->addTab(page, tr("Network"));
     }
 

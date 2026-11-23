@@ -4,6 +4,7 @@
 #include "countdown_server.h"
 #include "countdown_view.h"
 #include "osc_server.h"
+#include "tally_client.h"
 #include "inspector_panel.h"
 #include "outputs_dialog.h"
 #include "prefs.h"
@@ -272,6 +273,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(&pushTimer_, &QTimer::timeout, this, &MainWindow::pushToEngine);
 
     // Countdown: o servidor web responde com o estado interpolado no momento do pedido.
+    tally_ = new TallyClient(this);
+    connect(tally_, &TallyClient::wentOnAir, this, &MainWindow::fireArmedCue);
+    connect(tally_, &TallyClient::stateChanged, this, &MainWindow::updatePerf);
+    connect(tally_, &TallyClient::onAirChanged, this, &MainWindow::updatePerf);
+
     osc_ = new OscServer(this);
     connect(osc_, &OscServer::messageReceived, this, &MainWindow::onOscMessage);
     oscTimer_.setInterval(100); // tempo que falta para o Companion, 10×/s
@@ -455,6 +461,12 @@ void MainWindow::buildUi() {
     connect(playlist_, &PlaylistView::deleteRequested, this, &MainWindow::deleteCue);
     connect(playlist_, &PlaylistView::contextMenuRequested, this, &MainWindow::showCueMenu);
     connect(playlist_, &PlaylistView::thumbnailRequested, this, [this](int) { thumbnailFromPlayhead(); });
+    connect(playlist_, &PlaylistView::armClicked, this, [this](int i) {
+        if (i < 0 || i >= static_cast<int>(project_.cues.size())) return;
+        const std::string id = project_.cues[static_cast<std::size_t>(i)].id;
+        armedCueId_ = armedCueId_ == id ? std::string() : id; // clicar outra vez desarma
+        updateArmed();
+    });
     connect(playlist_, &PlaylistView::spacePressed, this, &MainWindow::playPause);
 
     preview_ = new PreviewWidget(this);
@@ -667,9 +679,48 @@ void MainWindow::updatePerf() {
         parts << fps;
     }
     if (osc_ && osc_->isListening()) parts.prepend(QStringLiteral("OSC %1").arg(osc_->config().port));
+    if (tally_ && tally_->config().mode != TallyClient::Mode::Off) {
+        const QString who = tally_->config().mode == TallyClient::Mode::Vmix ? QStringLiteral("vMix") : QStringLiteral("ATEM");
+        QString t = who + QStringLiteral(" ") + QString::number(tally_->config().input) + QStringLiteral(": ");
+        if (!tally_->isConnected()) {
+            t += tr("not connected");
+            tip << who + QStringLiteral(": ") + (tally_->lastError().isEmpty() ? tr("connecting...") : tally_->lastError());
+            warn = true;
+        } else {
+            t += tally_->onAir() ? tr("ON AIR") : tr("ready");
+        }
+        parts.prepend(t);
+    }
     perfLabel_->setText(parts.join(QStringLiteral("  ·  ")));
     perfLabel_->setToolTip(tip.join(QStringLiteral("\n")));
     perfLabel_->setStyleSheet(warn ? QStringLiteral("color: #e0a030; padding: 0 8px;") : QStringLiteral("color: #8a8a8a; padding: 0 8px;"));
+}
+
+// ------------------------------------------------------------------ misturador (vMix / ATEM)
+
+void MainWindow::applyTally() {
+    TallyClient::Config c;
+    c.mode = static_cast<TallyClient::Mode>(std::clamp(prefs::tallyMode(), 0, 2));
+    c.host = prefs::tallyHost();
+    c.input = std::clamp(prefs::tallyInput(), 0, 9999);
+    tally_->configure(c);
+    playlist_->setTallyEnabled(c.mode != TallyClient::Mode::Off);
+    updatePerf();
+}
+
+void MainWindow::updateArmed() {
+    playlist_->setArmed(armedCueId_.empty() ? -1 : project_.cueIndex(armedCueId_));
+}
+
+void MainWindow::fireArmedCue() {
+    const int i = armedCueId_.empty() ? -1 : project_.cueIndex(armedCueId_);
+    if (i < 0 || !engine_->isConnected()) return;
+    playCue(i);
+    infoLabel_->setText(tr("Cue %1 started by the switcher (input on air)").arg(cueOscId(i)));
+    // A seguinte fica armada (opção): o próximo corte para o player dispara-a.
+    const int n = static_cast<int>(project_.cues.size());
+    armedCueId_ = prefs::tallyArmNext() && i + 1 < n ? project_.cues[static_cast<std::size_t>(i + 1)].id : std::string();
+    updateArmed();
 }
 
 // ------------------------------------------------------------------ OSC (Companion)
@@ -961,6 +1012,7 @@ int MainWindow::selectedCue() const {
 
 void MainWindow::refreshPlaylist() {
     playlist_->setProject(&project_);
+    updateArmed();
     playlist_->setPlaying(playingCue_, playlist_->playingProgress(), playlist_->playingState());
 }
 
@@ -1378,6 +1430,7 @@ void MainWindow::applyPreferences() {
     sendEngineSettings();
     applyCountdownServer();
     applyOsc();
+    applyTally();
     playlist_->refresh();
     updateSelection();
     pushTimer_.start(); // alvo de normalização pode ter mudado

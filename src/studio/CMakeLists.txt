@@ -40,6 +40,8 @@ qt_add_executable(vthost-studio WIN32
     osc_server.cpp
     osc_server.h
     system_stats.cpp
+    tally_client.cpp
+    tally_client.h
     system_stats.h
 )
 target_link_libraries(vthost-studio PRIVATE vthost_core Qt6::Widgets Qt6::Network)

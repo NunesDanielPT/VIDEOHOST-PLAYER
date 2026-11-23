@@ -28,6 +28,7 @@
 
 class CountdownServer;
 class OscServer;
+class TallyClient;
 namespace vthost::osc { struct Message; }
 class UpdateDialog;
 class CountdownView;
@@ -199,6 +200,13 @@ private:
     int cueByOscId(const QString& id) const;
     void showOscHelp();
     OscServer* osc_ = nullptr;
+
+    // Misturador (vMix / ATEM): a cue armada (CUE) dispara quando o input vai para o ar.
+    void applyTally();
+    void updateArmed();
+    void fireArmedCue();
+    TallyClient* tally_ = nullptr;
+    std::string armedCueId_;
     QTimer oscTimer_;
     QString oscPlaylistSignature_;
     QAction* showModeAction_ = nullptr;
